@@ -1,0 +1,31 @@
+cmake_minimum_required(VERSION 3.10)
+project(AgentCDemos)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+include_directories(${CMAKE_SOURCE_DIR})
+
+add_executable(demo_capabilities demo_capabilities.cpp)
+target_link_libraries(demo_capabilities listree reflect cartographer kanren libedict)
+
+add_executable(demo_speculation demo_speculation.cpp)
+target_link_libraries(demo_speculation libedict cartographer pthread)
+
+add_executable(demo_kanren_reasoning demo_kanren_reasoning.cpp)
+target_link_libraries(demo_kanren_reasoning kanren listree pthread)
+
+add_executable(demo_kanren_edict demo_kanren_edict.cpp)
+target_link_libraries(demo_kanren_edict libedict cartographer kanren pthread)
+
+add_executable(demo_rewrite_runtime demo_rewrite_runtime.cpp)
+target_link_libraries(demo_rewrite_runtime libedict cartographer pthread)
+
+add_executable(demo_rewrite_language demo_rewrite_language.cpp)
+target_link_libraries(demo_rewrite_language libedict cartographer kanren pthread)
+
+add_executable(demo_cognitive_core_validation demo_cognitive_core_validation.cpp)
+target_link_libraries(demo_cognitive_core_validation libedict cartographer kanren pthread)
+
+add_executable(demo_arena_metadata_persistence demo_arena_metadata_persistence.cpp)
+target_link_libraries(demo_arena_metadata_persistence reflect pthread)

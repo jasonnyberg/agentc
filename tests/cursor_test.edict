@@ -1,0 +1,6 @@
+# Test cursor iteration over function history
+"f" [ "A" print ] @
+"f" [ "B" print ] @
+"Testing *f !" print
+*f !
+"Done" print

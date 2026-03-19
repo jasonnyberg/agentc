@@ -1,0 +1,107 @@
+// This file is part of AgentC.
+//
+// AgentC is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as
+// published by the Free Software Foundation, either version 3 of
+// the License, or (at your option) any later version.
+//
+// AgentC is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public
+// License along with AgentC. If not, see <https://www.gnu.org/licenses/>.
+
+#include <iostream>
+#include <sstream>
+#include "edict_repl.h"
+#include "edict_compiler.h"
+#include "edict_vm.h"
+#include "../core/alloc.h"
+#include "../core/debug.h"
+
+static void printUsage(const char* name) {
+    std::cout << "Usage:\n";
+    std::cout << "  " << name << "            # start REPL\n";
+    std::cout << "  " << name << " -e CODE   # evaluate CODE and print stack\n";
+}
+
+static std::string joinArgs(int argc, char** argv, int start) {
+    std::ostringstream oss;
+    for (int i = start; i < argc; ++i) {
+        if (i > start) oss << ' ';
+        oss << argv[i];
+    }
+    return oss.str();
+}
+
+static size_t stackListCount(CPtr<agentc::ListreeValue> items) {
+    size_t count = 0;
+    if (!items) return 0;
+    items->forEachList([&](CPtr<agentc::ListreeValueRef>& ref) {
+        if (ref && ref->getValue()) ++count;
+    }, false);
+    return count;
+}
+
+static CPtr<agentc::ListreeValue> stackListAt(CPtr<agentc::ListreeValue> items, size_t index) {
+    if (!items) return nullptr;
+    size_t current = 0;
+    CPtr<agentc::ListreeValue> result = nullptr;
+    items->forEachList([&](CPtr<agentc::ListreeValueRef>& ref) {
+        if (result || !ref || !ref->getValue()) return;
+        if (current == index) {
+            result = ref->getValue();
+            return;
+        }
+        ++current;
+    }, false);
+    return result;
+}
+
+int main(int argc, char** argv) {
+    try {
+        // Create a root node for the cursor
+        CPtr<agentc::ListreeValue> root;
+
+        if (argc > 1) {
+            std::string mode = argv[1];
+            if (mode == "-e") {
+                if (argc < 3) {
+                    printUsage(argv[0]);
+                    return 2;
+                }
+                currentDebugLevel = DEBUG_WARNING;
+                std::string source = joinArgs(argc, argv, 2);
+                agentc::edict::EdictCompiler compiler;
+                agentc::edict::EdictVM vm(root);
+                agentc::edict::BytecodeBuffer code = compiler.compile(source);
+                int result = vm.execute(code);
+                if (result & agentc::edict::VM_ERROR) {
+                    std::cerr << "Error: " << vm.getError() << std::endl;
+                    return 1;
+                }
+                auto items = vm.dumpStack();
+                const size_t count = stackListCount(items);
+                std::cout << "stack size: " << count << " (top first)" << std::endl;
+                for (size_t i = 0; i < count; ++i) {
+                    auto item = stackListAt(items, i);
+                    std::string text = item && item->getData() ? std::string(static_cast<char*>(item->getData()), item->getLength()) : std::string();
+                    std::cout << i << ": " << text << std::endl;
+                }
+                return 0;
+            }
+            printUsage(argv[0]);
+            return 2;
+        }
+
+        // Create and run the REPL
+        agentc::edict::EdictREPL repl(root);
+        repl.run();
+        return 0;
+    } catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << std::endl;
+        return 1;
+    }
+}
