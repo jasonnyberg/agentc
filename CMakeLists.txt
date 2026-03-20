@@ -8,6 +8,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Add compiler flags
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
 
+# Optional LMDB arena store support.
+# LMDB is loaded at runtime via dlopen, so there is no link-time dependency.
+# When OFF (the default), LmdbArenaStore is compiled out entirely.
+# Enable with: cmake -DAGENTC_WITH_LMDB=ON ...
+option(AGENTC_WITH_LMDB "Build with LMDB arena store support" OFF)
+
 include(FetchContent)
 # M11: Pin GoogleTest to v1.14.0 with a content hash for reproducible builds.
 # Previously fetched from the floating `main` branch (non-reproducible, offline-unsafe).
@@ -48,6 +54,11 @@ target_link_libraries(reflect
     listree
     ${CMAKE_DL_LIBS}
 )
+
+# Propagate LMDB compile-time flag to all consumers of reflect
+if(AGENTC_WITH_LMDB)
+    target_compile_definitions(reflect PUBLIC AGENTC_WITH_LMDB)
+endif()
 
 # Add tests
 add_subdirectory(tests)

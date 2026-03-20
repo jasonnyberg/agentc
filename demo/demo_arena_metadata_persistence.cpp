@@ -174,6 +174,7 @@ int main() {
     std::cout << "restored first slab-backed value: " << *CPtr<int>(firstValueSid) << "\n";
     std::cout << "restored last slab-backed value: " << *CPtr<int>(lastValueSid) << "\n";
 
+#ifdef AGENTC_WITH_LMDB
     const std::string lmdbPath = "/tmp/j3_lmdb_arena_metadata_demo";
     std::filesystem::remove_all(lmdbPath);
     LmdbArenaStore lmdbStore(lmdbPath);
@@ -225,6 +226,7 @@ int main() {
             return 1;
         }
     }
+#endif // AGENTC_WITH_LMDB
 
     const std::string structuredBase = "/tmp/j3_structured_tree_demo";
     std::remove((structuredBase + ".value").c_str());

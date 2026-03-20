@@ -13,6 +13,7 @@
 // You should have received a copy of the GNU Lesser General Public
 // License along with AgentC. If not, see <https://www.gnu.org/licenses/>.
 
+#include <fstream>
 #include <iostream>
 #include <sstream>
 #include "edict_repl.h"
@@ -25,6 +26,8 @@ static void printUsage(const char* name) {
     std::cout << "Usage:\n";
     std::cout << "  " << name << "            # start REPL\n";
     std::cout << "  " << name << " -e CODE   # evaluate CODE and print stack\n";
+    std::cout << "  " << name << " FILE      # execute script file\n";
+    std::cout << "  " << name << " -         # execute script from stdin\n";
 }
 
 static std::string joinArgs(int argc, char** argv, int start) {
@@ -92,6 +95,26 @@ int main(int argc, char** argv) {
                 }
                 return 0;
             }
+
+            // Script from stdin: edict -
+            if (mode == "-") {
+                currentDebugLevel = DEBUG_WARNING;
+                agentc::edict::EdictREPL repl(root);
+                return repl.runScript(std::cin) ? 0 : 1;
+            }
+
+            // Script from file: edict FILE
+            if (mode[0] != '-') {
+                currentDebugLevel = DEBUG_WARNING;
+                std::ifstream file(mode);
+                if (!file.is_open()) {
+                    std::cerr << "Error: cannot open file: " << mode << std::endl;
+                    return 1;
+                }
+                agentc::edict::EdictREPL repl(root);
+                return repl.runScript(file) ? 0 : 1;
+            }
+
             printUsage(argv[0]);
             return 2;
         }

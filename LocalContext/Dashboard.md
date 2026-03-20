@@ -2,15 +2,17 @@
 
 **Project**: AgentC / J3 (transitional name — also called AgentLang)  
 **Primary Goal**: G001 — Codebase Review: Optimization and Redundancy/Inconsistency Analysis  
-**Last Updated**: 2026-03-18
+**Last Updated**: 2026-03-20
 
 ---
 
 ## Current Focus
 
-**Active Goals**: None. Directory restructure + RegressionMatrixTest fix complete.
-**Status**: G002–G013 Complete. G014 Cancelled. Namespace migration `j3` → `agentc` complete. Directory restructure complete. **7/7 test suites pass (74/74 tests), 2.44s total.**
-**Last Updated**: 2026-03-18
+**Active Goals**: None.
+**Status**: G002–G013 Complete. G014 Cancelled. G016 Complete. Namespace migration `j3` → `agentc` complete. Directory restructure complete. **7/7 test suites pass (74/74 tests), 3.03s total.**
+**Last Updated**: 2026-03-20
+
+**Completed Task**: G016 — LMDB Optional Compile-Time Build (2026-03-20) — Added `AGENTC_WITH_LMDB` CMake option (default OFF). Guarded all LMDB code in `core/alloc.h`, `core/alloc.cpp`, `tests/alloc_tests.cpp`, `demo/demo_arena_metadata_persistence.cpp`. Build clean; 7/7 suites pass.
 
 **Completed Task**: RegressionMatrixTest fix (2026-03-18) — Root cause: quadratic VM construction (65² pairs × ~18ms/VM = ~76s). Fix: hoist single `EdictVM vm`, use `beginTransaction()`/`rollbackTransaction()` for O(1) reset, skip 16 heavy I/O opcodes via `isHeavyOp()`. Result: edict_tests 1.1s (was >60s timeout). All 7 suites pass.
 **Completed Task**: Directory restructure (2026-03-18) — top-level source files moved to `core/`, `tst/` split into `tests/` (test files) + `demo/` (demo programs). All includes updated. `demo_math.h` moved to `demo/`.
@@ -24,6 +26,7 @@
 **Completed Task**: demo_capabilities.cpp build fix (2026-03-16)
 
 **Accomplishments**:
+- ✅ G016: LMDB optional compile-time build — `AGENTC_WITH_LMDB` CMake option (default OFF); guards in 5 files; 7/7 suites pass (2026-03-20)
 - ✅ G001: Full codebase review completed, producing `doc/code-review.md` (32 issues).
 - ✅ G002 (C1, C2, C6): Fixed ODR in `alloc.h`, buffer overflow in `TraversalContext`, verified `cursor.cpp::up()`.
 - ✅ G003 (C4, H8): Verified `service.cpp` mutex, made `mapper.cpp` anonCount atomic.
@@ -43,13 +46,14 @@
 ---
 
 ### Active Goals
-- None. All Phase 1, 2 & namespace migration goals complete. G014 cancelled.
+- None. All Phase 1, 2, namespace migration, and G016 goals complete. G014 cancelled.
 
 ### Recommended Next Steps
-1. **LMDB Integration**: G004 is resolved — proceed with LMDB persistence goals (G040-G042).
-2. **Commit**: Directory restructure + RegressionMatrixTest fix are uncommitted.
+1. **LMDB Integration**: G016 complete — can now proceed with LMDB persistence goals (G040–G042) knowing LMDB is properly guarded.
+2. **Commit**: All recent changes (directory restructure, RegressionMatrixTest fix, G016) are uncommitted.
 
 ### Completed Goals
+- ✅ G016 — LMDB Optional Compile-Time Build (2026-03-20) — `AGENTC_WITH_LMDB` CMake option (default OFF); guards in `core/alloc.h`, `core/alloc.cpp`, `tests/alloc_tests.cpp`, `demo/demo_arena_metadata_persistence.cpp`, `CMakeLists.txt`; 74/74 tests pass
 - ✅ G001 (partial) — Codebase review completed; issue catalog + recommendations produced (2026-03-16)
 - ✅ G002 — Critical UB & ODR Fixes (2026-03-16)
 - ✅ G003 — Thread Safety (2026-03-16)
@@ -94,6 +98,7 @@ Complete index of LOCAL knowledge. Load items relevant to your current task.
 - G011 — Security & Safety — **Complete**
 - G012 — Build System & Test Infra — **Complete**
 - G013 — Code Hygiene & Cleanup — **Complete**
+- G016 — LMDB Optional Compile-Time Build — **Complete** 🔗[index](./Knowledge/Goals/G016-LmdbOptionalBuild/index.md)
 
 ### Facts
 (none yet)
@@ -113,6 +118,7 @@ Complete index of LOCAL knowledge. Load items relevant to your current task.
 ## Timeline Highlights
 
 ### Recent Events (Last 7 Days)
+- 🔗[2026-03-20: G016 LMDB Optional Build Complete](./Knowledge/Timeline/2026/03/20/index.md) — `AGENTC_WITH_LMDB` CMake option; guards in 5 files; 74/74 tests pass
 - 🔗[2026-03-16: HRM Bootstrap + Codebase Review](./Knowledge/Timeline/2026/03/16/0000-0200/index.md) — Initial HRM structure; full code review; G002–G013 created
 - 🔗[2026-03-16: Phase 1 and 2 Complete](./Knowledge/Timeline/2026/03/16/2200-2300/index.md) — Final build fix (`demo_capabilities.cpp`) and project wrap-up; all goals completed or deferred.
 

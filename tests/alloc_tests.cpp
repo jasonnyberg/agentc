@@ -437,6 +437,7 @@ TEST(CPtrTest, FileArenaStoreRoundTripsNamedCheckpoint) {
     std::remove(path.c_str());
 }
 
+#ifdef AGENTC_WITH_LMDB
 TEST(CPtrTest, LmdbArenaStoreRoundTripsNamedCheckpoint) {
     const std::string path = "/tmp/j3_lmdb_arena_store_test";
     std::filesystem::remove_all(path);
@@ -469,6 +470,7 @@ TEST(CPtrTest, LmdbArenaStoreRoundTripsNamedCheckpoint) {
 
     std::filesystem::remove_all(path);
 }
+#endif // AGENTC_WITH_LMDB
 
 TEST(CPtrTest, MemoryArenaStoreRoundTripsSlabImages) {
     MemoryArenaStore store;
@@ -486,6 +488,7 @@ TEST(CPtrTest, FileArenaStoreRoundTripsSlabImages) {
     }
 }
 
+#ifdef AGENTC_WITH_LMDB
 TEST(CPtrTest, LmdbArenaStoreRoundTripsSlabImages) {
     const std::string path = "/tmp/j3_lmdb_arena_slab_store_test";
     std::filesystem::remove_all(path);
@@ -494,6 +497,7 @@ TEST(CPtrTest, LmdbArenaStoreRoundTripsSlabImages) {
     roundTripSlabImagesThroughStore(store);
     std::filesystem::remove_all(path);
 }
+#endif // AGENTC_WITH_LMDB
 
 TEST(CPtrTest, FileArenaStoreRoundTripsStructuredListreeItemGraph) {
     resetStructuredListreeAllocators();
@@ -812,6 +816,7 @@ TEST(CPtrTest, FileArenaStoreRestoresAnchoredTopLevelTreeState) {
     }
 }
 
+#ifdef AGENTC_WITH_LMDB
 TEST(CPtrTest, LmdbArenaStoreRestoresAnchoredTopLevelTreeState) {
     const std::string path = "/tmp/j3_lmdb_root_anchor_store_test";
     std::filesystem::remove_all(path);
@@ -825,6 +830,7 @@ TEST(CPtrTest, LmdbArenaStoreRestoresAnchoredTopLevelTreeState) {
     roundTripAnchoredTreeStateThroughStores(valueStore, refStore, nodeStore, itemStore, treeStore, stateStore);
     std::filesystem::remove_all(path);
 }
+#endif // AGENTC_WITH_LMDB
 
 template <typename Store>
 void roundTripMultiAnchorStateAndResumeMutation(Store& valueStore,

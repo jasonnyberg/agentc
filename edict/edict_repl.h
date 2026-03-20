@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <istream>
 #include <string>
 #include <vector>
 #include "../core/cursor.h"
@@ -36,7 +37,12 @@ public:
     }
     
     void run();
-    
+
+    // Execute edict source from a stream line by line (script/pipe mode).
+    // Lines beginning with '#' and blank lines are skipped.
+    // Returns true on success, false if any line produces a VM error.
+    bool runScript(std::istream& in);
+
 private:
     EdictVM vm;
     EdictCompiler compiler;

@@ -237,6 +237,7 @@ private:
                   const std::map<std::string, ArenaCheckpointMetadata>& namedValue) const;
 };
 
+#ifdef AGENTC_WITH_LMDB
 class LmdbArenaStore : public ArenaStore {
 public:
     explicit LmdbArenaStore(std::string directoryPath);
@@ -256,6 +257,7 @@ private:
     class Impl;
     std::unique_ptr<Impl> impl;
 };
+#endif // AGENTC_WITH_LMDB
 
 class BlobAllocator {
 private:

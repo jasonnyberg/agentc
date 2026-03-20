@@ -134,6 +134,31 @@ void EdictREPL::printError(const std::string& error) {
     std::cout << "Error: " << error << std::endl;
 }
 
+bool EdictREPL::runScript(std::istream& in) {
+    std::string line;
+    int lineNum = 0;
+    while (std::getline(in, line)) {
+        ++lineNum;
+        // Strip trailing carriage return (for Windows line endings)
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        // Skip blank lines and comment lines
+        const auto first = line.find_first_not_of(" \t");
+        if (first == std::string::npos || line[first] == '#') continue;
+        try {
+            BytecodeBuffer code = compiler.compile(line);
+            int result = vm.execute(code);
+            if (result & VM_ERROR) {
+                std::cerr << "Error (line " << lineNum << "): " << vm.getError() << std::endl;
+                return false;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "Error (line " << lineNum << "): " << e.what() << std::endl;
+            return false;
+        }
+    }
+    return true;
+}
+
 bool EdictREPL::handleSpecialCommand(const std::string& line) {
     if (line == "help") {
         printHelp();

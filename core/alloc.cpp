@@ -418,6 +418,7 @@ bool FileArenaStore::writeAll(bool hasCurrentValue,
     return out.good();
 }
 
+#ifdef AGENTC_WITH_LMDB
 class LmdbArenaStore::Impl {
 public:
     struct MDB_val {
@@ -648,3 +649,4 @@ bool LmdbArenaStore::loadRootState(const std::string& name, ArenaRootState& out)
 bool LmdbArenaStore::isAvailable() const {
     return const_cast<Impl*>(impl.get())->loadSymbols();
 }
+#endif // AGENTC_WITH_LMDB
