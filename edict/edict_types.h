@@ -110,6 +110,7 @@ enum VMOpcode {
 
     // Miscellaneous
     VMOP_PRINT,
+    VMOP_HEAP_UTILIZATION,
 
     // Cursor navigation operations
     VMOP_CURSOR_DOWN,  // Move cursor to first child

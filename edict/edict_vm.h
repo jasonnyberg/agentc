@@ -244,6 +244,7 @@ private:
     void op_UNSAFE_EXTENSIONS_ALLOW();
     void op_UNSAFE_EXTENSIONS_BLOCK();
     void op_UNSAFE_EXTENSIONS_STATUS();
+    void op_HEAP_UTILIZATION();
 
     // Cursor navigation ops (registered via registerCursorOperations)
     void op_CURSOR_DOWN();  // Move cursor to first child; push bool result
