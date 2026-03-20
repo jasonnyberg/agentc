@@ -191,3 +191,16 @@ EDICT
 
 echo
 echo "=== Demo complete ==="
+
+echo
+echo "--- Section 5: Heap Utilization (after all sections) ---"
+"$EDICT" - <<'EDICT'
+unsafe_extensions_allow ! pop
+"libc.so.6" resolver.load !
+"libm.so.6" resolver.load !
+"/usr/include/stdlib.h" parser.__native.map ! @stdlib
+"/usr/include/ctype.h"  parser.__native.map ! @ctype
+"/usr/include/math.h"   parser.__native.map ! @math
+
+HeapUtilization !
+EDICT

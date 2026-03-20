@@ -366,6 +366,23 @@ public:
             }
         }
     }
+
+    struct BlobStats {
+        size_t activeSlabs = 0;
+        size_t totalBytes  = 0;  // activeSlabs * 65536
+        size_t usedBytes   = 0;  // sum of slabs[i]->count
+    };
+
+    BlobStats getBlobStats() const {
+        BlobStats stats;
+        for (int i = 0; i < NUM_SLABS; ++i) {
+            if (!slabs[i] || slabs[i]->count == 0) continue;
+            ++stats.activeSlabs;
+            stats.usedBytes  += slabs[i]->count;
+            stats.totalBytes += 65536;
+        }
+        return stats;
+    }
 };
 
 template<typename T>
@@ -651,6 +668,38 @@ public:
         metadata.highestSlabIndex = highest.first;
         metadata.highestSlabOffset = highest.second;
         return metadata;
+    }
+
+    // Lightweight per-slab utilization stats (no data copying).
+    struct SlabStat {
+        uint16_t slabIndex = 0;
+        uint32_t liveSlots = 0;
+    };
+    struct AllocatorStats {
+        uint32_t liveSlotCount      = 0;
+        uint32_t activeSlabCount    = 0;
+        uint32_t totalCapacitySlots = 0;  // activeSlabCount * SLAB_SIZE
+        size_t   itemSizeBytes      = 0;  // sizeof(T)
+        std::vector<SlabStat> slabs;
+    };
+
+    AllocatorStats getStats() const {
+        AllocatorStats stats;
+        stats.itemSizeBytes = sizeof(T);
+        for (size_t slabIndex = 0; slabIndex < NUM_SLABS; ++slabIndex) {
+            if (!slabs[slabIndex]) continue;
+            uint32_t live = 0;
+            for (size_t offset = 0; offset < SLAB_SIZE; ++offset) {
+                SlabId sid(static_cast<uint16_t>(slabIndex), static_cast<uint16_t>(offset));
+                if (sid && refs(sid) > 0) ++live;
+            }
+            if (live == 0) continue;
+            ++stats.activeSlabCount;
+            stats.liveSlotCount      += live;
+            stats.totalCapacitySlots += SLAB_SIZE;
+            stats.slabs.push_back({static_cast<uint16_t>(slabIndex), live});
+        }
+        return stats;
     }
 
     bool restoreArenaMetadata(const ArenaCheckpointMetadata& metadata) {

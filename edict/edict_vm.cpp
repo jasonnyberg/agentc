@@ -26,6 +26,7 @@
 #include <cctype>
 #include <cstring>
 #include <cstdlib>
+#include <chrono>
 #include <fstream>
 #include <mutex>
 #include <unordered_set>
@@ -895,19 +896,29 @@ void EdictVM::op_MAP() {
     auto v = popData();
     std::string path;
     if (!valueToString(v, path)) { setError("MAP expects string path"); return; }
-    // Using default member mapper
+    auto t0 = std::chrono::steady_clock::now();
     auto defs = mapper->parse(path);
-    if (defs) pushData(defs);
-    else pushData(agentc::createNullValue());
+    auto t1 = std::chrono::steady_clock::now();
+    auto us = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+    if (defs) {
+        pushData(defs);
+        std::cout << "[map] " << path << " parsed in " << us << " us" << std::endl;
+    } else {
+        pushData(agentc::createNullValue());
+        std::cout << "[map] " << path << " parse failed in " << us << " us" << std::endl;
+    }
 }
 
 void EdictVM::op_LOAD() {
     auto v = popData();
     std::string path;
     if (!valueToString(v, path)) { setError("LOAD expects string path"); return; }
-    // Using default member ffi
+    auto t0 = std::chrono::steady_clock::now();
     bool ok = ffi->loadLibrary(path);
-    if (!ok) setError("Failed to load library: " + path);
+    auto t1 = std::chrono::steady_clock::now();
+    auto us = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+    if (!ok) { setError("Failed to load library: " + path); return; }
+    std::cout << "[load] " << path << " loaded in " << us << " us" << std::endl;
 }
 
 void EdictVM::op_IMPORT() {
@@ -2338,6 +2349,60 @@ void EdictVM::op_PRINT() {
     if (v) std::cout << formatValueForDisplay(v) << std::endl;
 }
 
+void EdictVM::op_HEAP_UTILIZATION() {
+    using agentc::ListreeValue;
+    using agentc::ListreeItem;
+    using agentc::ListreeValueRef;
+
+    // Generic lambda — accepts any AllocatorStats (all have identical fields).
+    auto printAllocStats = [](const char* label, const auto& s) {
+        if (s.activeSlabCount == 0) {
+            std::cout << "  " << label << ": empty" << std::endl;
+            return;
+        }
+        size_t totalBytes = static_cast<size_t>(s.totalCapacitySlots) * s.itemSizeBytes;
+        size_t usedBytes  = static_cast<size_t>(s.liveSlotCount)      * s.itemSizeBytes;
+        double pct = s.totalCapacitySlots > 0
+            ? 100.0 * s.liveSlotCount / s.totalCapacitySlots : 0.0;
+        std::cout << "  " << label << ": "
+                  << s.activeSlabCount << " slab(s), "
+                  << s.liveSlotCount << "/" << s.totalCapacitySlots
+                  << " slots live (" << static_cast<int>(pct + 0.5) << "%), "
+                  << usedBytes / 1024 << " KB used / "
+                  << totalBytes / 1024 << " KB reserved";
+        if (s.slabs.size() > 1) {
+            std::cout << std::endl << "    per-slab:";
+            for (const auto& sl : s.slabs) {
+                double sp = 100.0 * sl.liveSlots / SLAB_SIZE;
+                std::cout << " [slab " << sl.slabIndex << ": "
+                          << sl.liveSlots << "/" << SLAB_SIZE
+                          << " (" << static_cast<int>(sp + 0.5) << "%)]";
+            }
+        }
+        std::cout << std::endl;
+    };
+
+    std::cout << "=== HeapUtilization ===" << std::endl;
+    printAllocStats("ListreeValue      ", Allocator<ListreeValue>::getAllocator().getStats());
+    printAllocStats("ListreeItem       ", Allocator<ListreeItem>::getAllocator().getStats());
+    printAllocStats("ListreeValueRef   ", Allocator<ListreeValueRef>::getAllocator().getStats());
+
+    {
+        const auto& blob = BlobAllocator::getAllocator().getBlobStats();
+        if (blob.activeSlabs == 0) {
+            std::cout << "  BlobAllocator     : empty" << std::endl;
+        } else {
+            double pct = blob.totalBytes > 0
+                ? 100.0 * blob.usedBytes / blob.totalBytes : 0.0;
+            std::cout << "  BlobAllocator     : "
+                      << blob.activeSlabs << " slab(s), "
+                      << blob.usedBytes / 1024 << " KB used / "
+                      << blob.totalBytes / 1024 << " KB reserved"
+                      << " (" << static_cast<int>(pct + 0.5) << "%)" << std::endl;
+        }
+    }
+}
+
 void EdictVM::op_CONCAT() {
     auto b = popData();
     auto a = popData();
@@ -2388,7 +2453,7 @@ int EdictVM::execute(const BytecodeBuffer& code) {
         &&op_REWRITE_LIST, &&op_REWRITE_REMOVE, &&op_REWRITE_APPLY,
         &&op_REWRITE_MODE, &&op_REWRITE_TRACE, &&op_SPECULATE,
         &&op_UNSAFE_EXTENSIONS_ALLOW, &&op_UNSAFE_EXTENSIONS_BLOCK,
-        &&op_UNSAFE_EXTENSIONS_STATUS, &&op_PRINT,
+        &&op_UNSAFE_EXTENSIONS_STATUS, &&op_PRINT, &&op_HEAP_UTILIZATION,
         &&op_CURSOR_DOWN, &&op_CURSOR_UP, &&op_CURSOR_NEXT,
         &&op_CURSOR_PREV, &&op_CURSOR_GET, &&op_CURSOR_SET,
     };
@@ -2554,6 +2619,7 @@ op_UNSAFE_EXTENSIONS_ALLOW: op_UNSAFE_EXTENSIONS_ALLOW(); goto op_epilogue;
 op_UNSAFE_EXTENSIONS_BLOCK: op_UNSAFE_EXTENSIONS_BLOCK(); goto op_epilogue;
 op_UNSAFE_EXTENSIONS_STATUS: op_UNSAFE_EXTENSIONS_STATUS(); goto op_epilogue;
 op_PRINT: op_PRINT(); goto op_epilogue;
+op_HEAP_UTILIZATION: op_HEAP_UTILIZATION(); goto op_epilogue;
 op_CURSOR_DOWN: op_CURSOR_DOWN(); goto op_epilogue;
 op_CURSOR_UP: op_CURSOR_UP(); goto op_epilogue;
 op_CURSOR_NEXT: op_CURSOR_NEXT(); goto op_epilogue;
@@ -2750,6 +2816,7 @@ op_epilogue:
         addBuiltinThunk(dictVal, "unsafe_extensions_allow", VMOP_UNSAFE_EXTENSIONS_ALLOW);
         addBuiltinThunk(dictVal, "unsafe_extensions_block", VMOP_UNSAFE_EXTENSIONS_BLOCK);
         addBuiltinThunk(dictVal, "unsafe_extensions_status", VMOP_UNSAFE_EXTENSIONS_STATUS);
+        addBuiltinThunk(dictVal, "HeapUtilization", VMOP_HEAP_UTILIZATION);
     }
 
     void EdictVM::installBootstrapImportCapsule() {
