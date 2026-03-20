@@ -183,6 +183,8 @@ ffi_type* FFI::getFFIType(const std::string& name) {
     if (name == "double") return &ffi_type_double;
     if (name == "char*") return &ffi_type_pointer;
     if (name == "pointer") return &ffi_type_pointer;
+    // Handle clang-style pointer spellings: "char *", "const char *", "void *", etc.
+    if (name.find('*') != std::string::npos) return &ffi_type_pointer;
     return &ffi_type_sint; // Default
 }
 void FFI::convertValue(CPtr<ListreeValue> val, ffi_type* type, void* storage) {
@@ -204,6 +206,9 @@ void FFI::convertValue(CPtr<ListreeValue> val, ffi_type* type, void* storage) {
     } else if (type == &ffi_type_double) {
          if ((val->getFlags() & agentc::LtvFlags::Binary) != agentc::LtvFlags::None && val->getLength() == sizeof(double)) {
             *(double*)storage = *(double*)val->getData();
+         } else if (val->getData() && val->getLength() > 0) {
+            std::string s((char*)val->getData(), val->getLength());
+            try { *(double*)storage = std::stod(s); } catch(...) { *(double*)storage = 0.0; }
          } else {
             *(double*)storage = 0.0;
          }

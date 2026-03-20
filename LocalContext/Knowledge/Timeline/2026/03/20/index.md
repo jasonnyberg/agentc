@@ -23,3 +23,28 @@
 - LMDB guard defaults to OFF; enable with `-DAGENTC_WITH_LMDB=ON`
 
 **Related Goal**: [G016-LmdbOptionalBuild](../../Goals/G016-LmdbOptionalBuild/index.md)
+
+---
+
+## Edict Stdin/File Script Mode (G017) — Complete
+
+**Goal**: Add non-interactive script execution to the edict interpreter (stdin pipe and file arguments).
+
+### Changes Made
+
+1. **`edict/edict_repl.h`** — Added `#include <istream>`; added `bool runScript(std::istream& in)` to public API.
+
+2. **`edict/edict_repl.cpp`** — Implemented `runScript`: reads line-by-line, strips `\r`, skips blank lines and `#` comments, compiles+executes each line, prints `Error (line N): <msg>` on failure, returns bool.
+
+3. **`edict/main.cpp`** — Added `#include <fstream>`; updated `printUsage`; wired:
+   - `edict -` → `runScript(std::cin)`, exits 0/1
+   - `edict FILE` → `runScript(ifstream)`, exits 0/1; error message if file not found
+   - Unknown `-` flags → usage + exit 2
+
+### Result
+
+- Build: clean
+- Stdin, file, missing-file, and unknown-flag cases all behave correctly
+- 7/7 test suites pass, 74/74 tests pass
+
+**Related Goal**: [G017-EdictScriptMode](../../Goals/G017-EdictScriptMode/index.md)

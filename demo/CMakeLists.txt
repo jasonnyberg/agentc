@@ -29,3 +29,6 @@ target_link_libraries(demo_cognitive_core_validation libedict cartographer kanre
 
 add_executable(demo_arena_metadata_persistence demo_arena_metadata_persistence.cpp)
 target_link_libraries(demo_arena_metadata_persistence reflect pthread)
+
+add_executable(demo_ffi_libc demo_ffi_libc.cpp)
+target_link_libraries(demo_ffi_libc listree reflect cartographer pthread)

@@ -9,8 +9,10 @@
 ## Current Focus
 
 **Active Goals**: None.
-**Status**: G002–G013 Complete. G014 Cancelled. G016 Complete. Namespace migration `j3` → `agentc` complete. Directory restructure complete. **7/7 test suites pass (74/74 tests), 3.03s total.**
+**Status**: G002–G013 Complete. G014 Cancelled. G016–G017 Complete. Namespace migration `j3` → `agentc` complete. Directory restructure complete. **7/7 test suites pass (74/74 tests).**
 **Last Updated**: 2026-03-20
+
+**Completed Task**: G017 — Edict Stdin/File Script Mode (2026-03-20) — Added `EdictREPL::runScript(std::istream&)`; wired `edict -` (stdin) and `edict FILE` in `main.cpp`. Comments (`#`), blank lines, `\r` stripping supported. Build clean; 7/7 suites pass.
 
 **Completed Task**: G016 — LMDB Optional Compile-Time Build (2026-03-20) — Added `AGENTC_WITH_LMDB` CMake option (default OFF). Guarded all LMDB code in `core/alloc.h`, `core/alloc.cpp`, `tests/alloc_tests.cpp`, `demo/demo_arena_metadata_persistence.cpp`. Build clean; 7/7 suites pass.
 
@@ -26,6 +28,7 @@
 **Completed Task**: demo_capabilities.cpp build fix (2026-03-16)
 
 **Accomplishments**:
+- ✅ G017: Edict stdin/file script mode — `runScript(istream&)`; `edict -` and `edict FILE` CLI modes; `#` comments; 7/7 suites pass (2026-03-20)
 - ✅ G016: LMDB optional compile-time build — `AGENTC_WITH_LMDB` CMake option (default OFF); guards in 5 files; 7/7 suites pass (2026-03-20)
 - ✅ G001: Full codebase review completed, producing `doc/code-review.md` (32 issues).
 - ✅ G002 (C1, C2, C6): Fixed ODR in `alloc.h`, buffer overflow in `TraversalContext`, verified `cursor.cpp::up()`.
@@ -46,13 +49,14 @@
 ---
 
 ### Active Goals
-- None. All Phase 1, 2, namespace migration, and G016 goals complete. G014 cancelled.
+- None. All Phase 1, 2, namespace migration, G016, and G017 goals complete. G014 cancelled.
 
 ### Recommended Next Steps
-1. **LMDB Integration**: G016 complete — can now proceed with LMDB persistence goals (G040–G042) knowing LMDB is properly guarded.
-2. **Commit**: All recent changes (directory restructure, RegressionMatrixTest fix, G016) are uncommitted.
+1. **LMDB Integration**: G016+G017 complete — can proceed with LMDB persistence goals (G040–G042).
+2. **Commit**: All recent changes (directory restructure, RegressionMatrixTest fix, G016, G017) are uncommitted.
 
 ### Completed Goals
+- ✅ G017 — Edict Stdin/File Script Mode (2026-03-20) — `runScript(istream&)`; `edict -` stdin and `edict FILE` CLI modes; `#` comments; 74/74 tests pass
 - ✅ G016 — LMDB Optional Compile-Time Build (2026-03-20) — `AGENTC_WITH_LMDB` CMake option (default OFF); guards in `core/alloc.h`, `core/alloc.cpp`, `tests/alloc_tests.cpp`, `demo/demo_arena_metadata_persistence.cpp`, `CMakeLists.txt`; 74/74 tests pass
 - ✅ G001 (partial) — Codebase review completed; issue catalog + recommendations produced (2026-03-16)
 - ✅ G002 — Critical UB & ODR Fixes (2026-03-16)
@@ -99,6 +103,7 @@ Complete index of LOCAL knowledge. Load items relevant to your current task.
 - G012 — Build System & Test Infra — **Complete**
 - G013 — Code Hygiene & Cleanup — **Complete**
 - G016 — LMDB Optional Compile-Time Build — **Complete** 🔗[index](./Knowledge/Goals/G016-LmdbOptionalBuild/index.md)
+- G017 — Edict Stdin/File Script Mode — **Complete** 🔗[index](./Knowledge/Goals/G017-EdictScriptMode/index.md)
 
 ### Facts
 (none yet)
@@ -118,12 +123,12 @@ Complete index of LOCAL knowledge. Load items relevant to your current task.
 ## Timeline Highlights
 
 ### Recent Events (Last 7 Days)
-- 🔗[2026-03-20: G016 LMDB Optional Build Complete](./Knowledge/Timeline/2026/03/20/index.md) — `AGENTC_WITH_LMDB` CMake option; guards in 5 files; 74/74 tests pass
+- 🔗[2026-03-20: G017 Edict Script Mode + G016 LMDB Optional Build](./Knowledge/Timeline/2026/03/20/index.md) — `runScript(istream&)`, `edict -`/`edict FILE` CLI modes; `AGENTC_WITH_LMDB` CMake option; 74/74 tests pass
 - 🔗[2026-03-16: HRM Bootstrap + Codebase Review](./Knowledge/Timeline/2026/03/16/0000-0200/index.md) — Initial HRM structure; full code review; G002–G013 created
 - 🔗[2026-03-16: Phase 1 and 2 Complete](./Knowledge/Timeline/2026/03/16/2200-2300/index.md) — Final build fix (`demo_capabilities.cpp`) and project wrap-up; all goals completed or deferred.
 
 ### Current Phase
-Phase 3: Ready — All Phase 1 (Review) and Phase 2 (Implementation) goals fully complete including G004(C3). LMDB integration (G040–G042) can now proceed.
+Phase 3: Active — G016 and G017 complete. LMDB persistence goals (G040–G042) ready to proceed.
 
 ---
 
