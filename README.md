@@ -105,6 +105,20 @@ static bindings or generated glue code.
 Imported functions carry safety metadata. A syscall blocklist (`PROC/FILE/NET/DL/MEM/SIG`)
 blocks hazardous operations by default; `unsafe_extensions_allow` opts in explicitly.
 
+The Cartographer also ships as a **composable CLI pipeline**. Each stage is an independent
+utility that reads from stdin/file and writes JSON or human-readable output to stdout:
+
+```
+cartographer_dump <header>        → human-readable JSON (struct sizes, field offsets)
+cartographer_parse <header>       → parser_json_v1 schema
+  | cartographer_schema_inspect   → human-readable schema summary
+  | cartographer_resolve <lib>    → resolver_json_v1 (symbol resolution against .so)
+      | cartographer_resolve_inspect → human-readable resolution summary
+```
+
+`agentc.sh` provides shell wrappers for all utilities and the `agentc_resolve` / `agentc_schema`
+pipeline compositions.
+
 ### 4. Mini-Kanren
 
 An embedded logic engine for relational constraint queries. Supported relations include
@@ -121,13 +135,13 @@ satisfying a set of constraints.
 ## Directory Layout
 
 ```
-core/          Arena allocator, Listree, Cursor, CPtr, container types (CLL, AATree)
+core/          Arena allocator, Cursor, CPtr, container types (CLL, AATree)
 edict/         Edict VM, compiler, REPL, tests
-cartographer/  Cartographer service, FFI mapper, resolver
+cartographer/  Header parser, FFI mapper, resolver, pipeline CLI utilities
 kanren/        Mini-Kanren engine
-listree/       Listree library and tests
+listree/       Listree node types and tests
 tests/         Unit tests for core/ components
-demo/          Standalone demo programs
+demo/          Standalone demo programs and shell regression tests
 ```
 
 ---
@@ -153,7 +167,7 @@ cmake --build build
 ctest --test-dir build
 ```
 
-All 74 tests across 7 suites pass in under 3 seconds.
+All 90 tests across 7 suites pass in under 3 seconds.
 
 ---
 
@@ -164,6 +178,8 @@ The core runtime is complete and stable:
 - Arena allocator with checkpoint/rollback, three ArenaStore backends (memory, file, LMDB via `dlopen`)
 - Edict VM with full transaction support, speculative execution, rewrite rules, and miniKanren
 - Cartographer dynamic FFI with safety tagging and async import
+- Cartographer CLI pipeline: `cartographer_dump`, `cartographer_parse`, `cartographer_schema_inspect`, `cartographer_resolve`, `cartographer_resolve_inspect`
+- Each component (`listree`, `reflect`, `kanren`, `cartographer`, `edict`) builds its own shared library; no source file is compiled more than once
 - Cursor-based Listree traversal with glob, iterator, and tail-deref modes
 - All namespaces under `agentc::` (`agentc::edict`, `agentc::cartographer`, `agentc::kanren`)
 
@@ -195,8 +211,5 @@ Concrete directions:
 
 ## Documentation
 
-- [`AgentLang.md`](AgentLang.md) — design philosophy, architectural vision, and integration
-  roadmap
-- [`doc/AgentC.md`](doc/AgentC.md) — technical foundation
 - [`LocalContext/Knowledge/WorkProducts/edict_language_reference.md`](LocalContext/Knowledge/WorkProducts/edict_language_reference.md)
   — full Edict language reference with runnable examples

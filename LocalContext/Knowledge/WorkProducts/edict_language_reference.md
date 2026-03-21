@@ -87,6 +87,21 @@ stack size: 2 (top first)
 1: hello
 ```
 
+### Shell wrappers (`agentc.sh`)
+
+Sourcing `agentc.sh` from the repo root provides convenience wrappers for `edict` and all
+cartographer CLI utilities:
+
+```sh
+source ./agentc.sh
+
+edict -                # run a script from stdin
+agentc_schema header.h # parse + inspect a header
+agentc_resolve header.h libfoo.so  # full pipeline: parse → resolve → inspect
+agentc_test            # regression-test all wrappers (9/9 pass)
+agentc_demo            # show live output from each wrapper
+```
+
 ---
 
 ## 3. The Stack — Core Mental Model
