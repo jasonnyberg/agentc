@@ -44,22 +44,22 @@ Hoist the boxing/unboxing mechanism out of custom VM opcodes (`VMOP_BOX`, `VMOP_
 
 ### Phase A — Core C-ABI LTV Library
 
-- [ ] **A1** — Design the C header `ltv_api.h`: enumerate the LTV operations needed by boxing (`ltv_create`, `ltv_set_child`, `ltv_get_child`, `ltv_get_scalar`, `ltv_free`, `cptr_to_raw`, `raw_to_cptr`). No implementation yet — just the interface.
-- [ ] **A2** — Implement `ltv_api.cpp` with thin wrappers around existing C++ `ListreeValue` / `Slab` operations. Build it into the shared library. Confirm link succeeds.
-- [ ] **A3** — Write a minimal C test (no Edict VM) that calls `ltv_create` / `ltv_set_child` / `ltv_free` via `dlopen` to confirm the C-ABI is correct.
+- [x] **A1** — Design the C header `ltv_api.h` (2026-03-20)
+- [x] **A2** — Implement `ltv_api.cpp`; added to `libcartographer.so` (2026-03-20)
+- [ ] **A3** — Write a minimal C test calling `ltv_create`/`ltv_set_named`/`ltv_unref` via `dlopen`
 
 ### Phase B — FFI LTV Passthrough
 
-- [ ] **B1** — Extend `convertValue` in `ffi.cpp` to recognize an `LTV*` token type. When the Edict argument type annotation is `"ltv"` (or similar sentinel), pass the raw pointer directly instead of encoding as binary/string.
-- [ ] **B2** — Extend `convertReturn` in `ffi.cpp` to recognize an `LTV*` return type. When the called C function returns an `LTV*`, wrap it in a `CPtr` and push it onto the data stack as a live LTV handle.
-- [ ] **B3** — Add a round-trip test (C++ unit test, no demo script) calling a trivial C function `LTV* identity_ltv(LTV* v)` via the FFI layer to confirm `convertValue` → `convertReturn` passthrough.
+- [x] **B1** — `convertValue` extended for `"ltv"` type: uses `cptr_to_raw()` to pass raw pointer (2026-03-20)
+- [x] **B2** — `convertReturn` extended for `"ltv"` type: uses `raw_adopt_cptr()` to adopt returned pointer (2026-03-20)
+- [ ] **B3** — Add round-trip C++ unit test for LTV passthrough via FFI
 
 ### Phase C — Pure C Boxing Library
 
-- [ ] **C1** — Write `libboxing/boxing_ffi.h`: C header declaring `box(const char* typedef_name, LTV* values)`, `unbox(LTV* boxed)`, `box_free(LTV* boxed)`.
-- [ ] **C2** — Implement `libboxing/boxing_ffi.c` using `ltv_api.h` + `calloc`. Mirror the logic currently in `boxing.cpp` but in C, with no dependency on VM internals.
-- [ ] **C3** — Wire `libboxing.so` into the CMake build. Confirm it builds cleanly and links against `libagentc_core.so`.
-- [ ] **C4** — Write a C-only smoke test (no VM) that calls `box` / `unbox` / `box_free` via `dlopen` on a synthetic `timeval`-shaped type definition.
+- [x] **C1** — `libboxing/boxing_ffi.h`: C header declaring `agentc_box`, `agentc_unbox`, `agentc_box_free` (2026-03-20)
+- [x] **C2** — `libboxing/boxing_ffi.c`: pure C implementation using `ltv_api.h` (2026-03-20)
+- [x] **C3** — `libboxing.so` wired into CMake; builds cleanly; links against `libcartographer.so` (2026-03-20)
+- [ ] **C4** — C-only smoke test for `agentc_box`/`agentc_unbox`/`agentc_box_free` via `dlopen`
 
 ### Phase D — Remove VM Boxing Opcodes
 
@@ -110,3 +110,12 @@ Hoist the boxing/unboxing mechanism out of custom VM opcodes (`VMOP_BOX`, `VMOP_
 ## Progress Log
 
 - 2026-03-20 — Goal created. All 7/7 test suites passing. `demo_boxing.sh` validated. `canonicalType()` in `boxing.cpp` complete. No G018 implementation work started yet.
+- 2026-03-20 — **Session 2**: Phases A1–A2, B1–B2, C1–C3 complete. Summary:
+  - `cartographer/boxing.h`: `scalarSize`, `packScalar`, `unpackScalar` moved to public.
+  - `cartographer/ltv_api.h`: C/C++ dual-mode header with full lifecycle, data access, named-child, and scalar pack/unpack API. C++ boundary utilities `cptr_to_raw`, `raw_to_cptr`, `raw_adopt_cptr` in `agentc::` namespace.
+  - `cartographer/ltv_api.cpp`: C++ implementation. Fixed namespace issue (`CPtr`/`Allocator` are global, not `agentc::`).
+  - `cartographer/ffi.cpp`: Added `ffi_type_ltv_handle` sentinel; `"ltv"` case in `getFFIType`, `convertValue` (uses `cptr_to_raw`), `convertReturn` (uses `raw_adopt_cptr`).
+  - `cartographer/libboxing/boxing_ffi.h`: Pure C boxing API header.
+  - `cartographer/libboxing/boxing_ffi.c`: Pure C implementation using `ltv_api.h` only; no C++ dependencies.
+  - `cartographer/CMakeLists.txt`: Added `ltv_api.cpp` to cartographer and cartographer_tests; added `boxing` shared library target.
+  - **7/7 test suites pass** (74/74 tests). `libboxing.so` builds cleanly.

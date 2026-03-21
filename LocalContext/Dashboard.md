@@ -9,10 +9,10 @@
 ## Current Focus
 
 **Active Goals**: G018 — FFI LTV Passthrough (Hoist Boxing to Pure FFI)
-**Status**: G002–G013 Complete. G014 Cancelled. G016–G017 Complete. G018 Active. Namespace migration `j3` → `agentc` complete. Directory restructure complete. **7/7 test suites pass (74/74 tests).**
+**Status**: G002–G013 Complete. G014 Cancelled. G016–G017 Complete. G018 Active (Phases A–C complete). Namespace migration `j3` → `agentc` complete. Directory restructure complete. **7/7 test suites pass (74/74 tests).**
 **Last Updated**: 2026-03-20
 
-**Active Task**: G018 — FFI LTV Passthrough — Hoist `VMOP_BOX`/`VMOP_UNBOX`/`VMOP_BOX_FREE` out of the VM into a C-ABI core LTV library + `libboxing.so`. Extend `convertValue`/`convertReturn` for `LTV*` passthrough. Remove boxing opcodes from VM. 🔗[G018 index](./Knowledge/Goals/G018-FfiLtvPassthrough/index.md)
+**Active Task**: G018 — FFI LTV Passthrough — Phases A1–A2, B1–B2, C1–C3 **DONE**. Remaining: A3/B3/C4 (C-only smoke tests), Phase D (remove VM boxing opcodes — deferred pending deployment path for libboxing.so), Phase E (cleanup + demo update). 🔗[G018 index](./Knowledge/Goals/G018-FfiLtvPassthrough/index.md)
 
 **Completed Task**: G017 — Edict Stdin/File Script Mode (2026-03-20) — Added `EdictREPL::runScript(std::istream&)`; wired `edict -` (stdin) and `edict FILE` in `main.cpp`. Comments (`#`), blank lines, `\r` stripping supported. Build clean; 7/7 suites pass.
 

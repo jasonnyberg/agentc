@@ -79,7 +79,9 @@ public:
     // Safe to call with nullptr.
     static void freeBox(CPtr<ListreeValue> boxed);
 
-private:
+    // Scalar helpers — public so the C LTV API (ltv_api.cpp) can call them
+    // without duplicating the canonical-type mapping logic.
+
     // Returns the byte size of a named C scalar type (or 0 for unrecognised).
     static size_t scalarSize(const std::string& typeName);
 
@@ -92,6 +94,7 @@ private:
     static CPtr<ListreeValue> unpackScalar(const std::string& typeName,
                                            const void* src);
 
+private:
     // Recursive helpers used by box/unbox.
     static bool packStruct(CPtr<ListreeValue> source,
                            CPtr<ListreeValue> typeDef,

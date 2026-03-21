@@ -14,6 +14,7 @@
 // License along with AgentC. If not, see <https://www.gnu.org/licenses/>.
 
 #include "ffi.h"
+#include "ltv_api.h"
 #include <iostream>
 #include <cstring>
 #include <climits>    // PATH_MAX
@@ -23,6 +24,17 @@ namespace agentc {
 namespace cartographer {
 
 namespace {
+
+// Sentinel ffi_type for LTV handle passthrough.
+// Structurally identical to ffi_type_pointer (libffi passes it as a pointer-
+// sized word) but lives at a distinct address so convertValue/convertReturn
+// can distinguish it from plain C pointers.
+static ffi_type ffi_type_ltv_handle = {
+    0,             // size   — set by libffi when the CIF is prepared
+    0,             // alignment
+    FFI_TYPE_POINTER,
+    nullptr        // elements (non-struct)
+};
 
 // M5: Blocklist of dangerous C functions that must never be callable via the
 // Edict FFI.  Uses exact string comparison through std::unordered_set, which
@@ -193,6 +205,9 @@ ffi_type* FFI::getFFIType(const std::string& name) {
     if (name == "unsigned long long" || name == "unsigned long long int") return &ffi_type_uint64;
     if (name == "char*") return &ffi_type_pointer;
     if (name == "pointer") return &ffi_type_pointer;
+    // LTV handle passthrough: the value on the stack is a CPtr<ListreeValue>;
+    // we extract the raw pointer and pass it as a void*.
+    if (name == "ltv") return &ffi_type_ltv_handle;
     // Handle clang-style pointer spellings: "char *", "const char *", "void *", etc.
     if (name.find('*') != std::string::npos) return &ffi_type_pointer;
     return &ffi_type_sint; // Default for unknown types
@@ -299,6 +314,11 @@ void FFI::convertValue(CPtr<ListreeValue> val, ffi_type* type, void* storage) {
         } else {
             *(void**)storage = nullptr;
         }
+    } else if (type == &ffi_type_ltv_handle) {
+        // LTV passthrough: val is expected to be a CPtr<ListreeValue> on the
+        // Edict stack.  Extract the raw pointer without changing refcount.
+        // The CPtr on the stack keeps the LTV alive for the duration of the call.
+        *(void**)storage = val ? cptr_to_raw(val) : nullptr;
     }
 }
 CPtr<ListreeValue> FFI::convertReturn(void* storage, ffi_type* type) {
@@ -366,6 +386,13 @@ CPtr<ListreeValue> FFI::convertReturn(void* storage, ffi_type* type) {
     }
     // H3: Pointer-returning functions (char*, void*, etc.) — wrap raw pointer as opaque binary.
     if (type == &ffi_type_pointer) return createBinaryValue(storage, sizeof(void*));
+    // LTV passthrough: C function returned a raw LTV* (owned, refcount 1).
+    // Adopt it into a CPtr without incrementing the refcount.
+    if (type == &ffi_type_ltv_handle) {
+        void* rawPtr = nullptr;
+        std::memcpy(&rawPtr, storage, sizeof(void*));
+        return raw_adopt_cptr(rawPtr);
+    }
     return createNullValue();
 }
 void* FFI::createClosure(CPtr<ListreeValue> definition, void (*thunk)(ffi_cif*,void*,void**,void*), void* userData, UserDataCleanup userDataCleanup) {
