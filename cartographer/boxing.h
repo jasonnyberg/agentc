@@ -57,16 +57,23 @@ public:
     // box: allocate a C struct on the heap and pack fields from source LTV.
     //   source   — field-keyed LTV whose fields match typeDef's children
     //   typeDef  — the struct's type-definition node from the parser namespace
+    //   ns       — root parser namespace, required for nested struct fields
+    //              (may be nullptr; nested struct fields are left zeroed if absent)
     // Returns { __ptr: <binary:8>, __type: typeDef } or nullptr on error.
     // The caller takes ownership of the heap allocation; use unbox then free
     // the pointer via the returned __ptr when done.
-    CPtr<ListreeValue> box(CPtr<ListreeValue> source, CPtr<ListreeValue> typeDef) const;
+    CPtr<ListreeValue> box(CPtr<ListreeValue> source,
+                           CPtr<ListreeValue> typeDef,
+                           CPtr<ListreeValue> ns = nullptr) const;
 
     // unbox: read a C struct from a boxed value's __ptr and produce a
     //   field-keyed LTV.
     //   boxed — { __ptr: <binary:8>, __type: <type-def-LTV> }
+    //   ns    — root parser namespace, required for nested struct fields
+    //           (may be nullptr; nested struct fields are omitted if absent)
     // Returns an LTV with one key per field (string values) plus __type.
-    CPtr<ListreeValue> unbox(CPtr<ListreeValue> boxed) const;
+    CPtr<ListreeValue> unbox(CPtr<ListreeValue> boxed,
+                             CPtr<ListreeValue> ns = nullptr) const;
 
     // annotate: attach __type to an existing LTV after validating conformance.
     //   ltv      — target LTV to annotate
@@ -98,9 +105,11 @@ private:
     // Recursive helpers used by box/unbox.
     static bool packStruct(CPtr<ListreeValue> source,
                            CPtr<ListreeValue> typeDef,
-                           uint8_t* base);
+                           uint8_t* base,
+                           CPtr<ListreeValue> ns = nullptr);
     static CPtr<ListreeValue> unpackStruct(CPtr<ListreeValue> typeDef,
-                                           const uint8_t* base);
+                                           const uint8_t* base,
+                                           CPtr<ListreeValue> ns = nullptr);
 };
 
 } // namespace cartographer
