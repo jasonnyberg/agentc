@@ -35,6 +35,11 @@ public:
     FFI();
     ~FFI();
     bool loadLibrary(const std::string& path);
+    // Load symbols from the process itself (i.e. all shared libraries already
+    // linked at startup, such as libcartographer.so).  Used by the bootstrap
+    // cartographer to call agentc_box/unbox/box_free via the FFI path without
+    // needing a runtime path to libcartographer.so.
+    bool loadProcessSymbols();
     CPtr<ListreeValue> invoke(const std::string& funcName, CPtr<ListreeValue> definition, CPtr<ListreeValue> args);
     void* createClosure(CPtr<ListreeValue> definition, void (*thunk)(ffi_cif*,void*,void**,void*), void* userData, UserDataCleanup userDataCleanup = nullptr);
 

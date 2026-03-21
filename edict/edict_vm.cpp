@@ -17,8 +17,6 @@
 #include "edict_compiler.h"
 #include "../cartographer/mapper.h"
 #include "../cartographer/ffi.h"
-#include "../cartographer/boxing_ffi.h"
-#include "../cartographer/ltv_api.h"
 #include "../cartographer/parser.h"
 #include "../cartographer/protocol.h"
 #include "../cartographer/resolver.h"
@@ -1228,74 +1226,60 @@ void EdictVM::op_BOOTSTRAP_CURATE_RESOLVER() {
     pushData(createBootstrapCuratedResolver());
 }
 
+// Build a function-def LTV tree suitable for FFI dispatch, with all parameters
+// and the return value typed as "ltv" (the SlabId passthrough sentinel).
+// paramNames lists the parameter names in call order.
+// If hasReturnValue is false, return_type is "void".
+static CPtr<agentc::ListreeValue> buildBoxingFuncDef(
+    const std::string& funcName,
+    const std::vector<std::string>& paramNames,
+    bool hasReturnValue)
+{
+    auto def = agentc::createNullValue();
+    agentc::addNamedItem(def, "kind",        agentc::createStringValue("Function"));
+    agentc::addNamedItem(def, "name",        agentc::createStringValue(funcName));
+    agentc::addNamedItem(def, "return_type", agentc::createStringValue(hasReturnValue ? "ltv" : "void"));
+
+    auto children = agentc::createNullValue();
+    for (const auto& pname : paramNames) {
+        auto param = agentc::createNullValue();
+        agentc::addNamedItem(param, "kind", agentc::createStringValue("Parameter"));
+        agentc::addNamedItem(param, "name", agentc::createStringValue(pname));
+        agentc::addNamedItem(param, "type", agentc::createStringValue("ltv"));
+        agentc::addNamedItem(children, pname, param);
+    }
+    agentc::addNamedItem(def, "children", children);
+    return def;
+}
+
 CPtr<agentc::ListreeValue> EdictVM::createBootstrapCuratedCartographer() {
     auto cartographerNs = agentc::createNullValue();
 
-    auto native = agentc::createNullValue();
-    addBuiltinThunk(native, "box",      VMOP_BOX);
-    addBuiltinThunk(native, "unbox",    VMOP_UNBOX);
-    addBuiltinThunk(native, "box_free", VMOP_BOX_FREE);
-    agentc::addNamedItem(cartographerNs, "__native", native);
+    // Phase D: boxing operations are now pure FFI calls — no VM opcodes needed.
+    // Prime the FFI handle with the process symbol table so that agentc_box,
+    // agentc_unbox, and agentc_box_free (compiled into libcartographer.so,
+    // a build-time dependency) are visible to dlsym without a runtime path.
+    ffi->loadProcessSymbols();
 
-    // Calling conventions (stack: top = last arg):
-    //   cartographer.box !    — ( source_ltv type_def -- boxed )
-    //   cartographer.unbox !  — ( boxed -- unboxed_ltv )
+    // Build function-def trees with "ltv" type annotations.
+    // Stack convention (maintained from the opcode era):
+    //   cartographer.box !      — ( source_ltv type_def -- boxed )
+    //   cartographer.unbox !    — ( boxed -- unboxed_ltv )
     //   cartographer.box_free ! — ( boxed -- )
-    addCompiledThunk(cartographerNs, "box",      "cartographer.__native.box !");
-    addCompiledThunk(cartographerNs, "unbox",    "cartographer.__native.unbox !");
-    addCompiledThunk(cartographerNs, "box_free", "cartographer.__native.box_free !");
+    auto boxDef      = buildBoxingFuncDef("agentc_box",      {"source", "type_def"}, true);
+    auto unboxDef    = buildBoxingFuncDef("agentc_unbox",    {"boxed"},              true);
+    auto boxFreeDef  = buildBoxingFuncDef("agentc_box_free", {"boxed"},              false);
+
+    agentc::addNamedItem(cartographerNs, "box",      boxDef);
+    agentc::addNamedItem(cartographerNs, "unbox",    unboxDef);
+    agentc::addNamedItem(cartographerNs, "box_free", boxFreeDef);
+
     addBootstrapMetadata(cartographerNs, "cartographer");
     return cartographerNs;
 }
 
 void EdictVM::op_BOOTSTRAP_CURATE_CARTOGRAPHER() {
     pushData(createBootstrapCuratedCartographer());
-}
-
-void EdictVM::op_BOX() {
-    // Stack: ( source_ltv type_def -- boxed )
-    //   type_def is top-of-stack, source_ltv is below it.
-    //
-    // Delegates to agentc_box() in libboxing — a pure-C implementation that
-    // operates entirely through the ltv_api.h C-ABI.  This is the transitional
-    // path towards Phase D (full removal of VM boxing opcodes).
-    auto typeDef = popData();
-    auto source  = popData();
-    if (!typeDef || !source) {
-        setError("BOX expects two arguments: source_ltv type_def");
-        return;
-    }
-    LTV raw_result = agentc_box(agentc::cptr_to_ltv(source),
-                                agentc::cptr_to_ltv(typeDef));
-    if (!raw_result) {
-        setError("BOX failed: struct size unknown or field packing error");
-        return;
-    }
-    pushData(agentc::ltv_adopt(raw_result));
-}
-
-void EdictVM::op_UNBOX() {
-    // Stack: ( boxed -- unboxed_ltv )
-    // Delegates to agentc_unbox() in libboxing.
-    auto boxed = popData();
-    if (!boxed) {
-        setError("UNBOX expects a boxed value");
-        return;
-    }
-    LTV raw_result = agentc_unbox(agentc::cptr_to_ltv(boxed));
-    if (!raw_result) {
-        setError("UNBOX failed: invalid boxed value or missing __ptr/__type");
-        return;
-    }
-    pushData(agentc::ltv_adopt(raw_result));
-}
-
-void EdictVM::op_BOX_FREE() {
-    // Stack: ( boxed -- )  — frees the C heap allocation, does not push.
-    // Delegates to agentc_box_free() in libboxing.
-    auto boxed = popData();
-    if (!boxed) return;
-    agentc_box_free(agentc::cptr_to_ltv(boxed));
 }
 
 void EdictVM::op_CALL() {
@@ -2522,7 +2506,6 @@ int EdictVM::execute(const BytecodeBuffer& code) {
         &&op_READ_TEXT, &&op_REQUEST_ID,
         &&op_BOOTSTRAP_CURATE_PARSER, &&op_BOOTSTRAP_CURATE_RESOLVER,
         &&op_BOOTSTRAP_CURATE_CARTOGRAPHER,
-        &&op_BOX, &&op_UNBOX, &&op_BOX_FREE,
         &&op_CALL, &&op_CLOSURE, &&op_LOGIC_RUN, &&op_REWRITE_DEFINE,
         &&op_REWRITE_LIST, &&op_REWRITE_REMOVE, &&op_REWRITE_APPLY,
         &&op_REWRITE_MODE, &&op_REWRITE_TRACE, &&op_SPECULATE,
@@ -2679,11 +2662,8 @@ op_READ_TEXT: op_READ_TEXT(); goto op_epilogue;
 op_REQUEST_ID: op_REQUEST_ID(); goto op_epilogue;
 op_BOOTSTRAP_CURATE_PARSER: op_BOOTSTRAP_CURATE_PARSER(); goto op_epilogue;
 op_BOOTSTRAP_CURATE_RESOLVER: op_BOOTSTRAP_CURATE_RESOLVER(); goto op_epilogue;
-op_BOOTSTRAP_CURATE_CARTOGRAPHER: op_BOOTSTRAP_CURATE_CARTOGRAPHER(); goto op_epilogue;
-op_BOX: op_BOX(); goto op_epilogue;
-op_UNBOX: op_UNBOX(); goto op_epilogue;
-op_BOX_FREE: op_BOX_FREE(); goto op_epilogue;
-op_CALL: op_CALL(); goto op_epilogue;
+ op_BOOTSTRAP_CURATE_CARTOGRAPHER: op_BOOTSTRAP_CURATE_CARTOGRAPHER(); goto op_epilogue;
+ op_CALL: op_CALL(); goto op_epilogue;
 op_CLOSURE: op_CLOSURE(); goto op_epilogue;
 op_LOGIC_RUN: op_LOGIC_RUN(); goto op_epilogue;
 op_REWRITE_DEFINE: op_REWRITE_DEFINE(); goto op_epilogue;

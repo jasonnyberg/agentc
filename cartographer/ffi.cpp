@@ -15,7 +15,6 @@
 
 #include "ffi.h"
 #include "ltv_api.h"
-#include <iostream>
 #include <cstring>
 #include <climits>    // PATH_MAX
 #include <stdlib.h>   // realpath
@@ -26,12 +25,14 @@ namespace cartographer {
 namespace {
 
 // Sentinel ffi_type for LTV handle passthrough.
-// Structurally identical to ffi_type_pointer (libffi passes it as a pointer-
-// sized word) but lives at a distinct address so convertValue/convertReturn
-// can distinguish it from plain C pointers.
+// Uses the same size/alignment as ffi_type_uint32 (4 bytes, 4-byte aligned)
+// but lives at a distinct address so convertValue/convertReturn can
+// distinguish it from plain C pointers or integers.
+// NOTE: libffi does NOT fill in size/alignment for non-struct types; they
+// must be provided explicitly or ffi_prep_cif will reject the CIF.
 static ffi_type ffi_type_ltv_handle = {
-    0,             // size   — set by libffi when the CIF is prepared
-    0,             // alignment
+    4,             // size   — sizeof(uint32_t), must be set explicitly
+    4,             // alignment — alignof(uint32_t)
     FFI_TYPE_UINT32,
     nullptr        // elements (non-struct)
 };
@@ -189,6 +190,21 @@ bool FFI::loadLibrary(const std::string& path) {
     handles_[key] = h;
     return true;
 }
+
+bool FFI::loadProcessSymbols() {
+    // Register a handle for the current process (dlopen(NULL)).  This gives
+    // access to all symbols already loaded at process startup — including those
+    // from shared libraries that are linked build-time dependencies (e.g.
+    // libcartographer.so).  Used by the bootstrap cartographer so that
+    // agentc_box/unbox/box_free can be called via the FFI path without needing
+    // a runtime filesystem path to libcartographer.so.
+    const std::string key = "<process>";
+    if (handles_.count(key)) return true;
+    void* h = dlopen(nullptr, RTLD_NOW);
+    if (!h) return false;
+    handles_[key] = h;
+    return true;
+}
 ffi_type* FFI::getFFIType(const std::string& name) {
     if (name == "int" || name == "signed int") return &ffi_type_sint;
     if (name == "unsigned int")               return &ffi_type_uint;
@@ -317,8 +333,15 @@ void FFI::convertValue(CPtr<ListreeValue> val, ffi_type* type, void* storage) {
     } else if (type == &ffi_type_ltv_handle) {
         // LTV passthrough: val is expected to be a CPtr<ListreeValue> on the
         // Edict stack.  Encode the SlabId as a uint32_t for libffi.
+        //
+        // ABI note (x86-64 System V): SlabId = pair<uint16_t,uint16_t> is
+        // passed in a 32-bit register as  first(low16) | second(high16).
+        // ltv.first = index, ltv.second = offset, so:
+        //   encoded = index | (offset << 16)
+        // This matches what the C++ callee sees when it reads a SlabId
+        // argument from the register.
         LTV ltv = val ? cptr_to_ltv(val) : LTV_NULL;
-        uint32_t encoded = (static_cast<uint32_t>(ltv.first) << 16) | ltv.second;
+        uint32_t encoded = static_cast<uint32_t>(ltv.first) | (static_cast<uint32_t>(ltv.second) << 16);
         std::memcpy(storage, &encoded, sizeof(encoded));
     }
 }
@@ -389,10 +412,14 @@ CPtr<ListreeValue> FFI::convertReturn(void* storage, ffi_type* type) {
     if (type == &ffi_type_pointer) return createBinaryValue(storage, sizeof(void*));
     // LTV passthrough: C function returned a SlabId encoded as uint32_t.
     // Decode and adopt it into a CPtr without incrementing the refcount.
+    //
+    // ABI note (x86-64 System V): SlabId = pair<uint16_t,uint16_t> is returned
+    // in EAX as  first(low16) | second(high16).
+    // ltv.first = index (low 16 bits), ltv.second = offset (high 16 bits).
     if (type == &ffi_type_ltv_handle) {
         uint32_t encoded;
         std::memcpy(&encoded, storage, sizeof(encoded));
-        LTV ltv(static_cast<uint16_t>(encoded >> 16), static_cast<uint16_t>(encoded & 0xFFFF));
+        LTV ltv(static_cast<uint16_t>(encoded & 0xFFFF), static_cast<uint16_t>(encoded >> 16));
         return ltv_adopt(ltv);
     }
     return createNullValue();

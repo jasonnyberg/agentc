@@ -1,6 +1,6 @@
 # G018 — FFI LTV Passthrough (Hoist Boxing to Pure FFI)
 
-**Status**: Active  
+**Status**: Complete  
 **Created**: 2026-03-20  
 **Parent**: G001 (Codebase Review)  
 **Dashboard**: 🔗[Dashboard](../../../../Dashboard.md)
@@ -273,25 +273,32 @@ removed yet — Phase D full removal is still deferred).  The transitional appro
 proves the C API works end-to-end through the full Edict stack without requiring
 a new Edict-level library-loading mechanism for `libboxing.so`.
 
-### Phase D — Remove VM Boxing Opcodes  *(DEFERRED)*
+### Phase D — Remove VM Boxing Opcodes  *(COMPLETE — 2026-03-21)*
 
-- [ ] **D1** — Remove `VMOP_BOX`, `VMOP_UNBOX`, `VMOP_BOX_FREE` from `edict/edict_types.h`.
-- [ ] **D2** — Remove `op_BOX`, `op_UNBOX`, `op_BOX_FREE` declarations from `edict/edict_vm.h`.
-- [ ] **D3** — Remove `op_BOX` / `op_UNBOX` / `op_BOX_FREE` implementations from `edict/edict_vm.cpp`. Update dispatch table.
-- [ ] **D4** — Remove `VMOP_BOOTSTRAP_CURATE_CARTOGRAPHER` bootstrap glue (or confirm no longer needed).
-- [ ] **D5** — Build clean; all 7/7 test suites pass.
+Phase D fully completed. All three VM boxing opcodes removed:
 
-**Blocker**: Edict-level runtime library loading and inline function-def-tree
-construction with `"ltv"` type annotations — see Phase D Deployment Path Problem
-above.  The transitional approach (above) is the active path for now.
+- [x] **D1** — Removed `VMOP_BOX`, `VMOP_UNBOX`, `VMOP_BOX_FREE` from `edict/edict_types.h`.
+- [x] **D2** — Removed `op_BOX`, `op_UNBOX`, `op_BOX_FREE` declarations from `edict/edict_vm.h`.
+- [x] **D3** — Removed `op_BOX` / `op_UNBOX` / `op_BOX_FREE` implementations from `edict/edict_vm.cpp`. Updated dispatch (no dispatch entries needed).
+- [x] **D4** — `VMOP_BOOTSTRAP_CURATE_CARTOGRAPHER` retained (still needed to build the bootstrap tree); reimplemented to call `buildBoxingFuncDef()` which constructs the `cartographer.box`, `cartographer.unbox`, `cartographer.box_free` func-def trees for the `evalDispatchFFI` path.
+- [x] **D5** — Build clean; all 7/7 test suites pass; `test_boxing_ffi.sh` 11/11; `demo_boxing.sh` end-to-end.
+
+**Bugs fixed during Phase D (2026-03-21)**:
+1. `ffi_type_ltv_handle` had `size=0, alignment=0` — libffi does NOT fill these in for
+   non-struct types, causing `ffi_prep_cif` to fail. Fixed: set `size=4, alignment=4`
+   (matching `ffi_type_uint32`).
+2. `convertValue` encoded SlabId as `(index << 16) | offset` but x86-64 System V ABI
+   passes `pair<uint16_t,uint16_t>{index, offset}` in a register as `index | (offset << 16)`
+   (little-endian pair layout). Fixed: encode as `index | (offset << 16)`.
+   `convertReturn` decode fixed symmetrically: `index = low16, offset = high16`.
 
 ### Phase E — Cleanup & Validation
 
 - [x] **E1** — Removed dead-code fallback table in `boxing.cpp::scalarSize()` (lines 97–123 eliminated; all handled by `canonicalType()`) (2026-03-20)
 - [x] **E2** (transitional) — VM boxing opcodes now delegate to `agentc_box`/`agentc_unbox`/`agentc_box_free` in `libboxing.so` (2026-03-20)
 - [x] **E5** — `demo/test_boxing_ffi.sh`: 11-assertion Edict-level boxing regression test; all assertions pass (2026-03-20)
-- [ ] **E3** — Final check: 7/7 test suites pass; `demo_boxing.sh` runs end-to-end — **DONE** (7/7 pass, demo works)
-- [ ] **E4** — Update Dashboard.md: mark G018 transitional complete, add Timeline entry
+- [x] **E3** — Final check: 7/7 test suites pass; `demo_boxing.sh` runs end-to-end — **DONE** (7/7 pass, demo works)
+- [x] **E4** — Dashboard.md updated: G018 marked complete (2026-03-21)
 
 ---
 
@@ -340,3 +347,4 @@ Run shell test: `bash demo/test_boxing_ffi.sh`
 - 2026-03-20 — **Session 2**: Phases A1–A2, B1–B2, C1–C3 complete. `libcartographer.so` and `libboxing.so` built cleanly. 7/7 tests pass (74 total).
 - 2026-03-20 — **Session 3**: A3, B3, C4 (smoke tests in `ltv_api_tests.cpp`, 16 new tests). E1 (dead-code removal in `boxing.cpp::scalarSize()`). 7/7 tests still pass (90 total). G018 index.md updated with full rationale for agent continuity.
 - 2026-03-20 — **Session 4**: Transitional Phase D — VM boxing opcodes now delegate to `libboxing.so` C API. E5 — `test_boxing_ffi.sh` written (11 assertions, all pass). `edict_vm.cpp` no longer depends on `boxing.h`. 7/7 tests still pass.
+- 2026-03-21 — **Session 5**: Phase D fully complete. Removed `VMOP_BOX/UNBOX/BOX_FREE` and their VM op implementations entirely. `createBootstrapCuratedCartographer()` now builds func-def trees for `cartographer.box/unbox/box_free` routed through `evalDispatchFFI`. Fixed two bugs: (1) `ffi_type_ltv_handle` size/alignment were zero — set to 4/4. (2) SlabId ABI encoding was `(index<<16)|offset` but x86-64 little-endian pair layout is `index|(offset<<16)` — fixed encode/decode symmetrically. 7/7 test suites pass; `test_boxing_ffi.sh` 11/11; `demo_boxing.sh` end-to-end. G018 **COMPLETE**.
