@@ -216,7 +216,13 @@ void FFI::convertValue(CPtr<ListreeValue> val, ffi_type* type, void* storage) {
 }
 CPtr<ListreeValue> FFI::convertReturn(void* storage, ffi_type* type) {
     if (type == &ffi_type_sint)    return createBinaryValue(storage, sizeof(int));
-    if (type == &ffi_type_double)  return createBinaryValue(storage, sizeof(double));
+    if (type == &ffi_type_double) {
+        double d;
+        std::memcpy(&d, storage, sizeof(double));
+        char buf[32];
+        std::snprintf(buf, sizeof(buf), "%.15g", d);
+        return createStringValue(std::string(buf));
+    }
     // H3: Pointer-returning functions (char*, void*, etc.) — wrap raw pointer as opaque binary.
     // The caller can interpret the stored uintptr_t as needed (e.g., dereferencing char*).
     if (type == &ffi_type_pointer) return createBinaryValue(storage, sizeof(void*));

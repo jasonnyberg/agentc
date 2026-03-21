@@ -137,55 +137,124 @@ unsafe_extensions_allow ! pop
 "libm.so.6" resolver.load !
 "/usr/include/math.h" parser.__native.map ! @math
 
-# sqrt(9.0) -> lround -> 3
+# sqrt(9.0) = 3.0
 "9.0" math.sqrt !
-math.lround !
 print
 
-# sqrt(144.0) -> lround -> 12
+# sqrt(144.0) = 12.0
 "144.0" math.sqrt !
-math.lround !
 print
 
-# fabs(-3.7) -> floor -> lround -> 3
+# fabs(-3.7) = 3.7
 "-3.7" math.fabs !
-math.floor !
-math.lround !
 print
 
-# fabs(5.5) -> lround -> 6 (rounds half-up)
+# fabs(5.5) = 5.5
 "5.5" math.fabs !
-math.lround !
 print
 
-# ceil(2.1) -> lround -> 3
+# ceil(2.1) = 3.0
 "2.1" math.ceil !
-math.lround !
 print
 
-# ceil(-1.9) -> lround -> -1
+# ceil(-1.9) = -1.0
 "-1.9" math.ceil !
-math.lround !
 print
 
-# floor(4.9) -> lround -> 4
+# floor(4.9) = 4.0
 "4.9" math.floor !
-math.lround !
 print
 
-# floor(-2.1) -> lround -> -3
+# floor(-2.1) = -3.0
 "-2.1" math.floor !
-math.lround !
 print
 
-# pow(2.0, 10.0) -> lround -> 1024
+# pow(2.0, 10.0) = 1024.0
 "2.0" "10.0" math.pow !
-math.lround !
 print
 
-# pow(3.0, 4.0) -> lround -> 81
+# pow(3.0, 4.0) = 81.0
 "3.0" "4.0" math.pow !
-math.lround !
+print
+EDICT
+
+echo
+echo "--- Section 5: Double Chaining ---"
+# Double return values are Edict string literals, so they chain directly
+# into subsequent double-taking functions via the stod conversion path.
+"$EDICT" - <<'EDICT'
+unsafe_extensions_allow ! pop
+"libc.so.6" resolver.load !
+"libm.so.6" resolver.load !
+"/usr/include/math.h" parser.__native.map ! @math
+
+# sqrt(fabs(-16.0)) = 4.0
+"-16.0" math.fabs !
+math.sqrt !
+print
+
+# ceil(sqrt(3.0)) = 2.0  (sqrt returns 1.7320508..., ceil rounds up)
+"3.0" math.sqrt !
+math.ceil !
+print
+
+# exp(log(1.0)) = 1.0
+"1.0" math.log !
+math.exp !
+print
+
+# ceil(sqrt(fabs(-9.0))) = 3.0  — three-deep chain
+"-9.0" math.fabs !
+math.sqrt !
+math.ceil !
+print
+
+# log10(log2(256.0)) = log10(8.0) ≈ 0.903090025559947
+"256.0" math.log2 !
+math.log10 !
+print
+EDICT
+
+echo
+echo "--- Section 6: Two-Arg Double Functions ---"
+# Functions that consume two double args (both accepted as strings or chained values).
+"$EDICT" - <<'EDICT'
+unsafe_extensions_allow ! pop
+"libc.so.6" resolver.load !
+"libm.so.6" resolver.load !
+"/usr/include/math.h" parser.__native.map ! @math
+
+# hypot(3.0, 4.0) = 5.0 — Pythagorean hypotenuse
+"3.0" "4.0" math.hypot !
+print
+
+# fmin(2.0, 7.0) = 2.0
+"2.0" "7.0" math.fmin !
+print
+
+# fmax(2.0, 7.0) = 7.0
+"2.0" "7.0" math.fmax !
+print
+
+# fmod(10.0, 3.0) = 1.0
+"10.0" "3.0" math.fmod !
+print
+
+# pow(2.0, 10.0) = 1024.0
+"2.0" "10.0" math.pow !
+print
+
+# sqrt(hypot(3.0, 4.0)) = sqrt(5.0) ≈ 2.2360679...
+"3.0" "4.0" math.hypot !
+math.sqrt !
+print
+
+# log2(8.0) = 3.0
+"8.0" math.log2 !
+print
+
+# log10(1000.0) = 3.0
+"1000.0" math.log10 !
 print
 EDICT
 
@@ -193,7 +262,7 @@ echo
 echo "=== Demo complete ==="
 
 echo
-echo "--- Section 5: Heap Utilization (after all sections) ---"
+echo "--- Section 7: Heap Utilization (after all sections) ---"
 "$EDICT" - <<'EDICT'
 unsafe_extensions_allow ! pop
 "libc.so.6" resolver.load !
