@@ -13,15 +13,13 @@ set(LIB_SOURCES
     edict_compiler.cpp
     edict_vm.cpp
     edict_repl.cpp
-    ../core/cursor.cpp
-    ../core/debug.cpp
-    ../listree/listree.cpp
 )
 
 # Create library
 add_library(libedict SHARED ${LIB_SOURCES})
+set_target_properties(libedict PROPERTIES OUTPUT_NAME "edict")
 target_compile_options(libedict PRIVATE -Wall -Wextra -Werror -Wno-unused-parameter)
-target_link_libraries(libedict pthread cartographer kanren)
+target_link_libraries(libedict PRIVATE pthread PRIVATE cartographer PRIVATE kanren PUBLIC reflect)
 
 # Create executable
 add_executable(edict main.cpp)
