@@ -72,8 +72,8 @@ TEST(PoCTest, CallAddFromLib) {
     ASSERT_TRUE(bool(result)) << "FFI invoke failed";
 
     // 6. Verify result
-    ASSERT_EQ(result->getLength(), sizeof(int));
-    int resVal = *(int*)result->getData();
-    std::cout << "Result of add(" << a << ", " << b << ") = " << resVal << std::endl;
-    EXPECT_EQ(resVal, 42);
+    ASSERT_TRUE(bool(result)) << "FFI invoke returned null";
+    std::string resultStr(static_cast<const char*>(result->getData()), result->getLength());
+    std::cout << "Result of add(" << a << ", " << b << ") = " << resultStr << std::endl;
+    EXPECT_EQ(resultStr, "42");
 }

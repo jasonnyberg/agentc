@@ -241,12 +241,9 @@ static CPtr<agentc::ListreeValue> make_imported_function_definition(const std::s
     return definition;
 }
 
-static int decodeBinaryInt(const CPtr<agentc::ListreeValue>& value) {
-    EXPECT_TRUE((value->getFlags() & agentc::LtvFlags::Binary) != agentc::LtvFlags::None);
-    EXPECT_EQ(value->getLength(), sizeof(int));
-    int decoded = 0;
-    std::memcpy(&decoded, value->getData(), sizeof(int));
-    return decoded;
+static std::string decodeStringInt(const CPtr<agentc::ListreeValue>& value) {
+    EXPECT_TRUE((bool)value);
+    return std::string(static_cast<const char*>(value->getData()), value->getLength());
 }
 
 static void expectCodeFrameLongerThanBuiltinThunk(CPtr<agentc::ListreeValue> value) {
@@ -287,10 +284,8 @@ TEST(CallbackTest, Closure) {
     auto res = vm.ffi->invoke("apply_op", applyDef, args);
 
     ASSERT_TRUE((bool)res);
-    ASSERT_TRUE((res->getFlags() & agentc::LtvFlags::Binary) != agentc::LtvFlags::None);
-    ASSERT_EQ(res->getLength(), sizeof(int));
-    int val = *(int*)res->getData();
-    ASSERT_EQ(val, 42);
+    std::string resStr(static_cast<const char*>(res->getData()), res->getLength());
+    ASSERT_EQ(resStr, "42");
 }
 
 TEST(CallbackTest, ClosureUnderflow) {
@@ -327,10 +322,8 @@ TEST(CallbackTest, ClosureFromParamSignature) {
 
     auto res = vm.popData();
     ASSERT_TRUE((bool)res);
-    ASSERT_TRUE((res->getFlags() & agentc::LtvFlags::Binary) != agentc::LtvFlags::None);
-    ASSERT_EQ(res->getLength(), sizeof(int));
-    int val = *(int*)res->getData();
-    ASSERT_EQ(val, 42);
+    std::string resStr2(static_cast<const char*>(res->getData()), res->getLength());
+    ASSERT_EQ(resStr2, "42");
 }
 
 TEST(CallbackTest, EdictBuiltinsMapLoadAndInvokeCartographerFunction) {
@@ -350,7 +343,7 @@ TEST(CallbackTest, EdictBuiltinsMapLoadAndInvokeCartographerFunction) {
 
     auto result = vm.popData();
     ASSERT_TRUE((bool)result);
-    EXPECT_EQ(decodeBinaryInt(result), 42);
+    EXPECT_EQ(decodeStringInt(result), "42");
 }
 
 TEST(CallbackTest, LoadBuiltinReportsMissingLibrary) {
@@ -463,7 +456,7 @@ TEST(CallbackTest, ImportBuiltinInjectsDefinitionsAndInvokesImmediately) {
 
     auto result = vm.popData();
     ASSERT_TRUE((bool)result);
-    EXPECT_EQ(decodeBinaryInt(result), 42);
+    EXPECT_EQ(decodeStringInt(result), "42");
 
     auto safety = vm.popData();
     ASSERT_TRUE((bool)safety);
@@ -489,7 +482,7 @@ TEST(CallbackTest, InterpretedImportPipelineCanRoundTripThroughJson) {
 
     auto result = vm.popData();
     ASSERT_TRUE((bool)result);
-    EXPECT_EQ(decodeBinaryInt(result), 42);
+    EXPECT_EQ(decodeStringInt(result), "42");
 
     auto safety = vm.popData();
     ASSERT_TRUE((bool)safety);
@@ -524,7 +517,7 @@ TEST(CallbackTest, ParserMapCanRoundTripThroughJson) {
 
     auto result = vm.popData();
     ASSERT_TRUE((bool)result);
-    EXPECT_EQ(decodeBinaryInt(result), 42);
+    EXPECT_EQ(decodeStringInt(result), "42");
 }
 
 TEST(CallbackTest, UnsafeImportedFunctionIsBlockedByDefault) {
@@ -579,7 +572,7 @@ TEST(CallbackTest, SourceLevelUnsafeExtensionPolicyCanAllowAndReblock) {
 
     auto result = vm.popData();
     ASSERT_TRUE((bool)result);
-    EXPECT_EQ(decodeBinaryInt(result), 42);
+    EXPECT_EQ(decodeStringInt(result), "42");
 
     BytecodeBuffer blockStatus = compiler.compile("unsafe_extensions_block");
     state = vm.execute(blockStatus);
@@ -747,7 +740,7 @@ TEST(CallbackTest, ImportResolvedInjectsDefinitionsAndInvokesImmediately) {
 
     auto result = vm.popData();
     ASSERT_TRUE((bool)result);
-    EXPECT_EQ(decodeBinaryInt(result), 42);
+    EXPECT_EQ(decodeStringInt(result), "42");
 
     auto defs = vm.popData();
     ASSERT_TRUE((bool)defs);

@@ -17,6 +17,7 @@
 #include "edict_compiler.h"
 #include "../cartographer/mapper.h"
 #include "../cartographer/ffi.h"
+#include "../cartographer/boxing.h"
 #include "../cartographer/parser.h"
 #include "../cartographer/protocol.h"
 #include "../cartographer/resolver.h"
@@ -1224,6 +1225,70 @@ void EdictVM::op_BOOTSTRAP_CURATE_PARSER() {
 
 void EdictVM::op_BOOTSTRAP_CURATE_RESOLVER() {
     pushData(createBootstrapCuratedResolver());
+}
+
+CPtr<agentc::ListreeValue> EdictVM::createBootstrapCuratedCartographer() {
+    auto cartographerNs = agentc::createNullValue();
+
+    auto native = agentc::createNullValue();
+    addBuiltinThunk(native, "box",      VMOP_BOX);
+    addBuiltinThunk(native, "unbox",    VMOP_UNBOX);
+    addBuiltinThunk(native, "box_free", VMOP_BOX_FREE);
+    agentc::addNamedItem(cartographerNs, "__native", native);
+
+    // Calling conventions (stack: top = last arg):
+    //   cartographer.box !    — ( source_ltv type_def -- boxed )
+    //   cartographer.unbox !  — ( boxed -- unboxed_ltv )
+    //   cartographer.box_free ! — ( boxed -- )
+    addCompiledThunk(cartographerNs, "box",      "cartographer.__native.box !");
+    addCompiledThunk(cartographerNs, "unbox",    "cartographer.__native.unbox !");
+    addCompiledThunk(cartographerNs, "box_free", "cartographer.__native.box_free !");
+    addBootstrapMetadata(cartographerNs, "cartographer");
+    return cartographerNs;
+}
+
+void EdictVM::op_BOOTSTRAP_CURATE_CARTOGRAPHER() {
+    pushData(createBootstrapCuratedCartographer());
+}
+
+void EdictVM::op_BOX() {
+    // Stack: ( source_ltv type_def -- boxed )
+    //   type_def is top-of-stack, source_ltv is below it.
+    auto typeDef = popData();
+    auto source  = popData();
+    if (!typeDef || !source) {
+        setError("BOX expects two arguments: source_ltv type_def");
+        return;
+    }
+    agentc::cartographer::Boxing boxing;
+    auto result = boxing.box(source, typeDef);
+    if (!result) {
+        setError("BOX failed: struct size unknown or field packing error");
+        return;
+    }
+    pushData(result);
+}
+
+void EdictVM::op_UNBOX() {
+    // Stack: ( boxed -- unboxed_ltv )
+    auto boxed = popData();
+    if (!boxed) {
+        setError("UNBOX expects a boxed value");
+        return;
+    }
+    agentc::cartographer::Boxing boxing;
+    auto result = boxing.unbox(boxed);
+    if (!result) {
+        setError("UNBOX failed: invalid boxed value or missing __ptr/__type");
+        return;
+    }
+    pushData(result);
+}
+
+void EdictVM::op_BOX_FREE() {
+    // Stack: ( boxed -- )  — frees the C heap allocation, does not push.
+    auto boxed = popData();
+    agentc::cartographer::Boxing::freeBox(boxed);
 }
 
 void EdictVM::op_CALL() {
@@ -2449,6 +2514,8 @@ int EdictVM::execute(const BytecodeBuffer& code) {
         &&op_PARSE_JSON, &&op_MATERIALIZE_JSON, &&op_RESOLVE_JSON, &&op_IMPORT_RESOLVED_JSON,
         &&op_READ_TEXT, &&op_REQUEST_ID,
         &&op_BOOTSTRAP_CURATE_PARSER, &&op_BOOTSTRAP_CURATE_RESOLVER,
+        &&op_BOOTSTRAP_CURATE_CARTOGRAPHER,
+        &&op_BOX, &&op_UNBOX, &&op_BOX_FREE,
         &&op_CALL, &&op_CLOSURE, &&op_LOGIC_RUN, &&op_REWRITE_DEFINE,
         &&op_REWRITE_LIST, &&op_REWRITE_REMOVE, &&op_REWRITE_APPLY,
         &&op_REWRITE_MODE, &&op_REWRITE_TRACE, &&op_SPECULATE,
@@ -2605,6 +2672,10 @@ op_READ_TEXT: op_READ_TEXT(); goto op_epilogue;
 op_REQUEST_ID: op_REQUEST_ID(); goto op_epilogue;
 op_BOOTSTRAP_CURATE_PARSER: op_BOOTSTRAP_CURATE_PARSER(); goto op_epilogue;
 op_BOOTSTRAP_CURATE_RESOLVER: op_BOOTSTRAP_CURATE_RESOLVER(); goto op_epilogue;
+op_BOOTSTRAP_CURATE_CARTOGRAPHER: op_BOOTSTRAP_CURATE_CARTOGRAPHER(); goto op_epilogue;
+op_BOX: op_BOX(); goto op_epilogue;
+op_UNBOX: op_UNBOX(); goto op_epilogue;
+op_BOX_FREE: op_BOX_FREE(); goto op_epilogue;
 op_CALL: op_CALL(); goto op_epilogue;
 op_CLOSURE: op_CLOSURE(); goto op_epilogue;
 op_LOGIC_RUN: op_LOGIC_RUN(); goto op_epilogue;
@@ -2826,6 +2897,7 @@ op_epilogue:
         auto capsule = agentc::createNullValue();
         addBuiltinThunk(capsule, "curate_parser", VMOP_BOOTSTRAP_CURATE_PARSER);
         addBuiltinThunk(capsule, "curate_resolver", VMOP_BOOTSTRAP_CURATE_RESOLVER);
+        addBuiltinThunk(capsule, "curate_cartographer", VMOP_BOOTSTRAP_CURATE_CARTOGRAPHER);
         addBuiltinThunk(capsule, "map", VMOP_MAP);
         addBuiltinThunk(capsule, "load", VMOP_LOAD);
         addBuiltinThunk(capsule, "import", VMOP_IMPORT);
@@ -2857,7 +2929,8 @@ op_epilogue:
         std::call_once(bootstrapCompiled, []() {
             cachedBootstrap = EdictCompiler().compile(
                 "__bootstrap_import.curate_parser ! @parser "
-                "__bootstrap_import.curate_resolver ! @resolver");
+                "__bootstrap_import.curate_resolver ! @resolver "
+                "__bootstrap_import.curate_cartographer ! @cartographer");
         });
         execute(cachedBootstrap);
     }

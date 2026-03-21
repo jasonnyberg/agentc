@@ -8,9 +8,11 @@
 
 ## Current Focus
 
-**Active Goals**: None.
-**Status**: G002–G013 Complete. G014 Cancelled. G016–G017 Complete. Namespace migration `j3` → `agentc` complete. Directory restructure complete. **7/7 test suites pass (74/74 tests).**
+**Active Goals**: G018 — FFI LTV Passthrough (Hoist Boxing to Pure FFI)
+**Status**: G002–G013 Complete. G014 Cancelled. G016–G017 Complete. G018 Active. Namespace migration `j3` → `agentc` complete. Directory restructure complete. **7/7 test suites pass (74/74 tests).**
 **Last Updated**: 2026-03-20
+
+**Active Task**: G018 — FFI LTV Passthrough — Hoist `VMOP_BOX`/`VMOP_UNBOX`/`VMOP_BOX_FREE` out of the VM into a C-ABI core LTV library + `libboxing.so`. Extend `convertValue`/`convertReturn` for `LTV*` passthrough. Remove boxing opcodes from VM. 🔗[G018 index](./Knowledge/Goals/G018-FfiLtvPassthrough/index.md)
 
 **Completed Task**: G017 — Edict Stdin/File Script Mode (2026-03-20) — Added `EdictREPL::runScript(std::istream&)`; wired `edict -` (stdin) and `edict FILE` in `main.cpp`. Comments (`#`), blank lines, `\r` stripping supported. Build clean; 7/7 suites pass.
 
@@ -49,7 +51,7 @@
 ---
 
 ### Active Goals
-- None. All Phase 1, 2, namespace migration, G016, and G017 goals complete. G014 cancelled.
+- 🔗[G018 — FFI LTV Passthrough](./Knowledge/Goals/G018-FfiLtvPassthrough/index.md) — Active: hoist boxing/unboxing from VM opcodes into C-ABI `libboxing.so` + `libagentc_core.so`; extend FFI `LTV*` passthrough; remove `VMOP_BOX`/`VMOP_UNBOX`/`VMOP_BOX_FREE`
 
 ### Recommended Next Steps
 1. **LMDB Integration**: G016+G017 complete — can proceed with LMDB persistence goals (G040–G042).
@@ -102,8 +104,9 @@ Complete index of LOCAL knowledge. Load items relevant to your current task.
 - G011 — Security & Safety — **Complete**
 - G012 — Build System & Test Infra — **Complete**
 - G013 — Code Hygiene & Cleanup — **Complete**
-- G016 — LMDB Optional Compile-Time Build — **Complete** 🔗[index](./Knowledge/Goals/G016-LmdbOptionalBuild/index.md)
-- G017 — Edict Stdin/File Script Mode — **Complete** 🔗[index](./Knowledge/Goals/G017-EdictScriptMode/index.md)
+        - G016 — LMDB Optional Compile-Time Build — **Complete** 🔗[index](./Knowledge/Goals/G016-LmdbOptionalBuild/index.md)
+        - G017 — Edict Stdin/File Script Mode — **Complete** 🔗[index](./Knowledge/Goals/G017-EdictScriptMode/index.md)
+        - G018 — FFI LTV Passthrough — **Active** 🔗[index](./Knowledge/Goals/G018-FfiLtvPassthrough/index.md)
 
 ### Facts
 (none yet)

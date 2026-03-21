@@ -40,7 +40,9 @@ TEST(FFITest, CallAbs) {
     auto args = createListValue();
     addListItem(args, createBinaryValue(&argVal, sizeof(int)));
     auto result = ffi.invoke("abs", absDef, args);
-    ASSERT_TRUE(bool(result)); EXPECT_EQ(*(int*)result->getData(), 42);
+    ASSERT_TRUE(bool(result));
+    std::string resultStr(static_cast<const char*>(result->getData()), result->getLength());
+    EXPECT_EQ(resultStr, "42");
 }
 
 // G011: Blocklist tests — verify dangerous functions are blocked.

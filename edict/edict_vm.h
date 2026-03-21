@@ -30,7 +30,7 @@ class EdictCompiler;
 
 } // namespace agentc::edict
 
-namespace agentc { namespace cartographer { class Mapper; class FFI; class CartographerService; } }
+namespace agentc { namespace cartographer { class Mapper; class FFI; class CartographerService; class Boxing; } }
 
 namespace agentc::edict {
 
@@ -231,6 +231,10 @@ private:
     void op_REQUEST_ID();
     void op_BOOTSTRAP_CURATE_PARSER();
     void op_BOOTSTRAP_CURATE_RESOLVER();
+    void op_BOOTSTRAP_CURATE_CARTOGRAPHER();
+    void op_BOX();
+    void op_UNBOX();
+    void op_BOX_FREE();
     void op_CALL(); // Placeholder/Unused if integrating into EVAL
     void op_CLOSURE();
     void op_LOGIC_RUN();
@@ -285,6 +289,7 @@ private:
     void addCompiledThunk(CPtr<agentc::ListreeValue> dictVal, const std::string& name, const std::string& source);
     CPtr<agentc::ListreeValue> createBootstrapCuratedParser();
     CPtr<agentc::ListreeValue> createBootstrapCuratedResolver();
+    CPtr<agentc::ListreeValue> createBootstrapCuratedCartographer();
     void runStartupBootstrapPrelude();
 
     RewriteMode rewrite_mode = RewriteMode::Auto;

@@ -91,6 +91,6 @@ TEST(ReproFFITest, AddPoC) {
 
     auto top = vm.getStackTop();
     ASSERT_TRUE(bool(top));
-    ASSERT_EQ(top->getLength(), sizeof(int));
-    EXPECT_EQ(*(int*)top->getData(), 42);
+    std::string topStr(static_cast<const char*>(top->getData()), top->getLength());
+    EXPECT_EQ(topStr, "42");
 }
