@@ -9,10 +9,12 @@
 ## Current Focus
 
 **Active Goals**: None
-**Status**: G002–G013 Complete. G014 Cancelled. G016–G019 Complete. G018 Phase D **fully complete** (VM boxing opcodes removed, pure FFI path via `evalDispatchFFI`). Namespace migration `j3` → `agentc` complete. Directory restructure complete. **7/7 test suites pass (90/90 tests). `test_boxing_ffi.sh` 11/11. `demo_boxing.sh` clean.**
+**Status**: G002–G013 Complete. G014 Cancelled. G016–G020 Complete. G018 Phase D **fully complete** (VM boxing opcodes removed, pure FFI path via `evalDispatchFFI`). Namespace migration `j3` → `agentc` complete. Directory restructure complete. **G020: Early type binding — `bindTypes()` post-parse pass; `ns` param eliminated from entire boxing API. 7/7 test suites pass (90/90+ tests). `test_boxing_ffi.sh` 24/24. `demo_boxing.sh` clean.**
 **Last Updated**: 2026-03-21
 
-**Active Task**: None — G018 Phase D and G019 both complete. Recommended next: LMDB persistence goals (G040–G042) or commit all changes.
+**Active Task**: None — G020 early type binding complete. Recommended next: LMDB persistence goals (G040–G042).
+
+**Previous Active Task**: G020 — Early Type Binding (`bindTypes()`) — **COMPLETE** (2026-03-21). `bindTypes()` pass added to `Mapper::materialize()`; resolves `"struct X"` field types into `type_def` CPtr children. `ns` param fully removed from `box()`/`unbox()`/`packStruct()`/`unpackStruct()`, C ABI, edict bootstrap, unit tests, and demo/test scripts. New `BindTypesCreatesTypeDef` test in `mapper_tests.cpp`; `Rect` struct added to `test_input.h`.
 
 **Previous Active Task**: G018 Phase D — Remove VM Boxing Opcodes — **COMPLETE** (2026-03-21). `VMOP_BOX/UNBOX/BOX_FREE` and all op_ implementations removed. `createBootstrapCuratedCartographer()` builds func-def trees for `evalDispatchFFI` path. Fixed two bugs: (1) `ffi_type_ltv_handle` size/alignment=0 → 4/4; (2) SlabId ABI encode was `(index<<16)|offset` but x86-64 pair layout is `index|(offset<<16)` — fixed. 🔗[G018 index](./Knowledge/Goals/G018-FfiLtvPassthrough/index.md)
 
@@ -53,9 +55,11 @@
 ---
 
 ### Active Goals
-- None — G019 complete. LMDB persistence goals (G040–G042) ready when desired.
+- None — Boxing nested struct support complete (commit 2754d88). LMDB persistence goals (G040–G042) ready when desired.
 
 ### Completed Goals (recent)
+- ✅ G020 — Early type binding (`bindTypes()`) in `Mapper::materialize()` — `ns` param eliminated from boxing API; `BindTypesCreatesTypeDef` test added; 7/7 suites pass (2026-03-21)
+- ✅ Boxing nested struct support (2026-03-21) — `ns` param added to `agentc_box`/`agentc_unbox`; nested struct field lookup via namespace; `demo/demo_complex.h` with 10 scalar types + `InnerPoint` nested struct; `test_boxing_ffi.sh` 24/24; committed
 - ✅ G018 Phase D — Remove VM Boxing Opcodes (2026-03-21) — `VMOP_BOX/UNBOX/BOX_FREE` removed; `evalDispatchFFI` path; `ffi_type_ltv_handle` size/encoding bugs fixed; 7/7 pass; `test_boxing_ffi.sh` 11/11; `demo_boxing.sh` clean
 - ✅ G019 — SlabId LTV Type Unification (2026-03-21) — `void* LTV` → `SlabId LTV`; `libboxing.so` eliminated; `boxing_export.cpp` in cartographer; `FFI_TYPE_UINT32`; tests updated; 7/7 pass
 - 🔗[G018 — FFI LTV Passthrough](./Knowledge/Goals/G018-FfiLtvPassthrough/index.md) — All phases A–D + E complete
@@ -114,6 +118,7 @@ Complete index of LOCAL knowledge. Load items relevant to your current task.
         - G016 — LMDB Optional Compile-Time Build — **Complete** 🔗[index](./Knowledge/Goals/G016-LmdbOptionalBuild/index.md)
         - G017 — Edict Stdin/File Script Mode — **Complete** 🔗[index](./Knowledge/Goals/G017-EdictScriptMode/index.md)
         - G018 — FFI LTV Passthrough — **Complete (via G019)** 🔗[index](./Knowledge/Goals/G018-FfiLtvPassthrough/index.md)
+        - G020 — Early Type Binding (`bindTypes()`) — **Complete** (2026-03-21)
         - G019 — SlabId LTV Type Unification — **Complete** 🔗[index](./Knowledge/Goals/G019-SlabIdLtvUnification/index.md)
 
 ### Facts

@@ -95,6 +95,46 @@ static NodeDescription describeCursor(CXCursor cursor, CXCursor parent) {
     return node;
 }
 
+// bindTypes: post-materialize pass that resolves "struct X" field type strings
+// into direct type_def references.  For every Struct in root, each Field child
+// whose type string starts with "struct " is looked up in the root namespace;
+// if found, addNamedItem stores the resolved CPtr<ListreeValue> as "type_def"
+// on the field node — a shared (ref-counted) reference, not a copy.
+static void bindTypes(CPtr<ListreeValue> root) {
+    if (!root) return;
+    static const std::string kStructPrefix = "struct ";
+    root->forEachTree([&](const std::string& /*symbolName*/, CPtr<ListreeItem>& symbolItem) {
+        auto symbolVal = symbolItem ? symbolItem->getValue(false, false) : nullptr;
+        if (!symbolVal) return;
+        auto kindItem = symbolVal->find("kind");
+        auto kindVal  = kindItem ? kindItem->getValue(false, false) : nullptr;
+        if (!kindVal || !kindVal->getData() || kindVal->getLength() == 0) return;
+        std::string kind(static_cast<const char*>(kindVal->getData()), kindVal->getLength());
+        if (kind != "Struct") return;
+
+        auto childrenItem = symbolVal->find("children");
+        auto childrenVal  = childrenItem ? childrenItem->getValue(false, false) : nullptr;
+        if (!childrenVal) return;
+
+        childrenVal->forEachTree([&](const std::string& /*fieldName*/, CPtr<ListreeItem>& fieldItem) {
+            auto fieldVal = fieldItem ? fieldItem->getValue(false, false) : nullptr;
+            if (!fieldVal) return;
+            auto typeItem = fieldVal->find("type");
+            auto typeVal  = typeItem ? typeItem->getValue(false, false) : nullptr;
+            if (!typeVal || !typeVal->getData() || typeVal->getLength() == 0) return;
+            if ((typeVal->getFlags() & LtvFlags::Binary) != LtvFlags::None) return;
+            std::string fieldType(static_cast<const char*>(typeVal->getData()), typeVal->getLength());
+            if (fieldType.size() <= kStructPrefix.size() ||
+                fieldType.substr(0, kStructPrefix.size()) != kStructPrefix) return;
+            std::string lookupName = fieldType.substr(kStructPrefix.size());
+            auto nsItem       = root->find(lookupName);
+            auto nestedTypeDef = nsItem ? nsItem->getValue(false, false) : nullptr;
+            if (!nestedTypeDef) return;
+            addNamedItem(fieldVal, "type_def", nestedTypeDef);
+        });
+    });
+}
+
 static CPtr<ListreeValue> materializeNode(const NodeDescription& description) {
     CPtr<ListreeValue> nodeVal = createNullValue();
     addNamedItem(nodeVal, "kind", createStringValue(description.kind));
@@ -315,6 +355,7 @@ CPtr<ListreeValue> Mapper::materialize(const ParseDescription& description) {
             addNamedItem(root, symbol->key, materializeNode(*symbol));
         }
     });
+    bindTypes(root);
     return root;
 }
 

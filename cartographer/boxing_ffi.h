@@ -47,23 +47,22 @@ extern "C" {
  *  return a boxed LTV { __ptr: binary[8], __type: typeDef }.
  *
  *  source  — field-keyed LTV whose fields match typeDef's children (BORROWED).
- *  typeDef — the struct's type-definition node from the parser namespace (BORROWED).
- *  ns      — root parser namespace for nested struct look-ups (BORROWED).
- *            May be LTV_NULL; nested struct fields are left zeroed if absent.
+ *  typeDef — the struct's type-definition node from the parser namespace
+ *            (BORROWED).  Nested struct fields are resolved via the "type_def"
+ *            child written by Mapper::materialize()'s bindTypes() pass; no
+ *            external namespace argument is needed.
  *
  *  Returns an owned LTV on success, or LTV_NULL on error (unknown size, alloc
  *  failure, etc.).  Call ltv_unref() and agentc_box_free() when done. */
-LTV agentc_box(LTV source, LTV typeDef, LTV ns);
+LTV agentc_box(LTV source, LTV typeDef);
 
 /** Read a C struct from a boxed LTV's __ptr and produce a field-keyed LTV.
  *
  *  boxed — { __ptr: binary[8], __type: type-def-LTV } (BORROWED).
- *  ns    — root parser namespace for nested struct look-ups (BORROWED).
- *          May be LTV_NULL; nested struct fields are omitted if absent.
  *
  *  Returns an owned LTV on success, or LTV_NULL on error.
  *  The heap allocation inside boxed is NOT freed by this call. */
-LTV agentc_unbox(LTV boxed, LTV ns);
+LTV agentc_unbox(LTV boxed);
 
 /** Free the heap allocation stored in a boxed LTV's __ptr field.
  *

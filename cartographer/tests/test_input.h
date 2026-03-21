@@ -14,4 +14,5 @@
 // License along with AgentC. If not, see <https://www.gnu.org/licenses/>.
 
 struct Point { int x; int y; };
+struct Rect { struct Point origin; int w; int h; };
 void process_point(struct Point p);

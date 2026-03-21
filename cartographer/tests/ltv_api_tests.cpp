@@ -272,7 +272,7 @@ TEST(BoxingFFITest, BoxUnboxRoundTrip) {
     ltv_unref(xVal);
 
     // --- Box ---
-    LTV boxed = agentc_box(source, typeDef, LTV_NULL);
+    LTV boxed = agentc_box(source, typeDef);
     ASSERT_NE(boxed, LTV_NULL) << "agentc_box returned LTV_NULL";
 
     // __ptr must be a binary blob of sizeof(void*) bytes
@@ -286,7 +286,7 @@ TEST(BoxingFFITest, BoxUnboxRoundTrip) {
     EXPECT_NE(typeField, LTV_NULL) << "boxed LTV has no __type field";
 
     // --- Unbox ---
-    LTV unboxed = agentc_unbox(boxed, LTV_NULL);
+    LTV unboxed = agentc_unbox(boxed);
     ASSERT_NE(unboxed, LTV_NULL) << "agentc_unbox returned LTV_NULL";
 
     // The "x" field must round-trip as "42"
@@ -313,12 +313,12 @@ TEST(BoxingFFITest, BoxFreeNullSafe) {
 TEST(BoxingFFITest, BoxNullTypeDefReturnsNull) {
     LTV source = ltv_create_null();
     ASSERT_NE(source, LTV_NULL);
-    LTV result = agentc_box(source, LTV_NULL, LTV_NULL);
+    LTV result = agentc_box(source, LTV_NULL);
     EXPECT_EQ(result, LTV_NULL);
     ltv_unref(source);
 }
 
 TEST(BoxingFFITest, UnboxNullReturnsNull) {
-    LTV result = agentc_unbox(LTV_NULL, LTV_NULL);
+    LTV result = agentc_unbox(LTV_NULL);
     EXPECT_EQ(result, LTV_NULL);
 }

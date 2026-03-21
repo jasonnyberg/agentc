@@ -221,8 +221,7 @@ CPtr<ListreeValue> Boxing::unpackScalar(const std::string& rawT, const void* src
 
 bool Boxing::packStruct(CPtr<ListreeValue> source,
                         CPtr<ListreeValue> typeDef,
-                        uint8_t* base,
-                        CPtr<ListreeValue> ns) {
+                        uint8_t* base) {
     if (!typeDef || !base) return false;
 
     auto childrenItem = typeDef->find("children");
@@ -254,21 +253,17 @@ bool Boxing::packStruct(CPtr<ListreeValue> source,
             auto srcItem = source ? source->find(fieldName) : nullptr;
             auto srcVal = srcItem ? srcItem->getValue(false, false) : nullptr;
             packScalar(fieldType, srcVal, dest);
-        } else if (ns) {
-            // Nested struct field: strip "struct " prefix and look up in namespace.
-            std::string lookupName = fieldType;
-            if (lookupName.size() > 7 && lookupName.substr(0, 7) == "struct ")
-                lookupName = lookupName.substr(7);
-            auto nsItem = ns->find(lookupName);
-            auto nestedTypeDef = nsItem ? nsItem->getValue(false, false) : nullptr;
+        } else {
+            // Nested struct field: use type_def child (set by bindTypes at parse time).
+            auto typeDefItem = fieldDef->find("type_def");
+            auto nestedTypeDef = typeDefItem ? typeDefItem->getValue(false, false) : nullptr;
             if (nestedTypeDef) {
                 auto srcItem = source ? source->find(fieldName) : nullptr;
                 auto srcVal = srcItem ? srcItem->getValue(false, false) : nullptr;
-                packStruct(srcVal, nestedTypeDef, dest, ns);
+                packStruct(srcVal, nestedTypeDef, dest);
             }
-            // else: leave nested struct bytes zeroed (unknown type)
+            // else: unknown nested type — leave zeroed
         }
-        // No ns and unrecognised type: leave zeroed
     });
 
     return ok;
@@ -279,8 +274,7 @@ bool Boxing::packStruct(CPtr<ListreeValue> source,
 // ---------------------------------------------------------------------------
 
 CPtr<ListreeValue> Boxing::unpackStruct(CPtr<ListreeValue> typeDef,
-                                        const uint8_t* base,
-                                        CPtr<ListreeValue> ns) {
+                                        const uint8_t* base) {
     auto result = createNullValue();
     if (!typeDef || !base) return result;
 
@@ -304,19 +298,15 @@ CPtr<ListreeValue> Boxing::unpackStruct(CPtr<ListreeValue> typeDef,
         size_t ss = scalarSize(fieldType);
         if (ss > 0) {
             addNamedItem(result, fieldName, unpackScalar(fieldType, src));
-        } else if (ns) {
-            // Nested struct field: strip "struct " prefix and look up in namespace.
-            std::string lookupName = fieldType;
-            if (lookupName.size() > 7 && lookupName.substr(0, 7) == "struct ")
-                lookupName = lookupName.substr(7);
-            auto nsItem = ns->find(lookupName);
-            auto nestedTypeDef = nsItem ? nsItem->getValue(false, false) : nullptr;
+        } else {
+            // Nested struct field: use type_def child (set by bindTypes at parse time).
+            auto typeDefItem = fieldDef->find("type_def");
+            auto nestedTypeDef = typeDefItem ? typeDefItem->getValue(false, false) : nullptr;
             if (nestedTypeDef) {
-                addNamedItem(result, fieldName, unpackStruct(nestedTypeDef, src, ns));
+                addNamedItem(result, fieldName, unpackStruct(nestedTypeDef, src));
             }
-            // else: omit nested field (unknown type, no ns entry)
+            // else: unknown nested type — field omitted
         }
-        // No ns and unrecognised type: field is omitted
     });
 
     return result;
@@ -327,8 +317,7 @@ CPtr<ListreeValue> Boxing::unpackStruct(CPtr<ListreeValue> typeDef,
 // ---------------------------------------------------------------------------
 
 CPtr<ListreeValue> Boxing::box(CPtr<ListreeValue> source,
-                               CPtr<ListreeValue> typeDef,
-                               CPtr<ListreeValue> ns) const {
+                               CPtr<ListreeValue> typeDef) const {
     if (!source || !typeDef) return nullptr;
 
     // Get total struct size from typeDef's "size" field (4-byte binary int).
@@ -341,7 +330,7 @@ CPtr<ListreeValue> Boxing::box(CPtr<ListreeValue> source,
     if (!buf) return nullptr;
 
     // Pack fields.
-    if (!packStruct(source, typeDef, buf, ns)) {
+    if (!packStruct(source, typeDef, buf)) {
         std::free(buf);
         return nullptr;
     }
@@ -353,8 +342,7 @@ CPtr<ListreeValue> Boxing::box(CPtr<ListreeValue> source,
     return boxed;
 }
 
-CPtr<ListreeValue> Boxing::unbox(CPtr<ListreeValue> boxed,
-                                 CPtr<ListreeValue> ns) const {
+CPtr<ListreeValue> Boxing::unbox(CPtr<ListreeValue> boxed) const {
     if (!boxed) return nullptr;
 
     // Extract __ptr
@@ -374,7 +362,7 @@ CPtr<ListreeValue> Boxing::unbox(CPtr<ListreeValue> boxed,
     if (!typeDef) return nullptr;
 
     // Unpack struct
-    auto result = unpackStruct(typeDef, static_cast<const uint8_t*>(rawPtr), ns);
+    auto result = unpackStruct(typeDef, static_cast<const uint8_t*>(rawPtr));
 
     // Attach __type annotation
     addNamedItem(result, "__type", typeDef);

@@ -32,6 +32,10 @@ namespace cartographer {
 // An "unboxed value" is a field-keyed LTV (string or numeric values per field)
 // with an optional __type annotation.
 //
+// Nested struct fields are resolved via the "type_def" child that
+// Mapper::materialize() writes during the bindTypes() post-parse pass.
+// No external namespace lookup is required at box/unbox time.
+//
 // Scalar type coverage (LP64):
 //   "char"           -> int8_t  / signed char
 //   "unsigned char"  -> uint8_t
@@ -46,34 +50,26 @@ namespace cartographer {
 //   "float"          -> float (32-bit)
 //   "double"         -> double (64-bit)
 //   pointer (anything with '*') -> void* (uintptr_t, 8 bytes on LP64)
-//   nested struct    -> recursive
-//
-// All Edict string representations are human-readable decimal / %g float
-// strings, never opaque binary blobs.
+//   nested struct    -> recursive via type_def child
 class Boxing {
 public:
     Boxing() = default;
 
     // box: allocate a C struct on the heap and pack fields from source LTV.
     //   source   — field-keyed LTV whose fields match typeDef's children
-    //   typeDef  — the struct's type-definition node from the parser namespace
-    //   ns       — root parser namespace, required for nested struct fields
-    //              (may be nullptr; nested struct fields are left zeroed if absent)
+    //   typeDef  — the struct's type-definition node from the parser namespace;
+    //              nested struct fields must have a "type_def" child (set
+    //              automatically by Mapper::materialize() via bindTypes()).
     // Returns { __ptr: <binary:8>, __type: typeDef } or nullptr on error.
-    // The caller takes ownership of the heap allocation; use unbox then free
-    // the pointer via the returned __ptr when done.
+    // The caller takes ownership of the heap allocation; use freeBox() when done.
     CPtr<ListreeValue> box(CPtr<ListreeValue> source,
-                           CPtr<ListreeValue> typeDef,
-                           CPtr<ListreeValue> ns = nullptr) const;
+                           CPtr<ListreeValue> typeDef) const;
 
     // unbox: read a C struct from a boxed value's __ptr and produce a
     //   field-keyed LTV.
     //   boxed — { __ptr: <binary:8>, __type: <type-def-LTV> }
-    //   ns    — root parser namespace, required for nested struct fields
-    //           (may be nullptr; nested struct fields are omitted if absent)
     // Returns an LTV with one key per field (string values) plus __type.
-    CPtr<ListreeValue> unbox(CPtr<ListreeValue> boxed,
-                             CPtr<ListreeValue> ns = nullptr) const;
+    CPtr<ListreeValue> unbox(CPtr<ListreeValue> boxed) const;
 
     // annotate: attach __type to an existing LTV after validating conformance.
     //   ltv      — target LTV to annotate
@@ -105,11 +101,9 @@ private:
     // Recursive helpers used by box/unbox.
     static bool packStruct(CPtr<ListreeValue> source,
                            CPtr<ListreeValue> typeDef,
-                           uint8_t* base,
-                           CPtr<ListreeValue> ns = nullptr);
+                           uint8_t* base);
     static CPtr<ListreeValue> unpackStruct(CPtr<ListreeValue> typeDef,
-                                           const uint8_t* base,
-                                           CPtr<ListreeValue> ns = nullptr);
+                                           const uint8_t* base);
 };
 
 } // namespace cartographer

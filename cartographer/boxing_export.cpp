@@ -31,13 +31,13 @@ namespace {
 
 extern "C" {
 
-LTV agentc_box(LTV source, LTV typeDef, LTV ns) {
-    CPtr<ListreeValue> result = g_boxing.box(ltv_borrow(source), ltv_borrow(typeDef), ltv_borrow(ns));
+LTV agentc_box(LTV source, LTV typeDef) {
+    CPtr<ListreeValue> result = g_boxing.box(ltv_borrow(source), ltv_borrow(typeDef));
     return result.release();
 }
 
-LTV agentc_unbox(LTV boxed, LTV ns) {
-    CPtr<ListreeValue> result = g_boxing.unbox(ltv_borrow(boxed), ltv_borrow(ns));
+LTV agentc_unbox(LTV boxed) {
+    CPtr<ListreeValue> result = g_boxing.unbox(ltv_borrow(boxed));
     return result.release();
 }
 

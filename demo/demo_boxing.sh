@@ -10,8 +10,8 @@
 #   6. Free the heap allocation  (cartographer.box_free !)
 #
 # Stack convention for box:
-#   source_ltv type_def ns cartographer.box !   -> boxed {__ptr, __type}
-#   boxed ns cartographer.unbox !               -> unboxed_ltv {tv_sec, tv_nsec, __type}
+#   source_ltv type_def cartographer.box !   -> boxed {__ptr, __type}
+#   boxed cartographer.unbox !               -> unboxed_ltv {tv_sec, tv_nsec, __type}
 #   boxed cartographer.box_free !               -> (nothing pushed; frees heap)
 #
 # Notes:
@@ -68,7 +68,7 @@ unsafe_extensions_allow ! pop
 
 # Box: push source first, then type_def on top.
 # Result: { __ptr: <binary:8>, __type: <timespec-type-def> }
-src timedefs.timespec timedefs cartographer.box ! @boxed
+src timedefs.timespec cartographer.box ! @boxed
 
 "boxed __ptr (8-byte native pointer):" print
 boxed.__ptr print
@@ -84,10 +84,10 @@ unsafe_extensions_allow ! pop
 
 { "tv_sec": "1234567890", "tv_nsec": "500000000" } @src
 
-src timedefs.timespec timedefs cartographer.box ! @boxed
+src timedefs.timespec cartographer.box ! @boxed
 
 # Unbox back to an LTV — reads field values from the C heap struct
-boxed timedefs cartographer.unbox ! @unboxed
+boxed cartographer.unbox ! @unboxed
 
 "Unboxed tv_sec:" print
 unboxed.tv_sec print
@@ -106,7 +106,7 @@ unsafe_extensions_allow ! pop
 
 { "tv_sec": "9999999999", "tv_nsec": "123456789" } @src
 
-src timedefs.timespec timedefs cartographer.box ! @boxed
+src timedefs.timespec cartographer.box ! @boxed
 
 # Free heap memory
 boxed cartographer.box_free !
@@ -124,9 +124,9 @@ unsafe_extensions_allow ! pop
 # struct timeval { tv_sec: __time_t (long), tv_usec: __suseconds_t (long) }
 { "tv_sec": "1000", "tv_usec": "500" } @src
 
-src sysTime.timeval sysTime cartographer.box ! @boxed
+src sysTime.timeval cartographer.box ! @boxed
 
-boxed sysTime cartographer.unbox ! @unboxed
+boxed cartographer.unbox ! @unboxed
 
 "timeval tv_sec:" print
 unboxed.tv_sec print

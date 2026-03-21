@@ -13,10 +13,9 @@
 #   - Varied scalar types (int8..int64, uint8..uint64, float, double)
 #   - Nested struct round-trip: ComplexStruct with InnerPoint origin field
 #
-# NOTE: cartographer.box takes (source, typeDef, ns) — ns is the root parser
-#       namespace required for nested struct field look-ups.  Pass the same
-#       namespace LTV you got from parser.__native.map as the third argument.
-#       cartographer.unbox takes (boxed, ns) for the same reason.
+# NOTE: cartographer.box takes (source, typeDef) and cartographer.unbox takes
+#       (boxed). The ns argument is no longer needed — type_def links are
+#       resolved at parse time by bindTypes() inside Mapper::materialize().
 #
 # Exit code: 0 = all assertions pass, 1 = one or more failures.
 
@@ -66,8 +65,8 @@ unsafe_extensions_allow ! pop
 "/usr/include/time.h" parser.__native.map ! @timedefs
 
 { "tv_sec": "1234567890", "tv_nsec": "500000000" } @src
-src timedefs.timespec timedefs cartographer.box ! @boxed
-boxed timedefs cartographer.unbox ! @unboxed
+src timedefs.timespec cartographer.box ! @boxed
+boxed cartographer.unbox ! @unboxed
 
 unboxed.tv_sec print
 unboxed.tv_nsec print
@@ -85,8 +84,8 @@ unsafe_extensions_allow ! pop
 "/usr/include/sys/time.h" parser.__native.map ! @sysTime
 
 { "tv_sec": "7777", "tv_usec": "333" } @src
-src sysTime.timeval sysTime cartographer.box ! @boxed
-boxed sysTime cartographer.unbox ! @unboxed
+src sysTime.timeval cartographer.box ! @boxed
+boxed cartographer.unbox ! @unboxed
 
 unboxed.tv_sec print
 unboxed.tv_usec print
@@ -104,7 +103,7 @@ unsafe_extensions_allow ! pop
 "/usr/include/time.h" parser.__native.map ! @timedefs
 
 { "tv_sec": "99", "tv_nsec": "1" } @src
-src timedefs.timespec timedefs cartographer.box ! @boxed
+src timedefs.timespec cartographer.box ! @boxed
 boxed cartographer.box_free !
 "box_free_ok" print
 EDICT
@@ -121,7 +120,7 @@ unsafe_extensions_allow ! pop
 "/usr/include/time.h" parser.__native.map ! @timedefs
 
 { "tv_sec": "42", "tv_nsec": "0" } @src
-src timedefs.timespec timedefs cartographer.box ! @boxed
+src timedefs.timespec cartographer.box ! @boxed
 boxed.__ptr print
 EDICT
 )
@@ -137,8 +136,8 @@ unsafe_extensions_allow ! pop
 
 # Source has no tv_nsec — should unbox as "0"
 { "tv_sec": "5" } @src
-src timedefs.timespec timedefs cartographer.box ! @boxed
-boxed timedefs cartographer.unbox ! @unboxed
+src timedefs.timespec cartographer.box ! @boxed
+boxed cartographer.unbox ! @unboxed
 
 unboxed.tv_sec print
 unboxed.tv_nsec print
@@ -156,8 +155,8 @@ unsafe_extensions_allow ! pop
 "/usr/include/time.h" parser.__native.map ! @timedefs
 
 { "tv_sec": "9223372036854775807", "tv_nsec": "999999999" } @src
-src timedefs.timespec timedefs cartographer.box ! @boxed
-boxed timedefs cartographer.unbox ! @unboxed
+src timedefs.timespec cartographer.box ! @boxed
+boxed cartographer.unbox ! @unboxed
 
 unboxed.tv_sec print
 unboxed.tv_nsec print
@@ -176,8 +175,8 @@ unsafe_extensions_allow ! pop
 
 { "byte_val": "-42", "ubyte_val": "200", "short_val": "-1000", "ushort_val": "60000", "int_val": "-100000", "uint_val": "4000000000", "long_val": "-9000000000000", "ulong_val": "9000000000000", "float_val": "3.5", "double_val": "2.71828182845905" } @src
 
-src ns.ComplexStruct ns cartographer.box ! @boxed
-boxed ns cartographer.unbox ! @unboxed
+src ns.ComplexStruct cartographer.box ! @boxed
+boxed cartographer.unbox ! @unboxed
 
 unboxed.byte_val print
 unboxed.ubyte_val print
@@ -212,8 +211,8 @@ unsafe_extensions_allow ! pop
 
 { "int_val": "42", "origin": { "x": "100", "y": "200" } } @src
 
-src ns.ComplexStruct ns cartographer.box ! @boxed
-boxed ns cartographer.unbox ! @unboxed
+src ns.ComplexStruct cartographer.box ! @boxed
+boxed cartographer.unbox ! @unboxed
 
 unboxed.int_val print
 unboxed.origin.x print

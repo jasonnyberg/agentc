@@ -1262,13 +1262,13 @@ CPtr<agentc::ListreeValue> EdictVM::createBootstrapCuratedCartographer() {
     ffi->loadProcessSymbols();
 
     // Build function-def trees with "ltv" type annotations.
-    // Stack convention (maintained from the opcode era):
-    //   cartographer.box !      — ( source_ltv type_def ns -- boxed )
-    //   cartographer.unbox !    — ( boxed ns -- unboxed_ltv )
+    // Stack convention:
+    //   cartographer.box !      — ( source_ltv type_def -- boxed )
+    //   cartographer.unbox !    — ( boxed -- unboxed_ltv )
     //   cartographer.box_free ! — ( boxed -- )
-    auto boxDef      = buildBoxingFuncDef("agentc_box",      {"source", "type_def", "ns"}, true);
-    auto unboxDef    = buildBoxingFuncDef("agentc_unbox",    {"boxed", "ns"},               true);
-    auto boxFreeDef  = buildBoxingFuncDef("agentc_box_free", {"boxed"},                     false);
+    auto boxDef      = buildBoxingFuncDef("agentc_box",      {"source", "type_def"}, true);
+    auto unboxDef    = buildBoxingFuncDef("agentc_unbox",    {"boxed"},              true);
+    auto boxFreeDef  = buildBoxingFuncDef("agentc_box_free", {"boxed"},              false);
 
     agentc::addNamedItem(cartographerNs, "box",      boxDef);
     agentc::addNamedItem(cartographerNs, "unbox",    unboxDef);
