@@ -17,7 +17,8 @@
 #include "edict_compiler.h"
 #include "../cartographer/mapper.h"
 #include "../cartographer/ffi.h"
-#include "../cartographer/boxing.h"
+#include "../cartographer/boxing_ffi.h"
+#include "../cartographer/ltv_api.h"
 #include "../cartographer/parser.h"
 #include "../cartographer/protocol.h"
 #include "../cartographer/resolver.h"
@@ -1254,41 +1255,47 @@ void EdictVM::op_BOOTSTRAP_CURATE_CARTOGRAPHER() {
 void EdictVM::op_BOX() {
     // Stack: ( source_ltv type_def -- boxed )
     //   type_def is top-of-stack, source_ltv is below it.
+    //
+    // Delegates to agentc_box() in libboxing — a pure-C implementation that
+    // operates entirely through the ltv_api.h C-ABI.  This is the transitional
+    // path towards Phase D (full removal of VM boxing opcodes).
     auto typeDef = popData();
     auto source  = popData();
     if (!typeDef || !source) {
         setError("BOX expects two arguments: source_ltv type_def");
         return;
     }
-    agentc::cartographer::Boxing boxing;
-    auto result = boxing.box(source, typeDef);
-    if (!result) {
+    LTV raw_result = agentc_box(agentc::cptr_to_ltv(source),
+                                agentc::cptr_to_ltv(typeDef));
+    if (!raw_result) {
         setError("BOX failed: struct size unknown or field packing error");
         return;
     }
-    pushData(result);
+    pushData(agentc::ltv_adopt(raw_result));
 }
 
 void EdictVM::op_UNBOX() {
     // Stack: ( boxed -- unboxed_ltv )
+    // Delegates to agentc_unbox() in libboxing.
     auto boxed = popData();
     if (!boxed) {
         setError("UNBOX expects a boxed value");
         return;
     }
-    agentc::cartographer::Boxing boxing;
-    auto result = boxing.unbox(boxed);
-    if (!result) {
+    LTV raw_result = agentc_unbox(agentc::cptr_to_ltv(boxed));
+    if (!raw_result) {
         setError("UNBOX failed: invalid boxed value or missing __ptr/__type");
         return;
     }
-    pushData(result);
+    pushData(agentc::ltv_adopt(raw_result));
 }
 
 void EdictVM::op_BOX_FREE() {
     // Stack: ( boxed -- )  — frees the C heap allocation, does not push.
+    // Delegates to agentc_box_free() in libboxing.
     auto boxed = popData();
-    agentc::cartographer::Boxing::freeBox(boxed);
+    if (!boxed) return;
+    agentc_box_free(agentc::cptr_to_ltv(boxed));
 }
 
 void EdictVM::op_CALL() {

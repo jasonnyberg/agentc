@@ -8,11 +8,13 @@
 
 ## Current Focus
 
-**Active Goals**: G018 — FFI LTV Passthrough (Hoist Boxing to Pure FFI)
-**Status**: G002–G013 Complete. G014 Cancelled. G016–G017 Complete. G018 Active (Phases A–C complete). Namespace migration `j3` → `agentc` complete. Directory restructure complete. **7/7 test suites pass (74/74 tests).**
-**Last Updated**: 2026-03-20
+**Active Goals**: G018 — FFI LTV Passthrough → G019 — SlabId LTV Type Unification
+**Status**: G002–G013 Complete. G014 Cancelled. G016–G017 Complete. G018 Active (Phases A–C, E1, E5, transitional D complete). G019 **COMPLETE** (WU1–WU10 done). Namespace migration `j3` → `agentc` complete. Directory restructure complete. **7/7 test suites pass (90/90 tests).**
+**Last Updated**: 2026-03-21
 
-**Active Task**: G018 — FFI LTV Passthrough — Phases A1–A2, B1–B2, C1–C3 **DONE**. Remaining: A3/B3/C4 (C-only smoke tests), Phase D (remove VM boxing opcodes — deferred pending deployment path for libboxing.so), Phase E (cleanup + demo update). 🔗[G018 index](./Knowledge/Goals/G018-FfiLtvPassthrough/index.md)
+**Active Task**: None — G019 complete. Recommended next: LMDB persistence goals (G040–G042) or commit all changes.
+
+**Previous Active Task**: G019 — SlabId LTV Type Unification — **COMPLETE** (2026-03-21). `typedef void* LTV` → `typedef SlabId LTV`; `libboxing.so` folded into `libcartographer.so` via `boxing_export.cpp`; `CPtr<T>::release()` added; `ffi_type_ltv_handle` → `FFI_TYPE_UINT32`. Tests updated to `LTV_NULL` / new boundary API. 🔗[G019 index](./Knowledge/Goals/G019-SlabIdLtvUnification/index.md)
 
 **Completed Task**: G017 — Edict Stdin/File Script Mode (2026-03-20) — Added `EdictREPL::runScript(std::istream&)`; wired `edict -` (stdin) and `edict FILE` in `main.cpp`. Comments (`#`), blank lines, `\r` stripping supported. Build clean; 7/7 suites pass.
 
@@ -51,7 +53,11 @@
 ---
 
 ### Active Goals
-- 🔗[G018 — FFI LTV Passthrough](./Knowledge/Goals/G018-FfiLtvPassthrough/index.md) — Active: hoist boxing/unboxing from VM opcodes into C-ABI `libboxing.so` + `libagentc_core.so`; extend FFI `LTV*` passthrough; remove `VMOP_BOX`/`VMOP_UNBOX`/`VMOP_BOX_FREE`
+- None — G019 complete. LMDB persistence goals (G040–G042) ready when desired.
+
+### Completed Goals (recent)
+- ✅ G019 — SlabId LTV Type Unification (2026-03-21) — `void* LTV` → `SlabId LTV`; `libboxing.so` eliminated; `boxing_export.cpp` in cartographer; `FFI_TYPE_UINT32`; tests updated; 7/7 pass
+- 🔗[G018 — FFI LTV Passthrough](./Knowledge/Goals/G018-FfiLtvPassthrough/index.md) — Phases A–C, E1, E5, transitional D complete; succeeded by G019
 
 ### Recommended Next Steps
 1. **LMDB Integration**: G016+G017 complete — can proceed with LMDB persistence goals (G040–G042).
@@ -106,7 +112,8 @@ Complete index of LOCAL knowledge. Load items relevant to your current task.
 - G013 — Code Hygiene & Cleanup — **Complete**
         - G016 — LMDB Optional Compile-Time Build — **Complete** 🔗[index](./Knowledge/Goals/G016-LmdbOptionalBuild/index.md)
         - G017 — Edict Stdin/File Script Mode — **Complete** 🔗[index](./Knowledge/Goals/G017-EdictScriptMode/index.md)
-        - G018 — FFI LTV Passthrough — **Active** 🔗[index](./Knowledge/Goals/G018-FfiLtvPassthrough/index.md)
+        - G018 — FFI LTV Passthrough — **Complete (via G019)** 🔗[index](./Knowledge/Goals/G018-FfiLtvPassthrough/index.md)
+        - G019 — SlabId LTV Type Unification — **Complete** 🔗[index](./Knowledge/Goals/G019-SlabIdLtvUnification/index.md)
 
 ### Facts
 (none yet)

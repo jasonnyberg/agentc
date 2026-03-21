@@ -969,6 +969,14 @@ private:
 public:
     const SlabId &getSlabId() const { return slabId; }
 
+    // Release ownership: return the SlabId and zero this CPtr so the destructor
+    // skips deallocation. Caller takes responsibility for the reference count.
+    SlabId release() {
+        SlabId si = slabId;
+        slabId = SlabId();
+        return si;
+    }
+
     struct AdoptRawSlabIdTag {};
 
     CPtr() : slabId() {}

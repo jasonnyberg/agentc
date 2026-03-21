@@ -18,12 +18,12 @@
 // ltv_api.h — C-callable API for ListreeValue (LTV) operations.
 //
 // This header is intentionally C-compatible so it can be included from
-// pure-C source files (e.g. libboxing/boxing_ffi.c).
+// pure-C source files.
 //
 // Memory model
 // ------------
-//   LTV handles are raw ListreeValue* pointers.  Lifetime is governed by the
-//   slab allocator's reference-counting scheme.
+//   LTV handles are opaque 32-bit slab identifiers.  Lifetime is governed by
+//   the slab allocator's reference-counting scheme.
 //
 //   "Owned reference": the holder is responsible for one unit of refcount.
 //     - ltv_create_*()       returns an owned reference (refcount 1).
@@ -41,17 +41,29 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* In C++, SlabId is defined in core/alloc.h (a class wrapping two uint16_t).
+ * In C, we define it as uint32_t with the same 4-byte footprint. */
 #ifdef __cplusplus
-extern "C" {
+#include "../core/alloc.h"
+#else
+typedef uint32_t SlabId;
 #endif
 
-/* Opaque handle: raw ListreeValue pointer. */
-typedef void* LTV;
+/* C-domain fundamental fancy-pointer — opaque 32-bit slab handle.
+ * Encoded as ((index << 16) | offset).  C code must never inspect the bits. */
+typedef SlabId LTV;
+
+/* Null / invalid LTV sentinel (slab index 0, offset 0). */
+#define LTV_NULL ((LTV)0)
 
 /* LTV data flags (mirror LtvFlags enum values from listree/listree.h). */
 #define LTV_FLAG_BINARY     0x00000008u   /* opaque bytes; use ltv_data/ltv_length */
 #define LTV_FLAG_NULL       0x00000200u   /* no payload; empty dict */
 #define LTV_FLAG_IMMEDIATE  0x00000400u   /* SSO: data stored inline */
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /* ---------------------------------------------------------------------------
  * Lifecycle
@@ -134,36 +146,31 @@ LTV ltv_unpack_scalar(const char* ctype, const void* src);
 
 /* ---------------------------------------------------------------------------
  * C++ boundary utilities (not callable from C)
- * These are used by ffi.cpp to translate between CPtr<ListreeValue> (which
- * lives on the Edict data stack) and raw LTV handles (passed to C code).
+ * These are used by ffi.cpp and edict_vm.cpp to translate between
+ * CPtr<ListreeValue> (which lives on the Edict data stack) and LTV handles
+ * (passed to/from C-ABI functions).
  * ------------------------------------------------------------------------- */
 
 #include "../listree/listree.h"
-#include "../core/alloc.h"
 
 namespace agentc {
 
-/** Extract raw ListreeValue* from a CPtr without changing refcount.
- *  The raw pointer is valid only while the CPtr (or another owner) is alive. */
-inline LTV cptr_to_raw(const CPtr<ListreeValue>& p) {
-    return static_cast<LTV>(static_cast<ListreeValue*>(p));
+/** CPtr<ListreeValue> → LTV: O(1), no refcount change.
+ *  The returned LTV is a borrowed handle — keep the CPtr alive. */
+inline LTV cptr_to_ltv(const CPtr<ListreeValue>& p) {
+    return p.getSlabId();
 }
 
-/** Wrap a raw ListreeValue* into a CPtr, incrementing its refcount.
- *  Use for BORROWED references (shared ownership). */
-inline CPtr<ListreeValue> raw_to_cptr(LTV v) {
-    return CPtr<ListreeValue>(static_cast<ListreeValue*>(v));
+/** LTV → CPtr (BORROW): addref on construction, decref on destruction.
+ *  Use for arguments that are valid for the duration of the CPtr's lifetime. */
+inline CPtr<ListreeValue> ltv_borrow(LTV v) {
+    return CPtr<ListreeValue>(v);
 }
 
-/** Adopt a raw ListreeValue* into a CPtr WITHOUT incrementing refcount.
- *  Use for OWNED references transferred from C code (e.g. ltv_create_*
- *  return values) — the CPtr takes over the existing refcount 1. */
-inline CPtr<ListreeValue> raw_adopt_cptr(LTV v) {
-    if (!v) return nullptr;
-    auto* lv = static_cast<ListreeValue*>(v);
-    auto& alloc = Allocator<ListreeValue>::getAllocator();
-    auto si = alloc.getSlabId(lv);
-    return CPtr<ListreeValue>::adoptRaw(si);
+/** LTV → CPtr (OWN): no addref — caller transfers ownership.
+ *  Use when a C function returns an owned reference (e.g. ltv_create_*). */
+inline CPtr<ListreeValue> ltv_adopt(LTV v) {
+    return CPtr<ListreeValue>::adoptRaw(v);
 }
 
 } // namespace agentc

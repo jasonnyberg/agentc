@@ -94,33 +94,6 @@ size_t Boxing::scalarSize(const std::string& rawT) {
     if (t == "double") return 8;
     if (t.find('*') != std::string::npos) return sizeof(void*); // pointer
 
-    // Common LP64 platform typedef aliases (Linux x86-64).
-    // These are the spellings that clang_getTypeSpelling() returns at typedef
-    // resolution depth used by the cartographer mapper.
-    if (t == "__time_t" || t == "__clock_t" || t == "__syscall_slong_t" ||
-        t == "__syscall_ulong_t" || t == "__blkcnt_t" || t == "__blkcnt64_t" ||
-        t == "__off_t" || t == "__off64_t" || t == "__loff_t" ||
-        t == "__ino_t" || t == "__ino64_t" || t == "__nlink_t" ||
-        t == "__fsfilcnt_t" || t == "__fsfilcnt64_t" || t == "__fsblkcnt_t" ||
-        t == "__fsblkcnt64_t" || t == "__pid_t" || t == "__uid_t" ||
-        t == "__gid_t" || t == "__dev_t" || t == "__mode_t" ||
-        t == "ssize_t" || t == "ptrdiff_t" || t == "intptr_t" || t == "uintptr_t" ||
-        t == "__intptr_t") {
-        return 8; // LP64: long-sized
-    }
-    if (t == "__int32_t" || t == "__uint32_t" || t == "__int_t" ||
-        t == "__socklen_t" || t == "__useconds_t" || t == "__suseconds_t") {
-        return 4;
-    }
-    if (t == "__int16_t" || t == "__uint16_t") return 2;
-    if (t == "__int8_t"  || t == "__uint8_t")  return 1;
-    if (t == "int8_t"   || t == "uint8_t")    return 1;
-    if (t == "int16_t"  || t == "uint16_t")   return 2;
-    if (t == "int32_t"  || t == "uint32_t")   return 4;
-    if (t == "int64_t"  || t == "uint64_t")   return 8;
-    if (t == "size_t")  return 8; // LP64
-    if (t == "time_t" || t == "clock_t" || t == "suseconds_t") return 8;
-
     return 0; // unrecognised / struct (size from type-def)
 }
 

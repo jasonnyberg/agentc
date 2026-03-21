@@ -32,7 +32,7 @@ namespace {
 static ffi_type ffi_type_ltv_handle = {
     0,             // size   — set by libffi when the CIF is prepared
     0,             // alignment
-    FFI_TYPE_POINTER,
+    FFI_TYPE_UINT32,
     nullptr        // elements (non-struct)
 };
 
@@ -316,9 +316,10 @@ void FFI::convertValue(CPtr<ListreeValue> val, ffi_type* type, void* storage) {
         }
     } else if (type == &ffi_type_ltv_handle) {
         // LTV passthrough: val is expected to be a CPtr<ListreeValue> on the
-        // Edict stack.  Extract the raw pointer without changing refcount.
-        // The CPtr on the stack keeps the LTV alive for the duration of the call.
-        *(void**)storage = val ? cptr_to_raw(val) : nullptr;
+        // Edict stack.  Encode the SlabId as a uint32_t for libffi.
+        LTV ltv = val ? cptr_to_ltv(val) : LTV_NULL;
+        uint32_t encoded = (static_cast<uint32_t>(ltv.first) << 16) | ltv.second;
+        std::memcpy(storage, &encoded, sizeof(encoded));
     }
 }
 CPtr<ListreeValue> FFI::convertReturn(void* storage, ffi_type* type) {
@@ -386,12 +387,13 @@ CPtr<ListreeValue> FFI::convertReturn(void* storage, ffi_type* type) {
     }
     // H3: Pointer-returning functions (char*, void*, etc.) — wrap raw pointer as opaque binary.
     if (type == &ffi_type_pointer) return createBinaryValue(storage, sizeof(void*));
-    // LTV passthrough: C function returned a raw LTV* (owned, refcount 1).
-    // Adopt it into a CPtr without incrementing the refcount.
+    // LTV passthrough: C function returned a SlabId encoded as uint32_t.
+    // Decode and adopt it into a CPtr without incrementing the refcount.
     if (type == &ffi_type_ltv_handle) {
-        void* rawPtr = nullptr;
-        std::memcpy(&rawPtr, storage, sizeof(void*));
-        return raw_adopt_cptr(rawPtr);
+        uint32_t encoded;
+        std::memcpy(&encoded, storage, sizeof(encoded));
+        LTV ltv(static_cast<uint16_t>(encoded >> 16), static_cast<uint16_t>(encoded & 0xFFFF));
+        return ltv_adopt(ltv);
     }
     return createNullValue();
 }

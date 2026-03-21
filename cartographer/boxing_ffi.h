@@ -37,7 +37,7 @@
 // Both source/typeDef arguments to agentc_box() are BORROWED (not consumed).
 // The boxed argument to agentc_unbox() / agentc_box_free() is BORROWED.
 
-#include "../ltv_api.h"
+#include "ltv_api.h"
 
 #ifdef __cplusplus
 extern "C" {
