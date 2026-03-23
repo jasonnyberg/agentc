@@ -88,7 +88,7 @@ Token Tokenizer::nextToken() {
         tok = parseLiteral(input[position], skipped);
     }
     // Check for strings (used for JSON dict keys/values)
-    else if (input[position] == '"') {
+    else if (jsonMode && input[position] == '"') {
         tok = parseString(skipped);
     }
     // Check for quote-word form: 'word  (whitespace-terminated atom literal)
@@ -106,8 +106,8 @@ Token Tokenizer::nextToken() {
         input[position] == ':' || input[position] == ',' || input[position] == '&' || input[position] == '|') {
         tok = parseOperator(skipped);
     }
-    // Check for identifiers (digits allowed, * allowed for cursor prefix)
-    else if (std::isalnum(input[position]) || input[position] == '_' || input[position] == '.' || input[position] == '-' || input[position] == '$' || input[position] == '*') {
+    // Check for identifiers (digits allowed, * allowed for cursor prefix, utf-8 allowed)
+    else if (std::isalnum(input[position]) || input[position] == '_' || input[position] == '.' || input[position] == '-' || input[position] == '$' || input[position] == '*' || input[position] == '"' || (unsigned char)input[position] >= 0x80) {
         tok = parseIdentifier(skipped);
     }
     else {
@@ -182,7 +182,7 @@ Token Tokenizer::parseQuoteWord(bool hadSpaceBefore) {
     size_t start = position;
     
     // Regular identifier or number
-    while (position < input.length() && (std::isalnum(input[position]) || input[position] == '_' || input[position] == '.' || input[position] == '-' || input[position] == '$' || input[position] == '*')) {
+    while (position < input.length() && (std::isalnum(input[position]) || input[position] == '_' || input[position] == '.' || input[position] == '-' || input[position] == '$' || input[position] == '*' || input[position] == '"' || (unsigned char)input[position] >= 0x80)) {
         ++col_;
         position++;
     }

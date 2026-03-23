@@ -76,7 +76,7 @@ Special REPL commands:
 ### One-liner with `-e`
 
 ```sh
-./build/edict/edict -e "'hello 'world print'"
+./build/edict/edict -e "'hello 'world print"
 ```
 
 Output format:
@@ -150,7 +150,7 @@ Multi-word string literals use square brackets `[...]`:
 [hello \"world\"]   -- escape sequences supported
 ```
 
-**Note:** Double-quoted strings `"abc"` are **not valid** as standalone literals. They are only permitted inside JSON object / array literals `{ "key": "value" }` (see §4.4).
+**Note:** Double quotes `"` are not special characters in Edict. A token like `"abc"` is a valid standalone literal, but it simply pushes the string value `"abc"` (literally including the double quotes!). Double quotes only act as string delimiters inside JSON object / array literals `{ "key": "value" }` (see §4.4).
 
 Numbers in edict source are **strings**. There are no native integer or double literal types in the VM. Numeric-looking tokens like `42` or `3.14` are pushed as strings:
 
@@ -170,12 +170,12 @@ The language represents booleans as truthy/falsy values; there is no separate bo
 |-------|-----------|
 | Null | false |
 | Empty list `[]` | false |
-| Empty string `""` | false |
+| Empty string `[]` | false |
 | Any non-empty string | true |
 | Any list with items | true |
 | Any dict/object | true |
 
-Note: the string `"0"` is truthy (it is non-empty). Only the null value, empty list, and empty string are falsy.
+Note: the string `'0` is truthy (it is non-empty). Only the null value, empty list, and empty string are falsy.
 
 ### 4.3 Quoted Code Blocks (Thunks)
 
@@ -497,7 +497,7 @@ capture(1 2 3)
 collector
 ```
 
-The pattern `^name^` is: push `"name"`, then `SPLICE`. The splice op takes all items from the current data frame and appends them into the named node.
+The pattern `^name^` is: push `'name`, then `SPLICE`. The splice op takes all items from the current data frame and appends them into the named node.
 
 ### Bare `^`
 
@@ -853,7 +853,7 @@ The lambda receives a **copy** of the VM; mutations never affect the original.
 
 ## 18. Cursor Navigation
 
-The `cursor` capsule provides navigation over the Listree tree. Each operation pushes a boolean result (`"true"` or `"false"` as strings).
+The `cursor` capsule provides navigation over the Listree tree. Each operation pushes a boolean result (`'true` or `'false` as strings).
 
 ```edict
 cursor.down !   -- move to first child; push "true"/"false"
@@ -966,7 +966,7 @@ req resolver.import_collect ! @mylib
 '10 '32 mylib.add !
 ```
 
-The `status` field cycles through `"queued"` → `"running"` → `"ready"`.
+The `status` field cycles through `'queued` → `'running` → `'ready`.
 
 ### Pre-resolved import
 
@@ -987,8 +987,8 @@ Imported functions carry a `safety` metadata field:
 
 | Safety | Meaning |
 |--------|---------|
-| `"safe"` | Can be called without restriction |
-| `"unsafe"` | Blocked by default; requires `unsafe_extensions_allow` |
+| `'safe` | Can be called without restriction |
+| `'unsafe` | Blocked by default; requires `unsafe_extensions_allow` |
 
 ---
 
@@ -1108,7 +1108,7 @@ reset   -- clear VM_ERROR flag and error message; resume from error state
 
 | Opcode | Edict Syntax | Stack Effect / Behavior |
 |--------|-------------|------------------------|
-| `VMOP_PUSHEXT` | literal / `"string"` / `{ }` / `[ ]` | Push a value |
+| `VMOP_PUSHEXT` | literal / `'word` / `{ }` / `[ ]` | Push a value |
 | `VMOP_DUP` | `dup` | `(a -- a a)` |
 | `VMOP_SWAP` | `swap` | `(a b -- b a)` |
 | `VMOP_POP` | `pop` or bare `/` | `(a --)` |

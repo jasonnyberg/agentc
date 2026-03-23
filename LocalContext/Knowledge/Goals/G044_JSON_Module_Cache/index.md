@@ -4,7 +4,7 @@
 Implement a file-based JSON caching mechanism for imported modules to bypass slow `libclang` header parsing, instead of relying on complex LMDB memory pickling for external FFI handles.
 
 ## Status
-- Completed 2026-03-22. Replaced `libclang` parsing bottleneck by caching the JSON output of the resolver pipeline directly into `~/.cache/agentc/`. Caching is integrated into the C++ `EdictVM::op_IMPORT()`.
+- Completed 2026-03-22. Replaced `libclang` parsing bottleneck by caching the JSON output of the resolver pipeline directly into `~/.cache/agentc/`. Caching is integrated into the C++ `EdictVM::op_IMPORT()`. Test scripts created in `demo/demo_import_cache.sh` and `demo/test_import_cache.ed`.
 - Created 2026-03-22. Supersedes G043.
 
 ## Why This Exists

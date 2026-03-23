@@ -1,0 +1,9 @@
+# test unicode literals in edict
+
+'こんにちは @jp
+[👋🌍 hello world] @emoji
+"abc" @quotes
+
+jp print
+emoji print
+quotes print

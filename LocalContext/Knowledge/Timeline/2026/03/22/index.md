@@ -3,10 +3,19 @@
 ## Session 2140-2200
 🔗[Session Notes](./2140-2200/index.md) — HRM Bootstrap and project state verification.
 
+## Edict Lexer UTF-8 and Double Quotes Fix
+
+Wrote tests for UTF-8 literals and discovered that the previous string migration left the compiler discarding double-quoted strings and blocking Unicode characters in identifiers. 
+Updated `edict/edict_compiler.cpp` tokenizer to allow `"` as a valid identifier character (except inside JSON dicts) and added support for high-bit characters `(unsigned char)input[position] >= 0x80` to allow UTF-8 identifiers and words.
+Added `demo/test_unicode.ed` and `demo/test_unicode_id.ed` to verify.
+
+---
+
 ## G044 — JSON-based Module Import Caching — Complete
 
 Pivoted from G043 (LMDB pickling) to G044 (JSON caching). Implemented a file-based JSON cache in `EdictVM` to bypass the `libclang` parsing bottleneck during module imports. 
 The system now writes `resolver_json_v1` strings to `~/.cache/agentc/` upon successful module parsing and resolution, and automatically loads from this cache on subsequent executions. Cache validation is implemented using `mtime` comparisons between the cache file and the source `.h`/`.so` files.
+A test wrapper script `demo/demo_import_cache.sh` was added to verify cache hit/miss logic and automated invalidation testing.
 
 ---
 
@@ -38,9 +47,8 @@ namespace prefixing, or dispatch.
 
 ## Edict String Literal Migration — Complete
 
-Removed standalone double-quoted string literals (`"abc"`) from edict source syntax.
-The `TOKEN_STRING` arm was removed from `compileTerm()` in the compiler; only the new
-`'word` and `[multi word]` forms are now valid for pushing string values in edict code.
+Removed special parsing of standalone double-quoted string literals (`"abc"`) from edict source syntax.
+The `TOKEN_STRING` arm was removed from `compileTerm()` in the compiler; instead, `"abc"` is just parsed as a regular word token that includes the double quotes. The new `'word` and `[multi word]` forms are now the correct syntax for pushing string values without surrounding quotes in edict code.
 JSON dict syntax (`{ "key": "value" }`) is unaffected.
 
 ### Compiler changes
@@ -85,7 +93,7 @@ All standalone `"string"` literals replaced with `'word` (single token) or `[mul
 
 `LocalContext/Knowledge/WorkProducts/edict_language_reference.md` fully updated to reflect new syntax throughout all sections:
 
-- **§4.1 Strings**: new `'word` / `[multi word]` syntax documented; `"abc"` marked invalid standalone
+- **§4.1 Strings**: new `'word` / `[multi word]` syntax documented; `"abc"` documented as pushing the literal string `"abc"` (including quotes) instead of stripping them
 - **§15 Rewrite Rules**: pattern table updated (`'literal`, `'$0`, `'#atom`, `'#list`); mode examples (`'auto`/`'manual`/`'off`); manual-apply and remove examples
 - **§18 Cursor**: `"new value"` → `[new value]`
 - **§19 FFI**: all path strings and numeric arg strings updated (`'./libmylib.so`, `'10 '32`, `'mylib`, etc.) in load/parse/materialize/JSON-pipeline/deferred/pre-resolved examples

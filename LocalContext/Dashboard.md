@@ -60,6 +60,7 @@
 - None
 
 ### Completed Goals (recent)
+- ✅ G044 — JSON-based Module Import Caching — **COMPLETE** (2026-03-22). File-based JSON caching of resolver output implemented in `EdictVM` to bypass `libclang` overhead. Cache stored in `~/.cache/agentc/` with `mtime` invalidation. Included automated test `demo_import_cache.sh`.
 - ✅ G021 — Remove Module Name from Resolver Import API — **COMPLETE** (2026-03-22). `scopeName` removed from `ImportRequest`/`ImportResult` structs, all service methods, wire protocol (bumped to `protocol_v2`), all 4 VM opcodes, 2 thunks, service tests, callback tests, and language reference. 7/7 suites pass; all shell scripts pass.
 - ✅ G020 — Early type binding (`bindTypes()`) in `Mapper::materialize()` — `ns` param eliminated from boxing API; `BindTypesCreatesTypeDef` test added; 7/7 suites pass (2026-03-21)
 - ✅ Boxing nested struct support (2026-03-21) — `ns` param added to `agentc_box`/`agentc_unbox`; nested struct field lookup via namespace; `demo/demo_complex.h` with 10 scalar types + `InnerPoint` nested struct; `test_boxing_ffi.sh` 24/24; committed
@@ -142,7 +143,7 @@ Complete index of LOCAL knowledge. Load items relevant to your current task.
 ## Timeline Highlights
 
 ### Recent Events (Last 7 Days)
-- 🔗[2026-03-22: G044 JSON-based Module Import Caching Complete](./Knowledge/Timeline/2026/03/22/index.md) — Implemented JSON caching in C++ `EdictVM` bypassing slow `libclang` parsing. FFI modules are now loaded from `~/.cache/agentc/` JSON.
+- 🔗[2026-03-22: Lexer Unicode and Quotes Fix](./Knowledge/Timeline/2026/03/22/index.md) — Fixed lexer to allow double quotes and UTF-8 characters in Edict identifiers.
 - 🔗[2026-03-22: Session 2140-2200](./Knowledge/Timeline/2026/03/22/2140-2200/index.md) — HRM Bootstrap and project state verification
 - 🔗[2026-03-22: G021 module name removed + edict string literal migration](./Knowledge/Timeline/2026/03/22/index.md) — `scopeName` removed from entire resolver import API (structs, methods, wire protocol → `protocol_v2`, opcodes, thunks, tests); `TOKEN_STRING` removed from `compileTerm()`; `'word`/`[multi word]` syntax enforced; `edict_language_reference.md` fully updated; 7/7 suites pass
 - 🔗[2026-03-21: G019 SlabId Unification, G018 Phase D, G020 Early Type Binding, Cartographer CLI pipeline, agentc.sh wrappers](./Knowledge/Timeline/2026/03/21/index.md) — `LTV=SlabId`; VM boxing opcodes removed; `bindTypes()` pass; full 5-stage CLI pipeline; `agentc_test`/`agentc_demo`; 90/90 tests; `test_boxing_ffi.sh` 24/24; `test_cartographer_*.sh` 24/24 + 24/24 + 22/22
@@ -151,7 +152,7 @@ Complete index of LOCAL knowledge. Load items relevant to your current task.
 - 🔗[2026-03-16: Phase 1 and 2 Complete](./Knowledge/Timeline/2026/03/16/2200-2300/index.md) — Final build fix (`demo_capabilities.cpp`) and project wrap-up; all goals completed or deferred.
 
 ### Current Phase
-Phase 3: Active — G016, G017, G019, G020 complete. Cartographer CLI pipeline + `agentc.sh` wrappers complete. LMDB persistence goals (G040–G042) ready to proceed.
+Phase 3: Active — G016, G017, G019, G020, G044 complete. Cartographer CLI pipeline + `agentc.sh` wrappers complete. LMDB persistence goals (G040–G042) ready to proceed.
 
 ---
 
