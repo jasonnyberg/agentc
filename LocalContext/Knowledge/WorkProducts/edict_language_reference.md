@@ -76,7 +76,7 @@ Special REPL commands:
 ### One-liner with `-e`
 
 ```sh
-./build/edict/edict -e '"hello" "world" print'
+./build/edict/edict -e "'hello 'world print'"
 ```
 
 Output format:
@@ -133,10 +133,24 @@ The stack grows upward; "top" is the most recently pushed item.
 
 ### 4.1 Strings
 
+Single-word string literals use the `'word` prefix form (single-quote immediately before the word):
+
 ```edict
-"hello"           -- quoted string literal, pushed onto the stack
-"hello \"world\"" -- escape sequences supported
+'hello           -- pushes the string "hello"
+'hello_world     -- pushes the string "hello_world"
+'/usr/lib/foo.so -- paths work fine
+'42              -- pushes the string "42"
 ```
+
+Multi-word string literals use square brackets `[...]`:
+
+```edict
+[hello world]        -- pushes the string "hello world"
+[foo bar baz]        -- pushes "foo bar baz"
+[hello \"world\"]   -- escape sequences supported
+```
+
+**Note:** Double-quoted strings `"abc"` are **not valid** as standalone literals. They are only permitted inside JSON object / array literals `{ "key": "value" }` (see §4.4).
 
 Numbers in edict source are **strings**. There are no native integer or double literal types in the VM. Numeric-looking tokens like `42` or `3.14` are pushed as strings:
 
@@ -195,28 +209,28 @@ Arrays are only valid inside JSON object literals:
 ### `dup` — Duplicate the top
 
 ```edict
-"hello" dup
+'hello dup
 -- stack: [ "hello", "hello" ]
 ```
 
 ### `swap` — Swap top two items
 
 ```edict
-"a" "b" swap
+'a 'b swap
 -- stack: [ "a", "b" ]   (was [ "b", "a" ])
 ```
 
 ### `pop` — Discard the top
 
 ```edict
-"a" "b" pop
+'a 'b pop
 -- stack: [ "a" ]
 ```
 
 ### `/` (bare) — Also discards the top
 
 ```edict
-"a" "b" /
+'a 'b /
 -- stack: [ "a" ]
 ```
 
@@ -227,7 +241,7 @@ Arrays are only valid inside JSON object literals:
 ### Assignment: `@name`
 
 ```edict
-"alice" @name
+'alice @name
 -- assigns string "alice" to variable "name"
 -- stack is now empty (value was consumed)
 ```
@@ -250,7 +264,7 @@ not_defined
 ### Removing a variable: `/name`
 
 ```edict
-"hello" @x
+'hello @x
 /x
 x       -- falls back to pushing "x" (the string)
 -- stack: [ "x" ]
@@ -267,8 +281,8 @@ obj
 ### Assigning with the stack form
 
 ```edict
-"value"  "key"  @
--- equivalent to: "value" @key
+'value  'key  @
+-- equivalent to: 'value @key
 ```
 
 ---
@@ -285,7 +299,7 @@ obj
 4. **Source string**: if the value is a string (including `[bracketed]` thunks), compile and execute it
 
 ```edict
-["hello" "world"] !    -- compile and run "hello world"; stack: [ "world", "hello" ]
+['hello 'world] !    -- compile and run "'hello 'world"; stack: [ "world", "hello" ]
 dup !                  -- dup is a built-in thunk; stack: [ <top>, <top> ]
 ```
 
@@ -301,13 +315,13 @@ Brackets `[...]` push their content as a string without executing it. This is ho
 
 ```edict
 [print] @printer
-"hello" printer !
+'hello printer !
 -- prints "hello"
 ```
 
 ```edict
 [dup] @twice
-"foo" twice !
+'foo twice !
 -- stack: [ "foo", "foo" ]
 ```
 
@@ -340,7 +354,7 @@ Edict uses a **state-stack pattern** for conditionals, not bytecode jumps. The i
 ### `test` — consume top, mark as failure if falsy
 
 ```edict
-"1" test         -- truthy: state stack unchanged (continue normally)
+'1 test          -- truthy: state stack unchanged (continue normally)
 []  test         -- falsy:  pushes [] to STATE stack (marks failure)
 ```
 
@@ -364,30 +378,30 @@ When reached normally (no failure), `|` enters scan mode to skip the else-branch
 
 ```edict
 -- if/then/else:
-"1" test & ["yes"] @result | ["no"] @result
+'1 test & ['yes] @result | ['no] @result
 -- result == "yes"
 
 -- false branch:
-[] test & ["yes"] @result | ["no"] @result
+[] test & ['yes] @result | ['no] @result
 -- result == "no"
 
 -- if only (no else):
-"1" test & ["truthy"] @result
+'1 test & ['truthy] @result
 -- result == "truthy"
 
 -- if only with false condition: does nothing
-[] test & ["truthy"] @result
+[] test & ['truthy] @result
 -- result unset (resolves to "result" if accessed)
 
 -- explicit fail:
-"bad" fail & ["recovered"] @result | ["failed"] @result
+'bad fail & ['recovered] @result | ['failed] @result
 -- result == "failed"
 ```
 
 ### Nested conditionals
 
 ```edict
-"1" test & "1" test & ["inner"] @res | ["skip"] @res | ["skip"] @res
+'1 test & '1 test & ['inner] @res | ['skip] @res | ['skip] @res
 -- both pass; res == "inner"
 ```
 
@@ -403,7 +417,7 @@ The syntax `f([args...])` runs `f` in an **isolated stack frame** — arguments 
 
 ```edict
 [pop] @f
-"parent_item"
+'parent_item
 f()
 -- f runs "pop" in an isolated frame (which starts empty)
 -- pop on an empty isolated frame is a no-op inside the frame
@@ -414,7 +428,7 @@ f()
 
 ```edict
 [!] @eval
-eval(["hello"])
+eval(['hello])
 -- isolated frame has "hello", then ! evaluates it
 -- result "hello" is merged back to parent stack
 ```
@@ -423,7 +437,7 @@ eval(["hello"])
 
 ```edict
 [] @f
-f(["hello"] @x)
+f(['hello] @x)
 -- x is defined inside f's isolated frame
 x
 -- parent scope doesn't have x; resolves to "x" (the string)
@@ -433,7 +447,7 @@ x
 
 ```edict
 [dup] @f
-f(["hello"])
+f(['hello])
 -- isolated frame: "hello" dup → "hello" "hello"
 -- both merge back to parent
 -- stack: [ "hello", "hello" ]
@@ -444,7 +458,7 @@ f(["hello"])
 ```edict
 [dup] @f
 [f !] @g
-g(["nested"])
+g(['nested])
 -- g's isolated frame: "nested", then f! which dups it
 -- result: "nested" "nested" merged to parent
 ```
@@ -457,7 +471,7 @@ g(["nested"])
 
 ```edict
 <
-  "local" @x
+  'local @x
   x
 >
 -- scope produces "local" on the parent stack
@@ -541,14 +555,14 @@ When you use `<dict>`, that dict becomes the current innermost scope:
 `speculate [code]` runs code in a **completely isolated snapshot** of the VM. Side effects never reach the host VM. The result (top of the speculative stack) is returned to the host on success; a Null value is returned on failure.
 
 ```edict
-"baseline"
-speculate ["trial"]
+'baseline
+speculate [trial]
 -- stack: [ "trial", "baseline" ]
 -- "baseline" is unchanged; "trial" came from the speculation
 ```
 
 ```edict
-"baseline"
+'baseline
 speculate [swap]   -- swap fails on an empty speculative stack
 -- stack: [ <null>, "baseline" ]
 -- null indicates failure; baseline is preserved
@@ -561,7 +575,7 @@ speculate [swap]   -- swap fails on an empty speculative stack
 - Safe exploration of state changes
 
 ```edict
-"safe"
+'safe
 speculate [risky_operation !]
 test & [use_result !] | [use_fallback !]
 ```
@@ -585,10 +599,10 @@ The rule object is returned on the stack after registration (pop with `/` if not
 
 | Pattern token | Meaning |
 |---|---|
-| `"literal"` | Match that exact string |
-| `"$0"`, `"$1"`, ... | Wildcard: capture the nth matched item |
-| `"#atom"` | Match any non-list, non-dict value |
-| `"#list"` | Match any list-mode value |
+| `'literal` | Match that exact string |
+| `'$0`, `'$1`, ... | Wildcard: capture the nth matched item |
+| `'#atom` | Match any non-list, non-dict value |
+| `'#list` | Match any list-mode value |
 
 **Longest match wins.** On a tie (equal length patterns), the earlier-registered rule wins.
 
@@ -616,17 +630,17 @@ The rule object is returned on the stack after registration (pop with `/` if not
 ### Rewrite mode
 
 ```edict
-"auto"    rewrite_mode !  -- default: auto-trigger after every instruction (up to 16 steps)
-"manual"  rewrite_mode !  -- only trigger when rewrite_apply ! is called
-"off"     rewrite_mode !  -- never trigger
+'auto    rewrite_mode !  -- default: auto-trigger after every instruction (up to 16 steps)
+'manual  rewrite_mode !  -- only trigger when rewrite_apply ! is called
+'off     rewrite_mode !  -- never trigger
 ```
 
 ### Manual apply
 
 ```edict
-"manual" rewrite_mode ! /
+'manual rewrite_mode ! /
 { "pattern": ["x"], "replacement": ["hit"] } rewrite_define ! /
-"x"
+'x
 rewrite_apply !
 -- stack: [ <trace object> ]
 -- trace has: status="matched", index="0", mode="manual"
@@ -642,12 +656,12 @@ rewrite_list !
 ### Removing a rule
 
 ```edict
-"0" rewrite_remove !
+'0 rewrite_remove !
 -- removes rule at index 0; returns the removed rule object
 ```
 
 ```edict
-"9" rewrite_remove !
+'9 rewrite_remove !
 -- out-of-range index → VM_ERROR: "rewrite rule index out of range"
 ```
 
@@ -667,7 +681,7 @@ A self-referential rule (`"x" → "x"`) will not loop forever — the VM has a p
 
 ```edict
 { "pattern": ["dup", "dot", "sqrt"], "replacement": ["magnitude"] } rewrite_define !
-"dup" "dot" "sqrt"
+'dup 'dot 'sqrt
 -- stack: [ "magnitude" ]   (rewritten automatically)
 ```
 
@@ -863,7 +877,7 @@ test & [
 ### Example: set a value
 
 ```edict
-"new value"
+[new value]
 cursor.set !
 ```
 
@@ -888,21 +902,21 @@ After boot, `parser` and `resolver` are available in the global scope.
 ### Load a shared library
 
 ```edict
-"./libmylib.so" resolver.load !
+'./libmylib.so resolver.load !
 -- stack: [ <library handle or status> ]
 ```
 
 ### Parse a header
 
 ```edict
-"./mylib.h" parser.map ! @defs
+'./mylib.h parser.map ! @defs
 -- defs now contains function definitions parsed from the header
 ```
 
 ### Call an imported function
 
 ```edict
-"10" "32" defs.add !
+'10 '32 defs.add !
 -- calls the native `add(int, int)` function with args "10" and "32"
 -- the FFI layer converts the string arguments to C ints at the call boundary
 -- stack: [ "42" ]
@@ -911,8 +925,8 @@ After boot, `parser` and `resolver` are available in the global scope.
 ### Full import (parse + resolve in one step)
 
 ```edict
-"./libmylib.so" "./mylib.h" "mylib" resolver.import ! @mylib
-"10" "32" mylib.add !
+'./libmylib.so './mylib.h 'mylib resolver.import ! @mylib
+'10 '32 mylib.add !
 -- stack: [ "42" ]
 ```
 
@@ -923,17 +937,17 @@ After import, `mylib.__cartographer.status` reflects the import outcome.
 For full control over the parse/resolve pipeline:
 
 ```edict
-"./mylib.h"     parser.parse_json !    @schema_json
-"./libmylib.so" schema_json resolver.resolve_json !  @resolved_json
-resolved_json   "mylib" resolver.import_resolved_json ! @mylib
+'./mylib.h     parser.parse_json !    @schema_json
+'./libmylib.so schema_json resolver.resolve_json !  @resolved_json
+resolved_json   'mylib resolver.import_resolved_json ! @mylib
 ```
 
 ### Materialize pipeline (alternative)
 
 ```edict
-"./mylib.h"   parser.parse_json !
+'./mylib.h   parser.parse_json !
               parser.materialize_json ! @defs
-"10" "32" defs.add !
+'10 '32 defs.add !
 ```
 
 ### Deferred (async) import
@@ -941,7 +955,7 @@ resolved_json   "mylib" resolver.import_resolved_json ! @mylib
 For large libraries, import can run asynchronously:
 
 ```edict
-"./mylib.h" "./libmylib.so" "mylib" resolver.import_deferred ! @req
+'./mylib.h './libmylib.so 'mylib resolver.import_deferred ! @req
 
 -- Poll status:
 req resolver.import_status ! @status
@@ -949,7 +963,7 @@ req resolver.import_status ! @status
 
 -- Collect result when ready:
 req resolver.import_collect ! @mylib
-"10" "32" mylib.add !
+'10 '32 mylib.add !
 ```
 
 The `status` field cycles through `"queued"` → `"running"` → `"ready"`.
@@ -957,13 +971,13 @@ The `status` field cycles through `"queued"` → `"running"` → `"ready"`.
 ### Pre-resolved import
 
 ```edict
-resolved_json "./libmylib.so" "mylib" resolver.import_resolved ! @mylib
+resolved_json './libmylib.so 'mylib resolver.import_resolved ! @mylib
 ```
 
 ### Reading a text file
 
 ```edict
-"./myfile.txt" resolver.__native.read_text !
+'./myfile.txt resolver.__native.read_text !
 -- stack: [ <file contents as string> ]
 ```
 
@@ -1033,11 +1047,11 @@ Attempting to call an unsafe function while blocked produces `VM_ERROR: "Cartogr
 ## 22. Output
 
 ```edict
-"hello, world" print
+[hello, world] print
 -- prints "hello, world" to stdout
 -- pops the value from the stack
 
-"42" print
+'42 print
 -- prints "42"
 
 [] print
@@ -1118,7 +1132,7 @@ reset   -- clear VM_ERROR flag and error message; resume from error state
 | `VMOP_REWRITE_LIST` | `rewrite_list !` | List all rules |
 | `VMOP_REWRITE_REMOVE` | `rewrite_remove !` | Remove rule by index |
 | `VMOP_REWRITE_APPLY` | `rewrite_apply !` | Manually trigger one rewrite step |
-| `VMOP_REWRITE_MODE` | `rewrite_mode !` | Set mode: `"auto"` / `"manual"` / `"off"` |
+| `VMOP_REWRITE_MODE` | `rewrite_mode !` | Set mode: `'auto` / `'manual` / `'off` |
 | `VMOP_REWRITE_TRACE` | `rewrite_trace !` | Push last rewrite trace object |
 | `VMOP_CURSOR_DOWN` | `cursor.down !` | Move cursor to first child |
 | `VMOP_CURSOR_UP` | `cursor.up !` | Move cursor to parent |
@@ -1155,16 +1169,16 @@ reset   -- clear VM_ERROR flag and error message; resume from error state
 -- performed by native (FFI) functions, not native edict opcodes.
 -- The example below is pseudocode illustrating the control-flow idiom.
 
-"0" @a
-"1" @b
-"10" @n
+'0 @a
+'1 @b
+'10 @n
 
 [
   n test & [
     a b math.add ! @next    -- native add: a + b
     b @a
     next @b
-    n "1" math.sub ! @n     -- native sub: n - 1
+    n '1 math.sub ! @n     -- native sub: n - 1
     fib !                   -- tail-recursive call
   ] | []
 ] @fib
@@ -1176,14 +1190,14 @@ fib !
 ### A.2 Stack-based string processing
 
 ```edict
-"hello" @greeting
-"world" @subject
+'hello @greeting
+'world @subject
 
 -- Build a greeting string via rewrite rule
 { "pattern": ["$1", "$2", "greet"], "replacement": ["$1 $2"] }
 rewrite_define ! /
 
-greeting subject "greet"
+greeting subject 'greet
 -- rewrite fires automatically: stack now has "hello world"
 ```
 
@@ -1202,11 +1216,11 @@ logic {
 ### A.4 Speculative probe with fallback
 
 ```edict
-"default"
+'default
 
 -- Try to run a computation that might fail:
 speculate [
-  "primary_result"
+  'primary_result
   -- ... complex work that might error ...
 ]
 
@@ -1223,9 +1237,9 @@ dup test
 [^results^] @capture
 
 capture(
-  "first"
-  "second"
-  "third"
+  'first
+  'second
+  'third
 )
 -- results.isListMode() == true; contains ["first", "second", "third"]
 results
@@ -1235,14 +1249,15 @@ results
 
 ```edict
 -- Define normalization rules (strings only — no native arithmetic)
-{ "pattern": ["\"\"", "concat"], "replacement": [] } rewrite_define ! /
-{ "pattern": ["concat", "\"\""], "replacement": [] } rewrite_define ! /
+-- Note: the pattern token "" (empty string) is a JSON string in the pattern array
+{ "pattern": ["", "concat"], "replacement": [] } rewrite_define ! /
+{ "pattern": ["concat", ""], "replacement": [] } rewrite_define ! /
 
 -- In auto mode, these fire after each instruction:
-"" "hello" concat
--- After "": stack = [""]
--- After "hello": stack = ["hello", ""]
--- After "concat": stack = [<result>]
+[] 'hello concat
+-- After []: stack = [""]
+-- After 'hello: stack = ["hello", ""]
+-- After concat: stack = [<result>]
 -- Rewrite fires: "" is identity; result simplified to "hello"
 ```
 

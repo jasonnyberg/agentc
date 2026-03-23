@@ -2,17 +2,15 @@
 
 **Project**: AgentC / J3 (transitional name — also called AgentLang)  
 **Primary Goal**: G001 — Codebase Review: Optimization and Redundancy/Inconsistency Analysis  
-**Last Updated**: 2026-03-21
-
----
+**Last Updated**: 2026-03-22
 
 ## Current Focus
 
 **Active Goals**: None
-**Status**: G002–G013 Complete. G014 Cancelled. G016–G020 Complete. G018 Phase D **fully complete** (VM boxing opcodes removed, pure FFI path via `evalDispatchFFI`). Namespace migration `j3` → `agentc` complete. Directory restructure complete. **G020: Early type binding — `bindTypes()` post-parse pass; `ns` param eliminated from entire boxing API. 7/7 test suites pass (90/90+ tests). `test_boxing_ffi.sh` 24/24. `demo_boxing.sh` clean.**
-**Last Updated**: 2026-03-21
+**Status**: G002–G013 Complete. G014 Cancelled. G016–G020 Complete. G018 Phase D **fully complete** (VM boxing opcodes removed, pure FFI path via `evalDispatchFFI`). Namespace migration `j3` → `agentc` complete. Directory restructure complete. **G020: Early type binding — `bindTypes()` post-parse pass; `ns` param eliminated from entire boxing API. 7/7 test suites pass (90/90+ tests). `test_boxing_ffi.sh` 24/24. `demo_boxing.sh` clean.** **Edict string literal migration complete — `"abc"` standalone syntax removed; `'word`/`[multi word]` syntax enforced; `edict_language_reference.md` fully updated.**
+**Last Updated**: 2026-03-22
 
-**Active Task**: None — G020 early type binding complete. Recommended next: LMDB persistence goals (G040–G042).
+**Active Task**: None — Edict string literal migration complete. `edict_language_reference.md` fully updated. Recommended next: LMDB persistence goals (G040–G042).
 
 **Previous Active Task**: G020 — Early Type Binding (`bindTypes()`) — **COMPLETE** (2026-03-21). `bindTypes()` pass added to `Mapper::materialize()`; resolves `"struct X"` field types into `type_def` CPtr children. `ns` param fully removed from `box()`/`unbox()`/`packStruct()`/`unpackStruct()`, C ABI, edict bootstrap, unit tests, and demo/test scripts. New `BindTypesCreatesTypeDef` test in `mapper_tests.cpp`; `Rect` struct added to `test_input.h`.
 
@@ -34,6 +32,10 @@
 **Completed Task**: demo_capabilities.cpp build fix (2026-03-16)
 
 **Accomplishments**:
+- ✅ agentc.sh wrappers: all 7 CLI tools wrapped; `agentc_schema`/`agentc_resolve` pipeline compositions; `agentc_test` (9/9 PASS) + `agentc_demo` meta-functions (2026-03-21)
+- ✅ Cartographer CLI pipeline: `cartographer_dump`→`cartographer_parse`→`cartographer_schema_inspect`→`cartographer_resolve`→`cartographer_resolve_inspect`; test scripts 24/24 + 24/24 + 22/22 (2026-03-21)
+- ✅ doc/AgentC.md deleted: pre-implementation design doc with inaccurate syntax superseded by README.md + edict_language_reference.md (2026-03-21)
+- ✅ G020: Early type binding — `bindTypes()` post-parse pass; `ns` param eliminated from entire boxing API; `BindTypesCreatesTypeDef` test; `test_boxing_ffi.sh` 24/24 (2026-03-21)
 - ✅ G017: Edict stdin/file script mode — `runScript(istream&)`; `edict -` and `edict FILE` CLI modes; `#` comments; 7/7 suites pass (2026-03-20)
 - ✅ G016: LMDB optional compile-time build — `AGENTC_WITH_LMDB` CMake option (default OFF); guards in 5 files; 7/7 suites pass (2026-03-20)
 - ✅ G001: Full codebase review completed, producing `doc/code-review.md` (32 issues).
@@ -118,7 +120,7 @@ Complete index of LOCAL knowledge. Load items relevant to your current task.
         - G016 — LMDB Optional Compile-Time Build — **Complete** 🔗[index](./Knowledge/Goals/G016-LmdbOptionalBuild/index.md)
         - G017 — Edict Stdin/File Script Mode — **Complete** 🔗[index](./Knowledge/Goals/G017-EdictScriptMode/index.md)
         - G018 — FFI LTV Passthrough — **Complete (via G019)** 🔗[index](./Knowledge/Goals/G018-FfiLtvPassthrough/index.md)
-        - G020 — Early Type Binding (`bindTypes()`) — **Complete** (2026-03-21)
+        - G020 — Early Type Binding (`bindTypes()`) — **Complete** (2026-03-21) 🔗[index](./Knowledge/Goals/G020-EarlyTypeBinding/index.md)
         - G019 — SlabId LTV Type Unification — **Complete** 🔗[index](./Knowledge/Goals/G019-SlabIdLtvUnification/index.md)
 
 ### Facts
@@ -139,12 +141,13 @@ Complete index of LOCAL knowledge. Load items relevant to your current task.
 ## Timeline Highlights
 
 ### Recent Events (Last 7 Days)
+- 🔗[2026-03-21: G019 SlabId Unification, G018 Phase D, G020 Early Type Binding, Cartographer CLI pipeline, agentc.sh wrappers](./Knowledge/Timeline/2026/03/21/index.md) — `LTV=SlabId`; VM boxing opcodes removed; `bindTypes()` pass; full 5-stage CLI pipeline; `agentc_test`/`agentc_demo`; 90/90 tests; `test_boxing_ffi.sh` 24/24; `test_cartographer_*.sh` 24/24 + 24/24 + 22/22
 - 🔗[2026-03-20: G017 Edict Script Mode + G016 LMDB Optional Build](./Knowledge/Timeline/2026/03/20/index.md) — `runScript(istream&)`, `edict -`/`edict FILE` CLI modes; `AGENTC_WITH_LMDB` CMake option; 74/74 tests pass
 - 🔗[2026-03-16: HRM Bootstrap + Codebase Review](./Knowledge/Timeline/2026/03/16/0000-0200/index.md) — Initial HRM structure; full code review; G002–G013 created
 - 🔗[2026-03-16: Phase 1 and 2 Complete](./Knowledge/Timeline/2026/03/16/2200-2300/index.md) — Final build fix (`demo_capabilities.cpp`) and project wrap-up; all goals completed or deferred.
 
 ### Current Phase
-Phase 3: Active — G016 and G017 complete. LMDB persistence goals (G040–G042) ready to proceed.
+Phase 3: Active — G016, G017, G019, G020 complete. Cartographer CLI pipeline + `agentc.sh` wrappers complete. LMDB persistence goals (G040–G042) ready to proceed.
 
 ---
 

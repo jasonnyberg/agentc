@@ -56,7 +56,8 @@ void test_splice_postfix() {
     // x       ; push x to verify
     
     std::string source = R"(
-        "x" [] @   
+                'x []   
+ @   
         [^x^](1 2 3)
         x
     )";

@@ -87,9 +87,13 @@ Token Tokenizer::nextToken() {
     if (input[position] == '[' && !jsonMode) {
         tok = parseLiteral(input[position], skipped);
     }
-    // Check for strings
+    // Check for strings (used for JSON dict keys/values)
     else if (input[position] == '"') {
         tok = parseString(skipped);
+    }
+    // Check for quote-word form: 'word  (whitespace-terminated atom literal)
+    else if (input[position] == '\'') {
+        tok = parseQuoteWord(skipped);
     }
     // Check for context operators
     else if (input[position] == '{' || input[position] == '}' || input[position] == '<' || input[position] == '>' || 
@@ -161,6 +165,17 @@ Token Tokenizer::parseString(bool hadSpaceBefore) {
     }
     
     return {TOKEN_STRING, input.substr(start, position - start), start, hadSpaceBefore};
+}
+
+Token Tokenizer::parseQuoteWord(bool hadSpaceBefore) {
+    size_t start = position;
+    ++col_; position++; // skip the leading '
+    size_t wordStart = position;
+    while (position < input.length() && !std::isspace(input[position])) {
+        ++col_;
+        position++;
+    }
+    return {TOKEN_QUOTE, input.substr(wordStart, position - wordStart), start, hadSpaceBefore};
 }
 
     Token Tokenizer::parseIdentifier(bool hadSpaceBefore) {
@@ -249,9 +264,9 @@ void EdictCompiler::compileTerm() {
     }
     if (match(TOKEN_LITERAL)) {
         compileLiteral();
-    } else if (match(TOKEN_STRING)) {
-        std::string s = currentToken.value.substr(1, currentToken.value.length() - 2);
-        emitValue(Value(s));
+    } else if (match(TOKEN_QUOTE)) {
+        // 'word — single-quote prefix literal: push bare string, no dictionary lookup
+        emitValue(Value(currentToken.value));
         nextToken();
     } else if (match(TOKEN_IDENTIFIER)) {
         compileIdentifier();

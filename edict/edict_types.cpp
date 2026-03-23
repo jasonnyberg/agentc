@@ -119,7 +119,7 @@ Dictionary Dictionary::deserialize(const std::string& data) {
         pos = semicolon + 1;
         
         // Parse value (simplified for now)
-        Value value;
+        Value value = Value(); // default-initialize to null
         if (valueStr == "null") {
             value = Value(nullptr);
         } else if (valueStr == "true") {

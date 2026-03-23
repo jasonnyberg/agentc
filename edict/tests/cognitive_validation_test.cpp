@@ -56,7 +56,7 @@ TEST(CognitiveValidationTest, TransactionRollbackContainsLogicAndRewriteExecutio
     ASSERT_TRUE(logicResult->isListMode());
 
     executeScript(vm, R"(
-        "dup" "dot" "sqrt"
+        'dup 'dot 'sqrt
     )");
 
     auto rewriteResult = vm.popData();
@@ -94,7 +94,7 @@ TEST(CognitiveValidationTest, TransactionRollbackRemovesTransientRewriteRules) {
     ASSERT_EQ(vm.getRewriteRuleCount(), 1u);
 
     executeScript(vm, R"(
-        "temp"
+        'temp
     )");
 
     auto result = vm.popData();

@@ -95,7 +95,6 @@ enum VMOpcode {
     VMOP_BOOTSTRAP_CURATE_PARSER,
     VMOP_BOOTSTRAP_CURATE_RESOLVER,
     VMOP_BOOTSTRAP_CURATE_CARTOGRAPHER,
-    VMOP_CALL,
     VMOP_CLOSURE,
     VMOP_LOGIC_RUN,
     VMOP_REWRITE_DEFINE,
@@ -203,8 +202,8 @@ public:
 class Value {
 public:
     // Constructors
-    Value() : type(ValueType::VALUE_NULL) {}
-    Value(std::nullptr_t) : type(ValueType::VALUE_NULL) {}
+    Value() : type(ValueType::VALUE_NULL), boolValue(false) {}
+    Value(std::nullptr_t) : type(ValueType::VALUE_NULL), boolValue(false) {}
     Value(bool b) : type(ValueType::VALUE_BOOL), boolValue(b) {}
     Value(const std::string& s) : type(ValueType::VALUE_STRING), stringValue(s) {}
     Value(const char* s) : type(ValueType::VALUE_STRING), stringValue(s) {}

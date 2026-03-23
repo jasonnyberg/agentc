@@ -32,6 +32,7 @@ enum TokenType {
     TOKEN_FUNCTION_OPEN,
     TOKEN_FUNCTION_CLOSE,
     TOKEN_STRING,
+    TOKEN_QUOTE,   // 'word — single-quote prefix, whitespace-terminated literal
     TOKEN_COLON,
     TOKEN_COMMA,
     TOKEN_EOF
@@ -69,6 +70,7 @@ private:
     bool skipWhitespace();
     Token parseLiteral(char openChar, bool hadSpaceBefore);
     Token parseString(bool hadSpaceBefore);
+    Token parseQuoteWord(bool hadSpaceBefore);
     Token parseIdentifier(bool hadSpaceBefore);
     Token parseOperator(bool hadSpaceBefore);
     Token parseContextOperator(bool hadSpaceBefore);

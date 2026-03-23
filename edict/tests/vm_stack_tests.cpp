@@ -104,13 +104,13 @@ TEST_F(VMStackTest, ExplicitFail) {
 }
 
 TEST_F(VMStackTest, InvalidComposedDereferenceThrowsAndCatchRecovers) {
-    execute("\"first\" @name \"second\" @name -name- & [ok] @res | [caught] @res");
+    execute("'first @name 'second @name -name- & [ok] @res | [caught] @res");
     execute("res");
     EXPECT_EQ(valueToString(vm.getStackTop()), "caught");
 }
 
 TEST_F(VMStackTest, SpeculateLiteralReturnsResultWithoutChangingBaseline) {
-    execute("\"baseline\" speculate [\"trial\"]");
+    execute("'baseline speculate [trial]");
 
     auto speculative = vm.popData();
     ASSERT_TRUE(speculative);
@@ -122,7 +122,7 @@ TEST_F(VMStackTest, SpeculateLiteralReturnsResultWithoutChangingBaseline) {
 }
 
 TEST_F(VMStackTest, SpeculateFailureReturnsNullWithoutChangingBaseline) {
-    execute("\"baseline\" speculate [swap]");
+    execute("'baseline speculate [swap]");
 
     auto speculative = vm.popData();
     ASSERT_TRUE(speculative);

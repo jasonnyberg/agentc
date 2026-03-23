@@ -261,7 +261,7 @@ TEST(CallbackTest, Closure) {
     auto applyDef = make_apply_op_definition();
 
     auto callbackSignature = make_callback_signature();
-    auto callbackThunk = agentc::createStringValue("[ pop pop \"42\" ]");
+    auto callbackThunk = agentc::createStringValue("[ pop pop '42 ]");
     vm.pushData(callbackSignature);
     vm.pushData(callbackThunk);
 
@@ -306,7 +306,7 @@ TEST(CallbackTest, ClosureFromParamSignature) {
 
     ASSERT_TRUE(vm.ffi->loadLibrary(libPath));
     auto applyDef = make_apply_op_definition_with_signature();
-    auto callbackThunk = agentc::createStringValue("[ pop pop \"42\" ]");
+    auto callbackThunk = agentc::createStringValue("[ pop pop '42 ]");
 
     int a = 10;
     int b = 20;
@@ -333,8 +333,8 @@ TEST(CallbackTest, EdictBuiltinsMapLoadAndInvokeCartographerFunction) {
     const std::string libPath = std::string(TEST_BUILD_DIR) + "/libagentmath_poc.so";
     const std::string headerPath = std::string(TEST_SOURCE_DIR) + "/libagentmath_poc.h";
     const std::string source =
-        "\"" + libPath + "\" resolver.load ! "
-        "\"" + headerPath + "\" parser.map ! @defs "
+        "[" + libPath + "] resolver.load ! "
+        "[" + headerPath + "] parser.map ! @defs "
         "10 32 defs.add !";
 
     BytecodeBuffer bc = compiler.compile(source);
@@ -350,7 +350,7 @@ TEST(CallbackTest, LoadBuiltinReportsMissingLibrary) {
     EdictVM vm;
     EdictCompiler compiler;
 
-    BytecodeBuffer bc = compiler.compile("\"/tmp/definitely_missing_j3_lib.so\" resolver.load !");
+    BytecodeBuffer bc = compiler.compile("'/tmp/definitely_missing_j3_lib.so resolver.load !");
     int state = vm.execute(bc);
 
     ASSERT_TRUE(state & VM_ERROR);
@@ -444,9 +444,9 @@ TEST(CallbackTest, ImportBuiltinInjectsDefinitionsAndInvokesImmediately) {
     const std::string libPath = std::string(TEST_BUILD_DIR) + "/libagentmath_poc.so";
     const std::string headerPath = std::string(TEST_SOURCE_DIR) + "/libagentmath_poc.h";
     const std::string source =
-        "\"" + libPath + "\" "
-        "\"" + headerPath + "\" "
-        "\"defs\" resolver.import ! @defs "
+        "[" + libPath + "] "
+        "[" + headerPath + "] "
+        "'defs resolver.import ! @defs "
         "defs.add.safety "
         "10 32 defs.add !";
 
@@ -470,9 +470,9 @@ TEST(CallbackTest, InterpretedImportPipelineCanRoundTripThroughJson) {
     const std::string libPath = std::string(TEST_BUILD_DIR) + "/libagentmath_poc.so";
     const std::string headerPath = std::string(TEST_SOURCE_DIR) + "/libagentmath_poc.h";
     const std::string source =
-        "\"" + headerPath + "\" parser.parse_json ! @schema "
-        "\"" + libPath + "\" schema resolver.resolve_json ! @resolved "
-        "resolved \"defs\" resolver.import_resolved_json ! @defs "
+        "[" + headerPath + "] parser.parse_json ! @schema "
+        "[" + libPath + "] schema resolver.resolve_json ! @resolved "
+        "resolved 'defs resolver.import_resolved_json ! @defs "
         "defs.add.safety "
         "10 32 defs.add !";
 
@@ -507,8 +507,8 @@ TEST(CallbackTest, ParserMapCanRoundTripThroughJson) {
     const std::string libPath = std::string(TEST_BUILD_DIR) + "/libagentmath_poc.so";
     const std::string headerPath = std::string(TEST_SOURCE_DIR) + "/libagentmath_poc.h";
     const std::string source =
-        "\"" + libPath + "\" resolver.load ! "
-        "\"" + headerPath + "\" parser.parse_json ! parser.materialize_json ! @defs "
+        "[" + libPath + "] resolver.load ! "
+        "[" + headerPath + "] parser.parse_json ! parser.materialize_json ! @defs "
         "10 32 defs.add !";
 
     BytecodeBuffer bc = compiler.compile(source);
@@ -542,9 +542,9 @@ TEST(CallbackTest, SourceLevelUnsafeExtensionPolicyCanAllowAndReblock) {
     const std::string headerPath = std::string(TEST_SOURCE_DIR) + "/libagentmath_poc.h";
 
     BytecodeBuffer importDefs = compiler.compile(
-        "\"" + libPath + "\" "
-        "\"" + headerPath + "\" "
-        "\"defs\" resolver.import ! dup @defs");
+        "[" + libPath + "] "
+        "[" + headerPath + "] "
+        "'defs resolver.import ! dup @defs");
     int state = vm.execute(importDefs);
     ASSERT_FALSE(state & VM_ERROR) << vm.getError();
 
@@ -592,9 +592,9 @@ TEST(CallbackTest, DeferredImportStatusReturnsHandleSnapshot) {
     const std::string headerPath = std::string(TEST_SOURCE_DIR) + "/libagentmath_poc.h";
 
     BytecodeBuffer queueImport = compiler.compile(
-        "\"" + libPath + "\" "
-        "\"" + headerPath + "\" "
-        "\"defs\" resolver.import_deferred ! dup resolver.import_status !");
+        "[" + libPath + "] "
+        "[" + headerPath + "] "
+        "'defs resolver.import_deferred ! dup resolver.import_status !");
     int state = vm.execute(queueImport);
     ASSERT_FALSE(state & VM_ERROR) << vm.getError();
 
@@ -649,9 +649,9 @@ TEST(CallbackTest, DeferredImportCollectCanUseHandleThroughRequestIdWrapper) {
     const std::string headerPath = std::string(TEST_SOURCE_DIR) + "/libagentmath_poc.h";
 
     BytecodeBuffer queueImport = compiler.compile(
-        "\"" + libPath + "\" "
-        "\"" + headerPath + "\" "
-        "\"defs\" resolver.import_deferred !");
+        "[" + libPath + "] "
+        "[" + headerPath + "] "
+        "'defs resolver.import_deferred !");
     int state = vm.execute(queueImport);
     ASSERT_FALSE(state & VM_ERROR) << vm.getError();
 
@@ -733,8 +733,8 @@ TEST(CallbackTest, ImportResolvedInjectsDefinitionsAndInvokesImmediately) {
     output.close();
 
     BytecodeBuffer importCode = compiler.compile(
-        "\"" + resolvedPath.string() + "\" "
-        "\"defs\" resolver.import_resolved ! dup @defs 10 32 defs.add !");
+        "[" + resolvedPath.string() + "] "
+        "'defs resolver.import_resolved ! dup @defs 10 32 defs.add !");
     int state = vm.execute(importCode);
     ASSERT_FALSE(state & VM_ERROR) << vm.getError();
 
@@ -782,8 +782,8 @@ TEST(CallbackTest, EdictCliImportResolvedDemoPrintsExpectedResult) {
     output.close();
 
     const std::string source =
-        "\"" + resolvedPath.string() + "\" "
-        "\"defs\" resolver.import_resolved ! dup @defs 10 32 defs.add !";
+        "[" + resolvedPath.string() + "] "
+        "'defs resolver.import_resolved ! dup @defs 10 32 defs.add !";
 
     ProcessResult result = runProcess(makeArgList({edictPath.string(), "-e", source}));
     ASSERT_EQ(result.exitCode, 0) << result.stderrText;

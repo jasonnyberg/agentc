@@ -23,7 +23,7 @@ using namespace agentc::edict;
 TEST(SimpleAssignTest, DictAssignment) {
     EdictVM vm;
     std::string script = R"(
-        "mykey"
+        'mykey
         { "a": 1, "b": 2 }
         @
         

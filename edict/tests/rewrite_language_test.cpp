@@ -100,7 +100,7 @@ TEST(RewriteLanguageTest, EndToEndSourceRuleAffectsExecution) {
     executeScript(vm, R"(
         {"pattern": ["dup", "dot", "sqrt"], "replacement": ["magnitude"]}
         rewrite_define ! /
-        "dup" "dot" "sqrt"
+        'dup 'dot 'sqrt
     )");
 
     auto result = vm.popData();
@@ -138,7 +138,7 @@ TEST(RewriteLanguageTest, RewriteRemoveDeletesRuleByIndex) {
         rewrite_define ! /
         {"pattern": ["beta"], "replacement": ["second"]}
         rewrite_define ! /
-        "0" rewrite_remove ! /
+        '0 rewrite_remove ! /
         rewrite_list !
     )");
 
@@ -149,14 +149,14 @@ TEST(RewriteLanguageTest, RewriteRemoveDeletesRuleByIndex) {
     EXPECT_EQ(stringValue(listItems(rules[0]->find("pattern")->getValue(false, false))[0]), "beta");
 
     executeScript(vm, R"(
-        "alpha"
+        'alpha
     )");
     auto alpha = vm.popData();
     ASSERT_TRUE(alpha);
     EXPECT_EQ(stringValue(alpha), "alpha");
 
     executeScript(vm, R"(
-        "beta"
+        'beta
     )");
     auto beta = vm.popData();
     ASSERT_TRUE(beta);
@@ -168,7 +168,7 @@ TEST(RewriteLanguageTest, RewriteRemoveRejectsOutOfRangeIndex) {
     auto code = EdictCompiler().compile(R"(
         {"pattern": ["alpha"], "replacement": ["first"]}
         rewrite_define ! /
-        "9" rewrite_remove !
+        '9 rewrite_remove !
     )");
 
     EXPECT_TRUE(vm.execute(code) & VM_ERROR);
@@ -180,8 +180,8 @@ TEST(RewriteLanguageTest, RewriteModeManualRequiresExplicitApply) {
     executeScript(vm, R"(
         {"pattern": ["x"], "replacement": ["manual-hit"]}
         rewrite_define ! /
-        "manual" rewrite_mode ! /
-        "x"
+        'manual rewrite_mode ! /
+        'x
     )");
 
     auto untouched = vm.popData();
@@ -189,7 +189,7 @@ TEST(RewriteLanguageTest, RewriteModeManualRequiresExplicitApply) {
     EXPECT_EQ(stringValue(untouched), "x");
 
     executeScript(vm, R"(
-        "x"
+        'x
         rewrite_apply !
     )");
 
@@ -207,8 +207,8 @@ TEST(RewriteLanguageTest, RewriteModeOffDisablesAutomaticRewrites) {
     executeScript(vm, R"(
         {"pattern": ["x"], "replacement": ["off-hit"]}
         rewrite_define ! /
-        "off" rewrite_mode ! /
-        "x"
+        'off rewrite_mode ! /
+        'x
     )");
 
     auto result = vm.popData();
@@ -229,7 +229,7 @@ TEST(RewriteLanguageTest, TypeAwarePatternAndTraceReportMatchDetails) {
     executeScript(vm, R"(
         {"pattern": ["#atom", "x"], "replacement": ["atom-hit"]}
         rewrite_define ! /
-        "tea" "x"
+        'tea 'x
     )");
 
     auto result = vm.popData();

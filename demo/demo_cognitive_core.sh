@@ -35,7 +35,7 @@ echo "--- Example 2: Source-Defined Rewrite Rule ---"
 # Rewrites the stack suffix [dup dot sqrt] into [magnitude]
 "$EDICT" - <<'EDICT'
 {"pattern": ["dup", "dot", "sqrt"], "replacement": ["magnitude"]} rewrite_define ! /
-"dup" "dot" "sqrt"
+'dup 'dot 'sqrt
 print
 EDICT
 
@@ -46,7 +46,7 @@ echo "--- Example 3: Rewrite Introspection and Removal ---"
 {"pattern": ["alpha"], "replacement": ["first"]} rewrite_define ! /
 {"pattern": ["beta"], "replacement": ["second"]} rewrite_define ! /
 rewrite_list ! /
-"0" rewrite_remove ! /
+'0 rewrite_remove ! /
 rewrite_list !
 print
 EDICT
@@ -59,7 +59,7 @@ echo "--- Example 4: Logic + Rewrite Together ---"
 {"pattern": ["dup", "dot", "sqrt"], "replacement": ["magnitude"]} rewrite_define ! /
 logic { "fresh": ["q"], "where": [["membero", "q", ["tea", "cake"]]], "results": ["q"], "limit": "2" } @answers /
 answers /
-"dup" "dot" "sqrt"
+'dup 'dot 'sqrt
 print
 EDICT
 

@@ -1282,17 +1282,6 @@ void EdictVM::op_BOOTSTRAP_CURATE_CARTOGRAPHER() {
     pushData(createBootstrapCuratedCartographer());
 }
 
-void EdictVM::op_CALL() {
-    // Intentionally empty. Function calls in Edict are handled entirely by
-    // op_EVAL: when VMOP_EVAL encounters a binary-code value (a compiled
-    // lambda/closure), it pushes a new code frame whose payload contains the
-    // callee's bytecode. op_CALL exists in the dispatch table so the opcode
-    // slot is not a null label (which would SIGSEGV on a computed goto), but
-    // the compiler never emits VMOP_CALL — all call sites emit VMOP_EVAL.
-    // Do NOT remove this stub without also updating the dispatch table and
-    // confirming no compiler path emits VMOP_CALL.
-}
-
 bool EdictVM::enforceImportedFunctionPolicy(const std::string& funcName, CPtr<agentc::ListreeValue> funcDef) {
     if (!funcDef) {
         return true;
@@ -2506,7 +2495,7 @@ int EdictVM::execute(const BytecodeBuffer& code) {
         &&op_READ_TEXT, &&op_REQUEST_ID,
         &&op_BOOTSTRAP_CURATE_PARSER, &&op_BOOTSTRAP_CURATE_RESOLVER,
         &&op_BOOTSTRAP_CURATE_CARTOGRAPHER,
-        &&op_CALL, &&op_CLOSURE, &&op_LOGIC_RUN, &&op_REWRITE_DEFINE,
+        &&op_CLOSURE, &&op_LOGIC_RUN, &&op_REWRITE_DEFINE,
         &&op_REWRITE_LIST, &&op_REWRITE_REMOVE, &&op_REWRITE_APPLY,
         &&op_REWRITE_MODE, &&op_REWRITE_TRACE, &&op_SPECULATE,
         &&op_UNSAFE_EXTENSIONS_ALLOW, &&op_UNSAFE_EXTENSIONS_BLOCK,
@@ -2663,7 +2652,6 @@ op_REQUEST_ID: op_REQUEST_ID(); goto op_epilogue;
 op_BOOTSTRAP_CURATE_PARSER: op_BOOTSTRAP_CURATE_PARSER(); goto op_epilogue;
 op_BOOTSTRAP_CURATE_RESOLVER: op_BOOTSTRAP_CURATE_RESOLVER(); goto op_epilogue;
  op_BOOTSTRAP_CURATE_CARTOGRAPHER: op_BOOTSTRAP_CURATE_CARTOGRAPHER(); goto op_epilogue;
- op_CALL: op_CALL(); goto op_epilogue;
 op_CLOSURE: op_CLOSURE(); goto op_epilogue;
 op_LOGIC_RUN: op_LOGIC_RUN(); goto op_epilogue;
 op_REWRITE_DEFINE: op_REWRITE_DEFINE(); goto op_epilogue;

@@ -232,7 +232,6 @@ private:
     void op_BOOTSTRAP_CURATE_PARSER();
     void op_BOOTSTRAP_CURATE_RESOLVER();
     void op_BOOTSTRAP_CURATE_CARTOGRAPHER();
-    void op_CALL(); // Placeholder/Unused if integrating into EVAL
     void op_CLOSURE();
     void op_LOGIC_RUN();
     void op_REWRITE_DEFINE();
