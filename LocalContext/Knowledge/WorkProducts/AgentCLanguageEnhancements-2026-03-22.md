@@ -21,6 +21,8 @@ The project appears to be pursuing a language/runtime with four strong bets:
 3. **Reflection over glue code.** Cartographer is intended to make C/C++ capabilities immediately available without generated wrappers.
 4. **Human + agent co-programming.** The language stays tiny and regular, while JSON-shaped structures make it easy for an LLM to emit machine-precise logic, rewrite, and FFI payloads.
 
+One implication of that design is worth stating explicitly: the language's unified literal model is not a bug to be corrected. AgentC deliberately avoids a hard code-versus-data split. Bracketed literals, quoted atoms, and sigil-driven evaluation forms keep the syntax cognitively small by letting intent emerge from evaluation context rather than from separate representational domains.
+
 This makes AgentC especially strong for:
 
 - tool-rich agent scratchpads,
@@ -54,7 +56,7 @@ The combination of rewrite rules, miniKanren, speculation, and persistent tree s
 
 - `speculate` inside running Edict still clones a separate VM because the execution loop is not re-entrant.
 - host transactions deep-copy resource roots, which keeps semantics correct but leaves commit-time slab bloat as a known cost.
-- `[]` currently carries too many jobs: multi-word string literal, thunk container, and visually code-like grouping syntax.
+- the unified literal model is powerful, but it puts more pressure on tooling and pedagogy to make evaluation intent legible without reintroducing a code/data split.
 - unresolved identifiers silently become strings, which is agent-friendly but typo-prone for humans.
 - the logic surface still largely exposes JSON IR rather than a native human-oriented syntax.
 - FFI safety is stronger than nothing, but still mostly name-based rather than capability- or effect-based.
@@ -99,23 +101,24 @@ Benefits:
 - fewer slab-resident orphan structures,
 - cleaner bridge to LMDB-backed persistent sessions.
 
-## 3. Separate Syntax for Strings, Code, and Lists
+## 3. Intent Aids for the Unified Literal Model
 
 **Category:** language
 
-Split the current overloaded bracket role into clearer forms, for example:
+Preserve the current code/data unification, but add ways to make literal intent easier to see and inspect without creating distinct semantic domains.
 
-- `'word` for atom/string literals,
-- `[[ ... ]]` or another dedicated form for quoted code,
-- `[a b c]` or JSON-style lists for list literals outside JSON mode.
+Candidate directions:
 
-The exact syntax matters less than the principle: code quotation should not look identical to multi-word strings forever.
+- inspector views that show how a literal will be interpreted in the current context,
+- optional REPL/source annotations that explain when a literal is being treated as inert data versus something later fed to `!`,
+- formatter or linter conventions that visually distinguish stored literals from immediately evaluated forms,
+- documentation that teaches `[]` as a single literal mechanism whose meaning is determined by use, not by syntax class.
 
 Benefits:
 
-- simpler parser rules over time,
-- more readable human code,
-- easier future expansion into planner/query syntax without more token ambiguity.
+- preserves the language's core cognitive simplifier,
+- improves readability without widening the parser,
+- helps humans and agents share one mental model of literals.
 
 ## 4. Strictness Profiles for Human vs Agent Authorship
 
@@ -151,11 +154,12 @@ logic {
 }
 ```
 
-This would improve human readability without requiring a new logic engine.
+This would improve human readability without requiring a new logic engine. The important constraint is that the syntax should still participate in the same literal/evaluation model rather than introducing a separate "logic language" with different quotation rules.
 
 Benefits:
 
 - preserves the current backend,
+- preserves the one-substrate mental model,
 - improves ergonomics immediately,
 - gives agents two targets: human syntax or stable IR.
 
@@ -164,6 +168,8 @@ Benefits:
 **Category:** language
 
 Introduce a bounded search construct that explicitly composes logic, rewrite, and speculation.
+
+This should be designed as a coordination form over existing literal and execution semantics, not as a special alternate language nested inside Edict.
 
 Example direction:
 
@@ -182,6 +188,7 @@ Benefits:
 
 - makes the language more opinionated where it is already strongest,
 - avoids growing lots of general control-flow surface area,
+- preserves the unified literal model while clarifying intent at the construct level,
 - better matches tasks like migration planning, dependency solving, and repair search.
 
 ## 7. Capability Contracts for Imported Functions
@@ -264,10 +271,13 @@ Benefits:
 
 FFI imports already behave like namespaces, but source-defined Edict code does not yet appear to have equally strong modular packaging. Add source modules/capsules with explicit exported words and imported capabilities.
 
+These boundaries should package and expose the same literal substrate rather than encouraging a split between "executable module code" and "stored module data".
+
 Benefits:
 
 - cleaner composition,
 - clearer boundaries between user code and imported native surfaces,
+- packaging that stays consistent with the language's one-substrate philosophy,
 - a stronger foundation for persistent session images and reusable libraries.
 
 ## 12. Optional Lightweight Typed Atoms
@@ -324,13 +334,13 @@ If the goal is maximum leverage with minimum architectural churn, I would priori
 2. strictness profiles,
 3. native relational syntax over the existing JSON IR,
 4. capability contracts for imports,
-5. explainability objects,
+5. explainability objects plus literal-intent inspection aids,
 6. session capsules.
 
-That sequence sharpens the system's core identity without bloating the language.
+That sequence sharpens the system's core identity without bloating the language or weakening its code/data unification principle.
 
 ## Closing View
 
 AgentC should lean harder into what already makes it unusual: reversible cognition, structured memory, bounded search, and reflected native capabilities. The project does not need to outgrow into a broad application language to become much more valuable. It needs to become a clearer, safer, and more inspectable language for thought, planning, and capability orchestration.
 
-The highest-value future is therefore not "more syntax" in general. It is better syntax and metadata around the substrate that already exists.
+The highest-value future is therefore not "more syntax" in general. It is better guidance, inspection, and metadata around the substrate that already exists, especially where the language intentionally refuses to split code from data.

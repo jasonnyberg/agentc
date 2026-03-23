@@ -15,7 +15,7 @@ Review the AgentC/Edict codebase and project documents to infer the system's int
 
 1. AgentC is strongest as a **cognitive substrate**, not a Python replacement: reversible state, compact structured memory, dynamic FFI reflection, and bounded logic search are the core differentiators.
 2. The implementation already trends toward simplification by collapsing special cases: numeric semantics moved out to FFI, boxing opcodes were removed, import metadata was simplified, and resolved JSON became a cache boundary.
-3. The main opportunities are to make the substrate more explicit and composable without widening the VM too much: continuation-based speculation, better transaction deltas, stricter identifier modes, clearer syntax boundaries, richer capability metadata, and better explainability.
+3. The main opportunities are to make the substrate more explicit and composable without widening the VM too much: continuation-based speculation, better transaction deltas, stricter identifier modes, stronger explainability for the unified literal model, richer capability metadata, and better inspection/tooling.
 
 ## Sources Reviewed
 

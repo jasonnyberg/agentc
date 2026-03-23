@@ -7,10 +7,10 @@
 ## Current Focus
 
 **Active Goals**: None
-**Status**: G044 (JSON module cache) complete. G045 (language enhancement review) complete. Project remains positioned as a reversible cognitive substrate with LMDB persistence goals and language/runtime design follow-up available.
+**Status**: G044 (JSON module cache) complete. G045 (language enhancement review) complete and refined so both the literal-model note and the remaining proposals explicitly preserve Edict's intentional unified literal model. Project remains positioned as a reversible cognitive substrate with LMDB persistence goals and language/runtime design follow-up available.
 **Last Updated**: 2026-03-22
 
-**Active Task**: None. Recommended next: pursue one of the G045 proposals (continuation-based speculation, strictness profiles, native logic syntax, capability contracts) or continue LMDB persistence goals G040-G042.
+**Active Task**: None. Recommended next: pursue one of the G045 proposals (continuation-based speculation, strictness profiles, native logic syntax, capability contracts, or literal-intent inspection/tooling) or continue LMDB persistence goals G040-G042.
 
 **Previous Active Task**: G020 — Early Type Binding (`bindTypes()`) — **COMPLETE** (2026-03-21). `bindTypes()` pass added to `Mapper::materialize()`; resolves `"struct X"` field types into `type_def` CPtr children. `ns` param fully removed from `box()`/`unbox()`/`packStruct()`/`unpackStruct()`, C ABI, edict bootstrap, unit tests, and demo/test scripts. New `BindTypesCreatesTypeDef` test in `mapper_tests.cpp`; `Rect` struct added to `test_input.h`.
 
@@ -70,7 +70,7 @@
 - 🔗[G018 — FFI LTV Passthrough](./Knowledge/Goals/G018-FfiLtvPassthrough/index.md) — All phases A–D + E complete
 
 ### Recommended Next Steps
-1. **Language Follow-up**: Pick a G045 proposal to implement, with highest leverage candidates being continuation-based speculation, strictness profiles, native logic syntax, and richer FFI capability metadata.
+1. **Language Follow-up**: Pick a G045 proposal to implement, with highest leverage candidates being continuation-based speculation, strictness profiles, native logic syntax, richer FFI capability metadata, and literal-intent inspection/tooling that preserves unified literals.
 2. **LMDB Integration**: G016+G017 complete — can proceed with LMDB persistence goals (G040–G042).
 3. **Commit**: Recent documentation/HRM updates and any outstanding implementation work remain uncommitted.
 
@@ -132,7 +132,7 @@ Complete index of LOCAL knowledge. Load items relevant to your current task.
 (none yet)
 
 ### Concepts
-(none yet)
+- 🔗[`UnifiedLiteralModel`](./Knowledge/Concepts/UnifiedLiteralModel/index.md) — Edict intentionally unifies code and data literals; intent is determined by evaluation context rather than separate syntax classes.
 
 ### Procedures
 (none yet)
@@ -147,6 +147,8 @@ Complete index of LOCAL knowledge. Load items relevant to your current task.
 ## Timeline Highlights
 
 ### Recent Events (Last 7 Days)
+- 🔗[2026-03-22: Session 2335-2355](./Knowledge/Timeline/2026/03/22/2335-2355/index.md) — Refined G045 to preserve the intentional unified literal model
+- 🔗[2026-03-22: Session 2340-2350](./Knowledge/Timeline/2026/03/22/2340-2350/index.md) — Updated remaining G045 proposals to preserve unified literals
 - 🔗[2026-03-22: Session 2320-2340](./Knowledge/Timeline/2026/03/22/2320-2340/index.md) — Language enhancement review and design write-up
 - 🔗[2026-03-22: Lexer Unicode and Quotes Fix](./Knowledge/Timeline/2026/03/22/index.md) — Fixed lexer to allow double quotes and UTF-8 characters in Edict identifiers.
 - 🔗[2026-03-22: Session 2140-2200](./Knowledge/Timeline/2026/03/22/2140-2200/index.md) — HRM Bootstrap and project state verification

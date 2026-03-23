@@ -6,6 +6,12 @@
 ## Session 2320-2340
 🔗[Session Notes](./2320-2340/index.md) — Language enhancement review and design write-up.
 
+## Session 2335-2355
+🔗[Session Notes](./2335-2355/index.md) — G045 refinement around the intentional unified literal model.
+
+## Session 2340-2350
+🔗[Session Notes](./2340-2350/index.md) — Updated remaining G045 proposals to explicitly preserve unified literals.
+
 ## Edict Lexer UTF-8 and Double Quotes Fix
 
 Wrote tests for UTF-8 literals and discovered that the previous string migration left the compiler discarding double-quoted strings and blocking Unicode characters in identifiers. 
@@ -35,9 +41,10 @@ Produced a design document arguing that AgentC's strongest identity is as a reve
 
 - Rework execution around continuations so `speculate` can use in-VM checkpoints rather than cloning a separate VM.
 - Replace deep-copy transaction snapshots with lighter delta/copy-on-write bookkeeping.
-- Separate syntax roles for strings, quoted code, and list literals.
+- Preserve unified literals while adding better intent inspection, readability aids, and pedagogy.
 - Add strictness profiles so unresolved identifiers can be warnings or errors in human-authored code.
 - Add native relational syntax that compiles to the current JSON logic IR.
+- Ensure new logic/planner/module constructs remain surface forms over one shared literal/evaluation substrate.
 - Extend FFI metadata from `safe`/`unsafe` toward capability and effect contracts.
 - Add first-class buffer/c-string/slice/opaque-handle builders for common native API shapes.
 - Expand rewrite tracing into a broader explanation protocol spanning rewrite, logic, FFI, and speculation.
