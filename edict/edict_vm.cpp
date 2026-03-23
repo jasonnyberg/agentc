@@ -28,6 +28,7 @@
 #include <cstdlib>
 #include <chrono>
 #include <fstream>
+#include <filesystem>
 #include <mutex>
 #include <unordered_set>
 #include <unordered_map>
@@ -932,12 +933,83 @@ void EdictVM::op_IMPORT() {
         return;
     }
 
-    agentc::cartographer::ImportRequest request;
-    request.libraryPath = libraryPath;
-    request.headerPath = headerPath;
-    auto result = cartographer ? cartographer->import(request) : agentc::cartographer::ImportResult{};
+    if (!cartographer) {
+        setError("Cartographer service not initialized");
+        return;
+    }
+
+    // Check for cached import information
+    std::filesystem::path libP(libraryPath.c_str());
+    std::filesystem::path hdrP(headerPath.c_str());
+    std::string cacheFileName = libP.filename().string() + "_" + hdrP.filename().string() + ".json";
+    const char* homeDir = std::getenv("HOME");
+    std::filesystem::path cacheDir = homeDir ? std::filesystem::path(std::string(homeDir) + "/.cache/agentc") : std::filesystem::path(".agentc/cache");
+    
+    std::error_code ecDir;
+    std::filesystem::create_directories(cacheDir, ecDir);
+
+    std::filesystem::path cachePath = cacheDir / std::filesystem::path(cacheFileName.c_str());
+
+    bool cacheValid = false;
+    std::string cachedJson;
+    std::error_code ec;
+
+    auto cacheTime = std::filesystem::last_write_time(cachePath, ec);
+    if (!ec) {
+        auto libTime = std::filesystem::last_write_time(libP, ec);
+        if (!ec && cacheTime >= libTime) {
+            auto hdrTime = std::filesystem::last_write_time(hdrP, ec);
+            if (!ec && cacheTime >= hdrTime) {
+                std::ifstream ifs(cachePath);
+                if (ifs) {
+                    cachedJson.assign((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+                    cacheValid = !cachedJson.empty();
+                }
+            }
+        }
+    }
+
+    if (cacheValid) {
+        auto result = cartographer->importResolverJson(cachedJson, cachePath.string());
+        if (result.ok) {
+            pushData(result.definitions);
+            return;
+        }
+        // If import fails for some reason (e.g. format mismatch), fall through to regenerate
+    }
+
+    // Cache miss or invalid: run full pipeline to regenerate
+    std::string schemaJson;
+    std::string errorMsg;
+    if (!agentc::cartographer::parser::parseHeaderToParserJson(*mapper, headerPath, schemaJson, errorMsg)) {
+        setError(errorMsg.empty() ? "Cartographer parse failed" : errorMsg);
+        return;
+    }
+
+    agentc::cartographer::Mapper::ParseDescription description;
+    if (!agentc::cartographer::protocol::decodeParseDescription(schemaJson, description, errorMsg)) {
+        setError(errorMsg.empty() ? "Cartographer schema decode failed" : errorMsg);
+        return;
+    }
+
+    agentc::cartographer::resolver::ResolvedApi resolved;
+    if (!agentc::cartographer::resolver::resolveApiDescription(libraryPath, description, resolved, errorMsg)) {
+        setError(errorMsg.empty() ? "Cartographer resolve failed" : errorMsg);
+        return;
+    }
+
+    std::string resolvedJson = agentc::cartographer::resolver::encodeResolvedApi(resolved);
+
+    // Save cache for next time
+    std::filesystem::create_directories(cacheDir, ec);
+    std::ofstream ofs(cachePath);
+    if (ofs) {
+        ofs << resolvedJson;
+    }
+
+    auto result = cartographer->importResolverJson(resolvedJson, cachePath.string());
     if (!result.ok) {
-        setError(result.error.empty() ? "Cartographer import failed" : result.error);
+        setError(result.error.empty() ? "Cartographer cache import failed" : result.error);
         return;
     }
 
@@ -1186,11 +1258,7 @@ CPtr<agentc::ListreeValue> EdictVM::createBootstrapCuratedResolver() {
     addCompiledThunk(resolver, "load", "resolver.__native.load !");
     addCompiledThunk(resolver, "resolve_json", "resolver.__native.resolve_json !");
     addCompiledThunk(resolver, "import_resolved_json", "resolver.__native.import_resolved_json !");
-    addCompiledThunk(resolver, "import",
-                     "@header @library "
-                     "header parser.parse_json ! @schema "
-                     "library schema resolver.resolve_json ! @resolved "
-                     "resolved resolver.import_resolved_json !");
+    addCompiledThunk(resolver, "import", "resolver.__native.import !");
     addCompiledThunk(resolver, "import_resolved",
                      "@resolved_path "
                      "resolved_path resolver.__native.read_text ! @resolved "

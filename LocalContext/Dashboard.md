@@ -7,10 +7,10 @@
 ## Current Focus
 
 **Active Goals**: None
-**Status**: G002–G013 Complete. G014 Cancelled. G016–G021 Complete. G018 Phase D **fully complete** (VM boxing opcodes removed, pure FFI path via `evalDispatchFFI`). Namespace migration `j3` → `agentc` complete. Directory restructure complete. **G020: Early type binding — `bindTypes()` post-parse pass; `ns` param eliminated from entire boxing API. 7/7 test suites pass (90/90+ tests). `test_boxing_ffi.sh` 24/24. `demo_boxing.sh` clean.** **Edict string literal migration complete — `"abc"` standalone syntax removed; `'word`/`[multi word]` syntax enforced; `edict_language_reference.md` fully updated.** **G021: Module name (`scopeName`) removed from resolver import API — 8 tasks across 9 files; protocol bumped to `protocol_v2`; all tests pass.**
+**Status**: Pivot from LMDB pickling (G043 cancelled) to file-based JSON caching of resolver output to bypass libclang overhead. G044 Complete.
 **Last Updated**: 2026-03-22
 
-**Active Task**: None — G021 complete. Recommended next: LMDB persistence goals (G040–G042).
+**Active Task**: None. Recommended next: G045 or continuing with Phase 3 LMDB tasks (G040-G042 were previously implemented, we might want to continue that or start something new).
 
 **Previous Active Task**: G020 — Early Type Binding (`bindTypes()`) — **COMPLETE** (2026-03-21). `bindTypes()` pass added to `Mapper::materialize()`; resolves `"struct X"` field types into `type_def` CPtr children. `ns` param fully removed from `box()`/`unbox()`/`packStruct()`/`unpackStruct()`, C ABI, edict bootstrap, unit tests, and demo/test scripts. New `BindTypesCreatesTypeDef` test in `mapper_tests.cpp`; `Rect` struct added to `test_input.h`.
 
@@ -142,6 +142,8 @@ Complete index of LOCAL knowledge. Load items relevant to your current task.
 ## Timeline Highlights
 
 ### Recent Events (Last 7 Days)
+- 🔗[2026-03-22: G044 JSON-based Module Import Caching Complete](./Knowledge/Timeline/2026/03/22/index.md) — Implemented JSON caching in C++ `EdictVM` bypassing slow `libclang` parsing. FFI modules are now loaded from `~/.cache/agentc/` JSON.
+- 🔗[2026-03-22: Session 2140-2200](./Knowledge/Timeline/2026/03/22/2140-2200/index.md) — HRM Bootstrap and project state verification
 - 🔗[2026-03-22: G021 module name removed + edict string literal migration](./Knowledge/Timeline/2026/03/22/index.md) — `scopeName` removed from entire resolver import API (structs, methods, wire protocol → `protocol_v2`, opcodes, thunks, tests); `TOKEN_STRING` removed from `compileTerm()`; `'word`/`[multi word]` syntax enforced; `edict_language_reference.md` fully updated; 7/7 suites pass
 - 🔗[2026-03-21: G019 SlabId Unification, G018 Phase D, G020 Early Type Binding, Cartographer CLI pipeline, agentc.sh wrappers](./Knowledge/Timeline/2026/03/21/index.md) — `LTV=SlabId`; VM boxing opcodes removed; `bindTypes()` pass; full 5-stage CLI pipeline; `agentc_test`/`agentc_demo`; 90/90 tests; `test_boxing_ffi.sh` 24/24; `test_cartographer_*.sh` 24/24 + 24/24 + 22/22
 - 🔗[2026-03-20: G017 Edict Script Mode + G016 LMDB Optional Build](./Knowledge/Timeline/2026/03/20/index.md) — `runScript(istream&)`, `edict -`/`edict FILE` CLI modes; `AGENTC_WITH_LMDB` CMake option; 74/74 tests pass

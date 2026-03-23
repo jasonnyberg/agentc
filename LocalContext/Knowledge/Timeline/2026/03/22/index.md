@@ -1,5 +1,15 @@
 # Timeline: 2026-03-22
 
+## Session 2140-2200
+🔗[Session Notes](./2140-2200/index.md) — HRM Bootstrap and project state verification.
+
+## G044 — JSON-based Module Import Caching — Complete
+
+Pivoted from G043 (LMDB pickling) to G044 (JSON caching). Implemented a file-based JSON cache in `EdictVM` to bypass the `libclang` parsing bottleneck during module imports. 
+The system now writes `resolver_json_v1` strings to `~/.cache/agentc/` upon successful module parsing and resolution, and automatically loads from this cache on subsequent executions. Cache validation is implemented using `mtime` comparisons between the cache file and the source `.h`/`.so` files.
+
+---
+
 ## G021 — Remove Module Name from Resolver Import API — Complete
 
 Removed the `scopeName` (module name) parameter from the entire resolver import API stack.

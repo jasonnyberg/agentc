@@ -1,0 +1,6 @@
+# test_import.ed
+'./build/cartographer/libagentmath_poc.so 'cartographer/tests/libagentmath_poc.h resolver.import ! @math
+[Import complete!] println !
+
+
+
