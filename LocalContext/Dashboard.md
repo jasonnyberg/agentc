@@ -2,15 +2,15 @@
 
 **Project**: AgentC / J3 (transitional name — also called AgentLang)  
 **Primary Goal**: G001 — Codebase Review: Optimization and Redundancy/Inconsistency Analysis  
-**Last Updated**: 2026-03-22
+**Last Updated**: 2026-03-23
 
 ## Current Focus
 
-**Active Goals**: None
-**Status**: G044 (JSON module cache) complete. G045 (language enhancement review) complete and refined so both the literal-model note and the remaining proposals explicitly preserve Edict's intentional unified literal model. Project remains positioned as a reversible cognitive substrate with LMDB persistence goals and language/runtime design follow-up available.
-**Last Updated**: 2026-03-22
+**Active Goals**: G046 (continuation-based speculation planning), G047 (native relational syntax planning)
+**Status**: G044 (JSON module cache) complete. G045 (language enhancement review) complete and refined so both the literal-model note and the remaining proposals explicitly preserve Edict's intentional unified literal model. Review-ready planning artifacts exist for G046 continuation-based speculation and G047 native relational syntax, and G047 has now been refined further toward call-form logic (`fresh(q)`, `conde(==(q 'tea) ==(q 'coffee))`, `results(q)`), with `logic(...)` as the preferred human-facing surface, `[...] logic!` as the equivalent literal/evaluator model underneath, a future path toward library/FFI-backed logic semantics, and rewrite-hosted DSL sugar as a later layer. Project remains positioned as a reversible cognitive substrate with LMDB persistence goals and language/runtime design follow-up available.
+**Last Updated**: 2026-03-23
 
-**Active Task**: None. Recommended next: pursue one of the G045 proposals (continuation-based speculation, strictness profiles, native logic syntax, capability contracts, or literal-intent inspection/tooling) or continue LMDB persistence goals G040-G042.
+**Active Task**: User review of G046/G047 planning artifacts before implementation kickoff. Recommended next after review: start G046 with execution-frame extraction or start G047 with call-form `logic(...)` lowering (`fresh(...)`, relation calls, `results(...)`) documented as equivalent to `[...] logic!`, while leaving capability migration and rewrite-hosted DSLs for later slices.
 
 **Previous Active Task**: G020 — Early Type Binding (`bindTypes()`) — **COMPLETE** (2026-03-21). `bindTypes()` pass added to `Mapper::materialize()`; resolves `"struct X"` field types into `type_def` CPtr children. `ns` param fully removed from `box()`/`unbox()`/`packStruct()`/`unpackStruct()`, C ABI, edict bootstrap, unit tests, and demo/test scripts. New `BindTypesCreatesTypeDef` test in `mapper_tests.cpp`; `Rect` struct added to `test_input.h`.
 
@@ -57,7 +57,8 @@
 ---
 
 ### Active Goals
-- None
+- G046 — Continuation-Based Speculation — **Planned / Review Ready**
+- G047 — Native Relational Syntax — **Planned / Review Ready**
 
 ### Completed Goals (recent)
 - ✅ G045 — Language Enhancement Review — **COMPLETE** (2026-03-22). Reviewed docs/code/tests to infer AgentC's intended role as a human+agent language; produced `LocalContext/Knowledge/WorkProducts/AgentCLanguageEnhancements-2026-03-22.md` with 14 forward-looking language/runtime/tooling proposals.
@@ -70,9 +71,10 @@
 - 🔗[G018 — FFI LTV Passthrough](./Knowledge/Goals/G018-FfiLtvPassthrough/index.md) — All phases A–D + E complete
 
 ### Recommended Next Steps
-1. **Language Follow-up**: Pick a G045 proposal to implement, with highest leverage candidates being continuation-based speculation, strictness profiles, native logic syntax, richer FFI capability metadata, and literal-intent inspection/tooling that preserves unified literals.
-2. **LMDB Integration**: G016+G017 complete — can proceed with LMDB persistence goals (G040–G042).
-3. **Commit**: Recent documentation/HRM updates and any outstanding implementation work remain uncommitted.
+1. **Review G046/G047 Plans**: Confirm or refine the continuation-based speculation and native relational syntax plans, then pick the first implementation kickoff.
+2. **Language Follow-up**: After G046/G047 review, remaining high-leverage G045 candidates include strictness profiles, richer FFI capability metadata, and literal-intent inspection/tooling.
+3. **LMDB Integration**: G016+G017 complete — can proceed with LMDB persistence goals (G040–G042).
+4. **Commit**: Recent documentation/HRM updates and any outstanding implementation work remain uncommitted.
 
 ### Completed Goals
 - ✅ G017 — Edict Stdin/File Script Mode (2026-03-20) — `runScript(istream&)`; `edict -` stdin and `edict FILE` CLI modes; `#` comments; 74/74 tests pass
@@ -127,6 +129,8 @@ Complete index of LOCAL knowledge. Load items relevant to your current task.
         - G021 — Remove Module Name from Resolver Import API — **Complete** 🔗[index](./Knowledge/Goals/G021-RemoveModuleName/index.md)
         - G019 — SlabId LTV Type Unification — **Complete** 🔗[index](./Knowledge/Goals/G019-SlabIdLtvUnification/index.md)
         - G045 — Language Enhancement Review — **Complete** 🔗[index](./Knowledge/Goals/G045-LanguageEnhancementReview/index.md)
+        - G046 — Continuation-Based Speculation — **Planned** 🔗[index](./Knowledge/Goals/G046-ContinuationBasedSpeculation/index.md)
+        - G047 — Native Relational Syntax — **Planned** 🔗[index](./Knowledge/Goals/G047-NativeRelationalSyntax/index.md)
 
 ### Facts
 (none yet)
@@ -141,12 +145,17 @@ Complete index of LOCAL knowledge. Load items relevant to your current task.
 - WP001 — CodebaseReview: Full issue catalog, architectural analysis, 20 prioritized recommendations (2026-03-16)
 - WP002 — EdictQuoteHandling: Investigation of `"` semantics in edict compiler/VM; findings for G014 (2026-03-16)
 - AgentCLanguageEnhancements-2026-03-22 — design review and proposal set for human+agent language evolution (2026-03-22)
+- ContinuationBasedSpeculationPlan-2026-03-22 — implementation plan for in-VM speculative execution via explicit execution frames (2026-03-22)
+- NativeRelationalSyntaxPlan-2026-03-22 — implementation plan for lowering call-form `logic(...)` native logic into current logic IR, with `[...] logic!` as the equivalent literal/evaluator model, plus follow-on notes for capability migration and rewrite-hosted DSLs (2026-03-22)
 
 ---
 
 ## Timeline Highlights
 
 ### Recent Events (Last 7 Days)
+- 🔗[2026-03-23: Session 0035-0045](./Knowledge/Timeline/2026/03/23/0035-0045/index.md) — Refined G047 toward call-form logic, future capability migration, and rewrite-hosted DSLs
+- 🔗[2026-03-23: Session 0005-0015](./Knowledge/Timeline/2026/03/23/0005-0015/index.md) — Refined G047 toward `logic(...)` with equivalent `[...] logic!` semantics
+- 🔗[2026-03-22: Session 2345-2359](./Knowledge/Timeline/2026/03/22/2345-2359/index.md) — Planned G046 continuation-based speculation and G047 native relational syntax
 - 🔗[2026-03-22: Session 2335-2355](./Knowledge/Timeline/2026/03/22/2335-2355/index.md) — Refined G045 to preserve the intentional unified literal model
 - 🔗[2026-03-22: Session 2340-2350](./Knowledge/Timeline/2026/03/22/2340-2350/index.md) — Updated remaining G045 proposals to preserve unified literals
 - 🔗[2026-03-22: Session 2320-2340](./Knowledge/Timeline/2026/03/22/2320-2340/index.md) — Language enhancement review and design write-up
@@ -159,7 +168,7 @@ Complete index of LOCAL knowledge. Load items relevant to your current task.
 - 🔗[2026-03-16: Phase 1 and 2 Complete](./Knowledge/Timeline/2026/03/16/2200-2300/index.md) — Final build fix (`demo_capabilities.cpp`) and project wrap-up; all goals completed or deferred.
 
 ### Current Phase
-Phase 3: Active — G016, G017, G019, G020, G044, and G045 complete. Cartographer CLI pipeline + `agentc.sh` wrappers complete. LMDB persistence goals (G040–G042) ready to proceed.
+Phase 3: Active — G016, G017, G019, G020, G044, and G045 complete. G046 planning artifacts are review-ready, and G047 planning has been refined toward call-form `logic(...)`, later capability migration, and rewrite-hosted DSL layering over equivalent `[...] logic!` semantics. Cartographer CLI pipeline + `agentc.sh` wrappers complete. LMDB persistence goals (G040–G042) ready to proceed.
 
 ---
 

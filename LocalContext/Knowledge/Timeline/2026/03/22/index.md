@@ -12,6 +12,9 @@
 ## Session 2340-2350
 🔗[Session Notes](./2340-2350/index.md) — Updated remaining G045 proposals to explicitly preserve unified literals.
 
+## Session 2345-2359
+🔗[Session Notes](./2345-2359/index.md) — Planned G046 continuation-based speculation and G047 native relational syntax.
+
 ## Edict Lexer UTF-8 and Double Quotes Fix
 
 Wrote tests for UTF-8 literals and discovered that the previous string migration left the compiler discarding double-quoted strings and blocking Unicode characters in identifiers. 
@@ -43,11 +46,27 @@ Produced a design document arguing that AgentC's strongest identity is as a reve
 - Replace deep-copy transaction snapshots with lighter delta/copy-on-write bookkeeping.
 - Preserve unified literals while adding better intent inspection, readability aids, and pedagogy.
 - Add strictness profiles so unresolved identifiers can be warnings or errors in human-authored code.
-- Add native relational syntax that compiles to the current JSON logic IR.
+- Add native relational syntax that compiles to the current JSON logic IR, preferably as `logic(...)` over equivalent `[...] logic!` semantics.
 - Ensure new logic/planner/module constructs remain surface forms over one shared literal/evaluation substrate.
 - Extend FFI metadata from `safe`/`unsafe` toward capability and effect contracts.
 - Add first-class buffer/c-string/slice/opaque-handle builders for common native API shapes.
 - Expand rewrite tracing into a broader explanation protocol spanning rewrite, logic, FFI, and speculation.
+
+---
+
+## G046 / G047 — Implementation Planning Created
+
+Prepared review-ready implementation plans for two G045 follow-up tracks:
+
+- G046: continuation-based speculation, centered on replacing separate-VM speculation with nested in-VM execution frames and checkpoint rollback.
+- G047: native relational syntax, now centered on compiler lowering from readable `logic(...)` clauses into the current object-shaped query IR while preserving equivalence to `[...] logic!`.
+
+### Planning artifacts
+
+- `LocalContext/Knowledge/Goals/G046-ContinuationBasedSpeculation/index.md`
+- `LocalContext/Knowledge/Goals/G047-NativeRelationalSyntax/index.md`
+- `LocalContext/Knowledge/WorkProducts/ContinuationBasedSpeculationPlan-2026-03-22.md`
+- `LocalContext/Knowledge/WorkProducts/NativeRelationalSyntaxPlan-2026-03-22.md`
 
 ---
 

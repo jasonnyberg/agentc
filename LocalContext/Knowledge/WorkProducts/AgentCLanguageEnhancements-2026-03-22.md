@@ -142,24 +142,39 @@ Benefits:
 
 **Category:** logic
 
-Keep the current JSON logic object as the implementation IR, but add a lighter native syntax that compiles into it.
+Keep the current JSON logic object as the implementation IR, but add a lighter native syntax that compiles into it. The best direction now looks like call-form `logic(...)` as the clean human-facing form, with `[...] logic!` as the equivalent literal/evaluator model underneath.
 
 Example direction:
 
 ```edict
-logic {
-  fresh q
-  where q membero [tea cake jam]
-  results q
-}
+logic(
+  fresh(q)
+  membero(q [tea cake jam])
+  results(q)
+)
 ```
 
-This would improve human readability without requiring a new logic engine. The important constraint is that the syntax should still participate in the same literal/evaluation model rather than introducing a separate "logic language" with different quotation rules.
+Equivalent interpretation:
+
+```edict
+[
+  fresh(q)
+  membero(q [tea cake jam])
+  results(q)
+] logic!
+```
+
+Where disjunction is needed, a direct goal form like `conde(==(q 'tea) ==(q 'coffee))` is likely better than wrapping goals in an extra `where` layer. This would improve human readability without requiring a new logic engine. The important constraint is that the syntax should still participate in the same literal/evaluation model rather than introducing a separate "logic language" with different quotation rules.
+
+Longer term, this syntax direction may allow more of miniKanren to migrate out of VM primitives and into FFI or library-backed capability layers. Once the native call-form substrate is stable, term rewriting could also become a good mechanism for layering tiny domain-specific syntaxes on top of those native forms rather than expanding the parser for every special case.
 
 Benefits:
 
 - preserves the current backend,
 - preserves the one-substrate mental model,
+- gives the language a cleaner canonical story: `logic(...)` presentation over literal-plus-`logic!` semantics,
+- creates a path to move logic behavior out of VM primitives and into substrate-level capabilities,
+- gives rewrite rules a plausible future role as DSL sugar over stable native forms,
 - improves ergonomics immediately,
 - gives agents two targets: human syntax or stable IR.
 
