@@ -3,6 +3,9 @@
 ## Session 2140-2200
 🔗[Session Notes](./2140-2200/index.md) — HRM Bootstrap and project state verification.
 
+## Session 2320-2340
+🔗[Session Notes](./2320-2340/index.md) — Language enhancement review and design write-up.
+
 ## Edict Lexer UTF-8 and Double Quotes Fix
 
 Wrote tests for UTF-8 literals and discovered that the previous string migration left the compiler discarding double-quoted strings and blocking Unicode characters in identifiers. 
@@ -16,6 +19,28 @@ Added `demo/test_unicode.ed` and `demo/test_unicode_id.ed` to verify.
 Pivoted from G043 (LMDB pickling) to G044 (JSON caching). Implemented a file-based JSON cache in `EdictVM` to bypass the `libclang` parsing bottleneck during module imports. 
 The system now writes `resolver_json_v1` strings to `~/.cache/agentc/` upon successful module parsing and resolution, and automatically loads from this cache on subsequent executions. Cache validation is implemented using `mtime` comparisons between the cache file and the source `.h`/`.so` files.
 A test wrapper script `demo/demo_import_cache.sh` was added to verify cache hit/miss logic and automated invalidation testing.
+
+---
+
+## G045 — Language Enhancement Review — Complete
+
+Reviewed the codebase and documentation to infer AgentC's intended role as a programming language and runtime for both humans and agents.
+Produced a design document arguing that AgentC's strongest identity is as a reversible cognitive substrate rather than a general-purpose scripting replacement.
+
+### Work product
+
+- `LocalContext/Knowledge/WorkProducts/AgentCLanguageEnhancements-2026-03-22.md`
+
+### Main recommendations
+
+- Rework execution around continuations so `speculate` can use in-VM checkpoints rather than cloning a separate VM.
+- Replace deep-copy transaction snapshots with lighter delta/copy-on-write bookkeeping.
+- Separate syntax roles for strings, quoted code, and list literals.
+- Add strictness profiles so unresolved identifiers can be warnings or errors in human-authored code.
+- Add native relational syntax that compiles to the current JSON logic IR.
+- Extend FFI metadata from `safe`/`unsafe` toward capability and effect contracts.
+- Add first-class buffer/c-string/slice/opaque-handle builders for common native API shapes.
+- Expand rewrite tracing into a broader explanation protocol spanning rewrite, logic, FFI, and speculation.
 
 ---
 

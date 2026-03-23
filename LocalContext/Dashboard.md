@@ -7,10 +7,10 @@
 ## Current Focus
 
 **Active Goals**: None
-**Status**: Pivot from LMDB pickling (G043 cancelled) to file-based JSON caching of resolver output to bypass libclang overhead. G044 Complete.
+**Status**: G044 (JSON module cache) complete. G045 (language enhancement review) complete. Project remains positioned as a reversible cognitive substrate with LMDB persistence goals and language/runtime design follow-up available.
 **Last Updated**: 2026-03-22
 
-**Active Task**: None. Recommended next: G045 or continuing with Phase 3 LMDB tasks (G040-G042 were previously implemented, we might want to continue that or start something new).
+**Active Task**: None. Recommended next: pursue one of the G045 proposals (continuation-based speculation, strictness profiles, native logic syntax, capability contracts) or continue LMDB persistence goals G040-G042.
 
 **Previous Active Task**: G020 — Early Type Binding (`bindTypes()`) — **COMPLETE** (2026-03-21). `bindTypes()` pass added to `Mapper::materialize()`; resolves `"struct X"` field types into `type_def` CPtr children. `ns` param fully removed from `box()`/`unbox()`/`packStruct()`/`unpackStruct()`, C ABI, edict bootstrap, unit tests, and demo/test scripts. New `BindTypesCreatesTypeDef` test in `mapper_tests.cpp`; `Rect` struct added to `test_input.h`.
 
@@ -60,6 +60,7 @@
 - None
 
 ### Completed Goals (recent)
+- ✅ G045 — Language Enhancement Review — **COMPLETE** (2026-03-22). Reviewed docs/code/tests to infer AgentC's intended role as a human+agent language; produced `LocalContext/Knowledge/WorkProducts/AgentCLanguageEnhancements-2026-03-22.md` with 14 forward-looking language/runtime/tooling proposals.
 - ✅ G044 — JSON-based Module Import Caching — **COMPLETE** (2026-03-22). File-based JSON caching of resolver output implemented in `EdictVM` to bypass `libclang` overhead. Cache stored in `~/.cache/agentc/` with `mtime` invalidation. Included automated test `demo_import_cache.sh`.
 - ✅ G021 — Remove Module Name from Resolver Import API — **COMPLETE** (2026-03-22). `scopeName` removed from `ImportRequest`/`ImportResult` structs, all service methods, wire protocol (bumped to `protocol_v2`), all 4 VM opcodes, 2 thunks, service tests, callback tests, and language reference. 7/7 suites pass; all shell scripts pass.
 - ✅ G020 — Early type binding (`bindTypes()`) in `Mapper::materialize()` — `ns` param eliminated from boxing API; `BindTypesCreatesTypeDef` test added; 7/7 suites pass (2026-03-21)
@@ -69,8 +70,9 @@
 - 🔗[G018 — FFI LTV Passthrough](./Knowledge/Goals/G018-FfiLtvPassthrough/index.md) — All phases A–D + E complete
 
 ### Recommended Next Steps
-1. **LMDB Integration**: G016+G017 complete — can proceed with LMDB persistence goals (G040–G042).
-2. **Commit**: All recent changes (directory restructure, RegressionMatrixTest fix, G016, G017) are uncommitted.
+1. **Language Follow-up**: Pick a G045 proposal to implement, with highest leverage candidates being continuation-based speculation, strictness profiles, native logic syntax, and richer FFI capability metadata.
+2. **LMDB Integration**: G016+G017 complete — can proceed with LMDB persistence goals (G040–G042).
+3. **Commit**: Recent documentation/HRM updates and any outstanding implementation work remain uncommitted.
 
 ### Completed Goals
 - ✅ G017 — Edict Stdin/File Script Mode (2026-03-20) — `runScript(istream&)`; `edict -` stdin and `edict FILE` CLI modes; `#` comments; 74/74 tests pass
@@ -122,8 +124,9 @@ Complete index of LOCAL knowledge. Load items relevant to your current task.
         - G016 — LMDB Optional Compile-Time Build — **Complete** 🔗[index](./Knowledge/Goals/G016-LmdbOptionalBuild/index.md)
         - G017 — Edict Stdin/File Script Mode — **Complete** 🔗[index](./Knowledge/Goals/G017-EdictScriptMode/index.md)
         - G018 — FFI LTV Passthrough — **Complete (via G019)** 🔗[index](./Knowledge/Goals/G018-FfiLtvPassthrough/index.md)
-        - G021 — Remove Module Name from Resolver Import API — **PLANNED** 🔗[index](./Knowledge/Goals/G021-RemoveModuleName/index.md)
+        - G021 — Remove Module Name from Resolver Import API — **Complete** 🔗[index](./Knowledge/Goals/G021-RemoveModuleName/index.md)
         - G019 — SlabId LTV Type Unification — **Complete** 🔗[index](./Knowledge/Goals/G019-SlabIdLtvUnification/index.md)
+        - G045 — Language Enhancement Review — **Complete** 🔗[index](./Knowledge/Goals/G045-LanguageEnhancementReview/index.md)
 
 ### Facts
 (none yet)
@@ -137,12 +140,14 @@ Complete index of LOCAL knowledge. Load items relevant to your current task.
 ### WorkProducts
 - WP001 — CodebaseReview: Full issue catalog, architectural analysis, 20 prioritized recommendations (2026-03-16)
 - WP002 — EdictQuoteHandling: Investigation of `"` semantics in edict compiler/VM; findings for G014 (2026-03-16)
+- AgentCLanguageEnhancements-2026-03-22 — design review and proposal set for human+agent language evolution (2026-03-22)
 
 ---
 
 ## Timeline Highlights
 
 ### Recent Events (Last 7 Days)
+- 🔗[2026-03-22: Session 2320-2340](./Knowledge/Timeline/2026/03/22/2320-2340/index.md) — Language enhancement review and design write-up
 - 🔗[2026-03-22: Lexer Unicode and Quotes Fix](./Knowledge/Timeline/2026/03/22/index.md) — Fixed lexer to allow double quotes and UTF-8 characters in Edict identifiers.
 - 🔗[2026-03-22: Session 2140-2200](./Knowledge/Timeline/2026/03/22/2140-2200/index.md) — HRM Bootstrap and project state verification
 - 🔗[2026-03-22: G021 module name removed + edict string literal migration](./Knowledge/Timeline/2026/03/22/index.md) — `scopeName` removed from entire resolver import API (structs, methods, wire protocol → `protocol_v2`, opcodes, thunks, tests); `TOKEN_STRING` removed from `compileTerm()`; `'word`/`[multi word]` syntax enforced; `edict_language_reference.md` fully updated; 7/7 suites pass
@@ -152,7 +157,7 @@ Complete index of LOCAL knowledge. Load items relevant to your current task.
 - 🔗[2026-03-16: Phase 1 and 2 Complete](./Knowledge/Timeline/2026/03/16/2200-2300/index.md) — Final build fix (`demo_capabilities.cpp`) and project wrap-up; all goals completed or deferred.
 
 ### Current Phase
-Phase 3: Active — G016, G017, G019, G020, G044 complete. Cartographer CLI pipeline + `agentc.sh` wrappers complete. LMDB persistence goals (G040–G042) ready to proceed.
+Phase 3: Active — G016, G017, G019, G020, G044, and G045 complete. Cartographer CLI pipeline + `agentc.sh` wrappers complete. LMDB persistence goals (G040–G042) ready to proceed.
 
 ---
 
