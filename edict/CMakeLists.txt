@@ -19,7 +19,7 @@ set(LIB_SOURCES
 add_library(libedict SHARED ${LIB_SOURCES})
 set_target_properties(libedict PROPERTIES OUTPUT_NAME "edict")
 target_compile_options(libedict PRIVATE -Wall -Wextra -Werror -Wno-unused-parameter)
-target_link_libraries(libedict PRIVATE pthread PRIVATE cartographer PRIVATE kanren PUBLIC reflect)
+target_link_libraries(libedict PRIVATE pthread PRIVATE cartographer PUBLIC reflect)
 
 # Create executable
 add_executable(edict main.cpp)

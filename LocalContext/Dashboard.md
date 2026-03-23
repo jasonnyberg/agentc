@@ -6,11 +6,11 @@
 
 ## Current Focus
 
-**Active Goals**: G046 (continuation-based speculation planning), G047 (native relational syntax planning)
-**Status**: G044 (JSON module cache) complete. G045 (language enhancement review) complete and refined so both the literal-model note and the remaining proposals explicitly preserve Edict's intentional unified literal model. Review-ready planning artifacts exist for G046 continuation-based speculation and G047 native relational syntax, and G047 has now been refined further toward call-form logic (`fresh(q)`, `conde(==(q 'tea) ==(q 'coffee))`, `results(q)`), with `logic(...)` as the preferred human-facing surface, `[...] logic!` as the equivalent literal/evaluator model underneath, a future path toward library/FFI-backed logic semantics, and rewrite-hosted DSL sugar as a later layer. Project remains positioned as a reversible cognitive substrate with LMDB persistence goals and language/runtime design follow-up available.
+**Active Goals**: G046 (continuation-based speculation implementation), G047 (native relational syntax follow-up / documentation alignment)
+**Status**: G044 (JSON module cache) complete. G045 (language enhancement review) complete and refined so both the literal-model note and the remaining proposals explicitly preserve Edict's intentional unified literal model. G046 remains in active implementation: `op_SPECULATE()` now runs nested speculative code in the current VM via checkpoint + nested code-frame execution, and follow-up tests now cover rewrite-rule rollback, closure-driven mutation rollback, and nested-speculation isolation. G047 remains as logic-surface follow-up work, but its earlier compiler-native logic forms have now been retired by G048 and the latest cleanup: compiler-native `logic(...)` lowering is gone, compiler support for `logic { ... }` is gone, and remaining logic tests use imported capability paths or pure wrapper proof coverage instead of VM/compiler-owned logic behavior. G048 is complete: the Listree-spec-to-kanren bridge lives in `kanren/logic_evaluator.cpp`, `kanren/runtime_ffi.cpp` exposes both the generalized runtime-handle ABI and direct imported `agentc_logic_eval_ltv(...)`, Edict-side imported-capability coverage exercises that boundary through the normal Cartographer resolve/import path, pure Edict wrapper thunks prove canonical logic specs can be built with ordinary `f(x)` forms and evaluated through imported `libkanren.so`, `VMOP_LOGIC_RUN` has been removed entirely, and `libedict` no longer links directly against `kanren`. Full validation remains green: focused detached-logic tests pass and the full `ctest` suite passes (`7/7`). Project remains positioned as a reversible cognitive substrate with LMDB persistence goals and language/runtime design follow-up available.
 **Last Updated**: 2026-03-23
 
-**Active Task**: User review of G046/G047 planning artifacts before implementation kickoff. Recommended next after review: start G046 with execution-frame extraction or start G047 with call-form `logic(...)` lowering (`fresh(...)`, relation calls, `results(...)`) documented as equivalent to `[...] logic!`, while leaving capability migration and rewrite-hosted DSLs for later slices.
+**Active Task**: G048 is complete. The next follow-up is documentation/design alignment: update any remaining G047, README, demo, or language-reference material that still describes `logic { ... }`, compiler-native `logic(...)` lowering, or `VMOP_LOGIC_RUN` as active behavior. G046 may still optionally gain repeated planner-style probe coverage later.
 
 **Previous Active Task**: G020 — Early Type Binding (`bindTypes()`) — **COMPLETE** (2026-03-21). `bindTypes()` pass added to `Mapper::materialize()`; resolves `"struct X"` field types into `type_def` CPtr children. `ns` param fully removed from `box()`/`unbox()`/`packStruct()`/`unpackStruct()`, C ABI, edict bootstrap, unit tests, and demo/test scripts. New `BindTypesCreatesTypeDef` test in `mapper_tests.cpp`; `Rect` struct added to `test_input.h`.
 
@@ -57,10 +57,12 @@
 ---
 
 ### Active Goals
-- G046 — Continuation-Based Speculation — **Planned / Review Ready**
-- G047 — Native Relational Syntax — **Planned / Review Ready**
+- G046 — Continuation-Based Speculation — **In Progress**
+- G047 — Native Relational Syntax — **In Progress**
+- G048 — Library-Backed Logic Capability — **Complete**
 
 ### Completed Goals (recent)
+- ✅ G048 — Library-Backed Logic Capability — **COMPLETE** (2026-03-23). Detached kanren from VM ownership: evaluator lives in `kanren/`, runtime/import ABIs landed, Edict-side imported-capability coverage is green, pure Edict wrappers prove canonical spec construction, compiler-native logic lowering and `logic { ... }` compiler sugar were removed, and `VMOP_LOGIC_RUN` was retired.
 - ✅ G045 — Language Enhancement Review — **COMPLETE** (2026-03-22). Reviewed docs/code/tests to infer AgentC's intended role as a human+agent language; produced `LocalContext/Knowledge/WorkProducts/AgentCLanguageEnhancements-2026-03-22.md` with 14 forward-looking language/runtime/tooling proposals.
 - ✅ G044 — JSON-based Module Import Caching — **COMPLETE** (2026-03-22). File-based JSON caching of resolver output implemented in `EdictVM` to bypass `libclang` overhead. Cache stored in `~/.cache/agentc/` with `mtime` invalidation. Included automated test `demo_import_cache.sh`.
 - ✅ G021 — Remove Module Name from Resolver Import API — **COMPLETE** (2026-03-22). `scopeName` removed from `ImportRequest`/`ImportResult` structs, all service methods, wire protocol (bumped to `protocol_v2`), all 4 VM opcodes, 2 thunks, service tests, callback tests, and language reference. 7/7 suites pass; all shell scripts pass.
@@ -71,10 +73,11 @@
 - 🔗[G018 — FFI LTV Passthrough](./Knowledge/Goals/G018-FfiLtvPassthrough/index.md) — All phases A–D + E complete
 
 ### Recommended Next Steps
-1. **Review G046/G047 Plans**: Confirm or refine the continuation-based speculation and native relational syntax plans, then pick the first implementation kickoff.
-2. **Language Follow-up**: After G046/G047 review, remaining high-leverage G045 candidates include strictness profiles, richer FFI capability metadata, and literal-intent inspection/tooling.
-3. **LMDB Integration**: G016+G017 complete — can proceed with LMDB persistence goals (G040–G042).
-4. **Commit**: Recent documentation/HRM updates and any outstanding implementation work remain uncommitted.
+1. **Align Logic Docs After G048**: Update any remaining G047/reference/design/demo material that still describes `logic { ... }`, compiler-native `logic(...)` lowering, or `VMOP_LOGIC_RUN` as active implementation.
+2. **Harden G046/G047**: Decide whether G046 needs repeated planner-style probe coverage beyond the newly landed isolation tests.
+3. **Language Follow-up**: Remaining high-leverage G045 candidates include strictness profiles, richer FFI capability metadata, and literal-intent inspection/tooling.
+4. **LMDB Integration**: G016+G017 complete — can proceed with LMDB persistence goals (G040–G042).
+5. **Commit**: Recent documentation/HRM updates and the new G046/G047/G048 implementation work remain uncommitted.
 
 ### Completed Goals
 - ✅ G017 — Edict Stdin/File Script Mode (2026-03-20) — `runScript(istream&)`; `edict -` stdin and `edict FILE` CLI modes; `#` comments; 74/74 tests pass
@@ -129,8 +132,9 @@ Complete index of LOCAL knowledge. Load items relevant to your current task.
         - G021 — Remove Module Name from Resolver Import API — **Complete** 🔗[index](./Knowledge/Goals/G021-RemoveModuleName/index.md)
         - G019 — SlabId LTV Type Unification — **Complete** 🔗[index](./Knowledge/Goals/G019-SlabIdLtvUnification/index.md)
         - G045 — Language Enhancement Review — **Complete** 🔗[index](./Knowledge/Goals/G045-LanguageEnhancementReview/index.md)
-        - G046 — Continuation-Based Speculation — **Planned** 🔗[index](./Knowledge/Goals/G046-ContinuationBasedSpeculation/index.md)
-        - G047 — Native Relational Syntax — **Planned** 🔗[index](./Knowledge/Goals/G047-NativeRelationalSyntax/index.md)
+        - G046 — Continuation-Based Speculation — **In Progress** 🔗[index](./Knowledge/Goals/G046-ContinuationBasedSpeculation/index.md)
+        - G047 — Native Relational Syntax — **In Progress** 🔗[index](./Knowledge/Goals/G047-NativeRelationalSyntax/index.md)
+        - G048 — Library-Backed Logic Capability — **Complete** 🔗[index](./Knowledge/Goals/G048-LibraryBackedLogicCapability/index.md)
 
 ### Facts
 (none yet)
@@ -145,14 +149,27 @@ Complete index of LOCAL knowledge. Load items relevant to your current task.
 - WP001 — CodebaseReview: Full issue catalog, architectural analysis, 20 prioritized recommendations (2026-03-16)
 - WP002 — EdictQuoteHandling: Investigation of `"` semantics in edict compiler/VM; findings for G014 (2026-03-16)
 - AgentCLanguageEnhancements-2026-03-22 — design review and proposal set for human+agent language evolution (2026-03-22)
-- ContinuationBasedSpeculationPlan-2026-03-22 — implementation plan for in-VM speculative execution via explicit execution frames (2026-03-22)
-- NativeRelationalSyntaxPlan-2026-03-22 — implementation plan for lowering call-form `logic(...)` native logic into current logic IR, with `[...] logic!` as the equivalent literal/evaluator model, plus follow-on notes for capability migration and rewrite-hosted DSLs (2026-03-22)
+- ContinuationBasedSpeculationPlan-2026-03-22 — implementation plan plus 2026-03-23 status for in-VM speculative execution via nested code-frame execution and checkpoint rollback, now including rewrite/closure/nested-speculation hardening coverage (2026-03-22)
+- NativeRelationalSyntaxPlan-2026-03-22 — implementation plan plus 2026-03-23 status for lowering call-form `logic(...)` native logic into current logic IR, now including grouped conjunctive `all(...)` branches inside `conde(...)`, with `[...] logic!` as the equivalent literal/evaluator model, plus follow-on notes for capability migration and rewrite-hosted DSLs (2026-03-22)
+- LogicCapabilityMigrationPlan-2026-03-23 — follow-on implementation plan plus completed G048 slices for canonical imported logic capability, extracted evaluator ownership in `kanren/`, the runtime ABI capability boundary via `agentc_runtime_ctx*` / `agentc_value` / `agentc_logic_eval(...)`, direct imported `agentc_logic_eval_ltv(...)`, Edict-side imported-capability coverage through Cartographer resolve/import, pure Edict wrapper construction of canonical logic specs, removal of compiler-native logic lowering and `logic { ... }` compiler sugar, and retirement of `VMOP_LOGIC_RUN` (2026-03-23)
 
 ---
 
 ## Timeline Highlights
 
 ### Recent Events (Last 7 Days)
+- 🔗[2026-03-23: Session 1420-1435](./Knowledge/Timeline/2026/03/23/1420-1435/index.md) — Removed the last `logic { ... }` compiler special case, converted remaining non-duplicative tests to imported object-spec flows, and kept focused validation plus `ctest` green
+- 🔗[2026-03-23: Session 1410-1430](./Knowledge/Timeline/2026/03/23/1410-1430/index.md) — Completed G048 by removing compiler-native logic lowering from `EdictCompiler`, retiring `VMOP_LOGIC_RUN`, and keeping focused detached-logic tests plus full `ctest` green
+- 🔗[2026-03-23: Session 1330-1345](./Knowledge/Timeline/2026/03/23/1330-1345/index.md) — Detached active kanren ownership from the VM by removing builtin logic thunks, routing logic tests through imported `libkanren.so`, and adding direct imported `agentc_logic_eval_ltv(...)`
+- 🔗[2026-03-23: Session 1315-1330](./Knowledge/Timeline/2026/03/23/1315-1330/index.md) — Proved that pure Edict wrappers can build canonical logic specs and evaluate them through imported `libkanren.so`, strengthening the path toward a fully optional kanren plugin
+- 🔗[2026-03-23: Session 1240-1255](./Knowledge/Timeline/2026/03/23/1240-1255/index.md) — Added Edict-side imported-capability coverage for the G048 runtime ABI via `resolver.import_resolved !` against `libkanren.so`; focused imported logic tests and full `ctest` stayed green
+- 🔗[2026-03-23: Session 1230-1245](./Knowledge/Timeline/2026/03/23/1230-1245/index.md) — Added the first G048 runtime ABI boundary in `kanren/` with `agentc_runtime_ctx*`, opaque `agentc_value` handles, and `agentc_logic_eval(...)`; focused logic tests and full `ctest` stayed green
+- 🔗[2026-03-23: Session 1110-1125](./Knowledge/Timeline/2026/03/23/1110-1125/index.md) — Moved `logic_evaluator` ownership into `kanren/`, kept `op_LOGIC_RUN()` as a thin adapter, and verified focused logic tests plus full `ctest`
+- 🔗[2026-03-23: Session 1055-1110](./Knowledge/Timeline/2026/03/23/1055-1110/index.md) — Extracted reusable `logic_evaluator` helper, reduced `op_LOGIC_RUN()` to an adapter, added direct helper coverage, and kept `86` Edict tests plus `7/7` CTest targets green
+- 🔗[2026-03-23: Session 1030-1045](./Knowledge/Timeline/2026/03/23/1030-1045/index.md) — Landed the first G048 slice: object specs, `[...] logic!`, and `logic(...)` now share one evaluator path; `85` Edict tests and `7/7` CTest targets pass
+- 🔗[2026-03-23: Session 1010-1030](./Knowledge/Timeline/2026/03/23/1010-1030/index.md) — Hardened G046 with rewrite/closure/nested-speculation isolation tests, extended G047 `conde(...)` lowering to grouped branches, updated language reference, 7/7 targets pass
+- 🔗[2026-03-23: Session 1020-1040](./Knowledge/Timeline/2026/03/23/1020-1040/index.md) — Planned G048 as the follow-on path for canonical `[...] logic!` evaluation and library-backed logic capability migration
+- 🔗[2026-03-23: Session 0100-0120](./Knowledge/Timeline/2026/03/23/0100-0120/index.md) — Implemented first-pass G046 in-VM speculation and G047 native `logic(...)` lowering; added tests; 78/78 pass
 - 🔗[2026-03-23: Session 0035-0045](./Knowledge/Timeline/2026/03/23/0035-0045/index.md) — Refined G047 toward call-form logic, future capability migration, and rewrite-hosted DSLs
 - 🔗[2026-03-23: Session 0005-0015](./Knowledge/Timeline/2026/03/23/0005-0015/index.md) — Refined G047 toward `logic(...)` with equivalent `[...] logic!` semantics
 - 🔗[2026-03-22: Session 2345-2359](./Knowledge/Timeline/2026/03/22/2345-2359/index.md) — Planned G046 continuation-based speculation and G047 native relational syntax
@@ -168,7 +185,7 @@ Complete index of LOCAL knowledge. Load items relevant to your current task.
 - 🔗[2026-03-16: Phase 1 and 2 Complete](./Knowledge/Timeline/2026/03/16/2200-2300/index.md) — Final build fix (`demo_capabilities.cpp`) and project wrap-up; all goals completed or deferred.
 
 ### Current Phase
-Phase 3: Active — G016, G017, G019, G020, G044, and G045 complete. G046 planning artifacts are review-ready, and G047 planning has been refined toward call-form `logic(...)`, later capability migration, and rewrite-hosted DSL layering over equivalent `[...] logic!` semantics. Cartographer CLI pipeline + `agentc.sh` wrappers complete. LMDB persistence goals (G040–G042) ready to proceed.
+Phase 3: Active — G016, G017, G019, G020, G044, G045, and G048 complete. G046 remains in implementation: speculation runs in-VM via nested code-frame execution and checkpoint rollback with deeper rewrite/closure/nested-probe isolation coverage. G047 remains as follow-up documentation/design alignment around logic ergonomics, but active kanren ownership is now fully detached from the VM: evaluator ownership lives in `kanren/`, imported capability boundaries exist via both `agentc_runtime_ctx*` / `agentc_value` / `agentc_logic_eval(...)` and direct `agentc_logic_eval_ltv(...)`, Edict-side imported-capability coverage proves those boundaries work through ordinary Cartographer resolve/import, pure Edict wrappers prove canonical logic specs can be built and evaluated through imported `libkanren.so`, compiler-native native-logic lowering and `logic { ... }` compiler sugar have been removed from `EdictCompiler`, and `VMOP_LOGIC_RUN` has been retired entirely. Cartographer CLI pipeline + `agentc.sh` wrappers complete. LMDB persistence goals (G040–G042) ready to proceed.
 
 ---
 

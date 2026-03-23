@@ -22,6 +22,7 @@
 #include <fstream>
 #include <filesystem>
 #include <chrono>
+#include <algorithm>
 #include <string>
 #include <cstring>
 #include <thread>
@@ -244,6 +245,36 @@ static CPtr<agentc::ListreeValue> make_imported_function_definition(const std::s
 static std::string decodeStringInt(const CPtr<agentc::ListreeValue>& value) {
     EXPECT_TRUE((bool)value);
     return std::string(static_cast<const char*>(value->getData()), value->getLength());
+}
+
+static std::vector<std::string> listToStrings(const CPtr<agentc::ListreeValue>& value) {
+    std::vector<std::string> out;
+    if (!value || !value->isListMode()) {
+        return out;
+    }
+
+    value->forEachList([&](CPtr<agentc::ListreeValueRef>& ref) {
+        if (ref && ref->getValue() && ref->getValue()->getData()) {
+            out.emplace_back(static_cast<const char*>(ref->getValue()->getData()), ref->getValue()->getLength());
+        }
+    });
+    std::reverse(out.begin(), out.end());
+    return out;
+}
+
+static std::vector<CPtr<agentc::ListreeValue>> listItems(const CPtr<agentc::ListreeValue>& value) {
+    std::vector<CPtr<agentc::ListreeValue>> out;
+    if (!value || !value->isListMode()) {
+        return out;
+    }
+
+    value->forEachList([&](CPtr<agentc::ListreeValueRef>& ref) {
+        if (ref && ref->getValue()) {
+            out.push_back(ref->getValue());
+        }
+    });
+    std::reverse(out.begin(), out.end());
+    return out;
 }
 
 static void expectCodeFrameLongerThanBuiltinThunk(CPtr<agentc::ListreeValue> value) {
@@ -757,6 +788,129 @@ TEST(CallbackTest, ImportResolvedInjectsDefinitionsAndInvokesImmediately) {
     EXPECT_EQ(std::string(static_cast<char*>(resolvedFormat->getData()), resolvedFormat->getLength()),
               "resolver_json_v1");
 
+}
+
+TEST(CallbackTest, ImportResolvedKanrenRuntimeAbiEvaluatesLogicSpec) {
+    EdictVM vm;
+    EdictCompiler compiler;
+
+    const std::filesystem::path buildDir(TEST_BUILD_DIR);
+    const std::filesystem::path rootBuildDir = buildDir.parent_path();
+    const std::filesystem::path sourceDir(TEST_SOURCE_DIR);
+    const std::filesystem::path libPath = rootBuildDir / "kanren" / "libkanren.so";
+    const std::filesystem::path headerPath = sourceDir / "kanren_runtime_ffi_poc.h";
+    const std::filesystem::path resolvedPath = buildDir / "edict_import_kanren_runtime_ffi.json";
+
+    agentc::cartographer::Mapper mapper;
+    agentc::cartographer::Mapper::ParseDescription description;
+    std::string error;
+    ASSERT_TRUE(agentc::cartographer::parser::parseHeaderToDescription(mapper, headerPath.string(), description, error)) << error;
+
+    agentc::cartographer::resolver::ResolvedApi resolved;
+    ASSERT_TRUE(agentc::cartographer::resolver::resolveApiDescription(libPath.string(), description, resolved, error)) << error;
+
+    std::ofstream output(resolvedPath);
+    ASSERT_TRUE(output.good());
+    output << agentc::cartographer::resolver::encodeResolvedApi(resolved);
+    output.close();
+
+    BytecodeBuffer importCode = compiler.compile(
+        "[" + resolvedPath.string() + "] "
+        "resolver.import_resolved ! @logicffi "
+        "{\"fresh\": [\"q\"], \"where\": [[\"membero\", \"q\", [\"tea\", \"cake\"]]], \"results\": [\"q\"]} logicffi.agentc_logic_eval_ltv ! @result "
+        "result");
+    int state = vm.execute(importCode);
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+
+    auto result = vm.popData();
+    auto values = listToStrings(result);
+    ASSERT_EQ(values.size(), 2u);
+    EXPECT_EQ(values[0], "tea");
+    EXPECT_EQ(values[1], "cake");
+}
+
+TEST(CallbackTest, PureEdictWrappersBuildCanonicalLogicSpecForImportedKanren) {
+    EdictVM vm;
+    EdictCompiler compiler;
+
+    const std::filesystem::path buildDir(TEST_BUILD_DIR);
+    const std::filesystem::path rootBuildDir = buildDir.parent_path();
+    const std::filesystem::path sourceDir(TEST_SOURCE_DIR);
+    const std::filesystem::path libPath = rootBuildDir / "kanren" / "libkanren.so";
+    const std::filesystem::path headerPath = sourceDir / "kanren_runtime_ffi_poc.h";
+    const std::filesystem::path resolvedPath = buildDir / "edict_import_kanren_runtime_wrappers.json";
+
+    agentc::cartographer::Mapper mapper;
+    agentc::cartographer::Mapper::ParseDescription description;
+    std::string error;
+    ASSERT_TRUE(agentc::cartographer::parser::parseHeaderToDescription(mapper, headerPath.string(), description, error)) << error;
+
+    agentc::cartographer::resolver::ResolvedApi resolved;
+    ASSERT_TRUE(agentc::cartographer::resolver::resolveApiDescription(libPath.string(), description, resolved, error)) << error;
+
+    std::ofstream output(resolvedPath);
+    ASSERT_TRUE(output.good());
+    output << agentc::cartographer::resolver::encodeResolvedApi(resolved);
+    output.close();
+
+    const std::string wrapperPrelude =
+        "[" + resolvedPath.string() + "] "
+        "resolver.import_resolved ! @logicffi "
+        "[@rhs @lhs rhs lhs [] @items items ^] @pair "
+        "[@x x [] @items items ^] @fresh "
+        "[@x x [] @items items ^] @results "
+        "[@rhs @lhs rhs lhs 'membero [] @goal goal ^] @membero "
+        "[@results_list @goal_atom @fresh_list {\"fresh\": [], \"where\": [], \"results\": []} @spec "
+        " fresh_list @spec.fresh "
+        " goal_atom [] @where_clause where_clause ^ @spec.where "
+        " results_list @spec.results "
+        " spec] @logic_spec "
+        "[logicffi.agentc_logic_eval_ltv !] @logic_eval ";
+
+    int state = vm.execute(compiler.compile(wrapperPrelude));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+
+    state = vm.execute(compiler.compile("logic_spec(fresh(q) membero(q pair(tea cake)) results(q))"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+
+    auto spec = vm.popData();
+    ASSERT_TRUE((bool)spec);
+
+    auto freshRef = spec->find("fresh");
+    ASSERT_TRUE((bool)freshRef);
+    auto freshValue = freshRef->getValue(false, false);
+    auto freshValues = listToStrings(freshValue);
+    ASSERT_EQ(freshValues.size(), 1u);
+    EXPECT_EQ(freshValues[0], "q");
+
+    auto whereRef = spec->find("where");
+    ASSERT_TRUE((bool)whereRef);
+    auto whereClauses = listItems(whereRef->getValue(false, false));
+    ASSERT_EQ(whereClauses.size(), 1u);
+    auto goalItems = listItems(whereClauses[0]);
+    ASSERT_EQ(goalItems.size(), 3u);
+    EXPECT_EQ(decodeStringInt(goalItems[0]), "membero");
+    EXPECT_EQ(decodeStringInt(goalItems[1]), "q");
+    auto relationList = listToStrings(goalItems[2]);
+    ASSERT_EQ(relationList.size(), 2u);
+    EXPECT_EQ(relationList[0], "tea");
+    EXPECT_EQ(relationList[1], "cake");
+
+    auto resultsRef = spec->find("results");
+    ASSERT_TRUE((bool)resultsRef);
+    auto resultNames = listToStrings(resultsRef->getValue(false, false));
+    ASSERT_EQ(resultNames.size(), 1u);
+    EXPECT_EQ(resultNames[0], "q");
+
+    vm.pushData(spec);
+    state = vm.execute(compiler.compile("logic_eval !"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+
+    auto result = vm.popData();
+    auto values = listToStrings(result);
+    ASSERT_EQ(values.size(), 2u);
+    EXPECT_EQ(values[0], "tea");
+    EXPECT_EQ(values[1], "cake");
 }
 
 TEST(CallbackTest, EdictCliImportResolvedDemoPrintsExpectedResult) {

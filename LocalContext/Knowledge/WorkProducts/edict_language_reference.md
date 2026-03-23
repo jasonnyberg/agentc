@@ -554,6 +554,8 @@ When you use `<dict>`, that dict becomes the current innermost scope:
 
 `speculate [code]` runs code in a **completely isolated snapshot** of the VM. Side effects never reach the host VM. The result (top of the speculative stack) is returned to the host on success; a Null value is returned on failure.
 
+Internally, speculation now runs as **nested execution inside the current VM** rather than by cloning a second VM. The runtime takes a transaction checkpoint, pushes a nested code frame, executes the speculative code, snapshots the top result, rolls back the checkpoint, and then materializes the result back into the caller. That means speculation now shares the same reversible substrate as ordinary transactions, rewrite state, and nested code evaluation.
+
 ```edict
 'baseline
 speculate [trial]
@@ -573,11 +575,41 @@ speculate [swap]   -- swap fails on an empty speculative stack
 - Try an operation that might fail; fall back if it does
 - Probe a computation's result without committing
 - Safe exploration of state changes
+- Define temporary rewrite rules or bindings inside a probe without leaking them outward
+- Run nested probes without corrupting the caller's active code-frame stack
 
 ```edict
 'safe
 speculate [risky_operation !]
 test & [use_result !] | [use_fallback !]
+```
+
+### Isolation examples
+
+Rewrite rules created inside a probe disappear when the probe rolls back:
+
+```edict
+speculate [
+  {"pattern": ["x"], "replacement": ["rewritten"]} rewrite_define ! /
+  'x
+]
+-- returns "rewritten"
+
+'x
+-- outside the probe there is no rewrite rule, so this is still just "x"
+```
+
+Nested speculation is isolated relative to its enclosing speculation too:
+
+```edict
+[] @session
+
+speculate [
+  session speculate ['inner @mode] pop
+  session mode
+]
+-- returns "mode"
+-- the inner probe rolled back before the outer probe continued
 ```
 
 ---
@@ -689,7 +721,7 @@ A self-referential rule (`"x" → "x"`) will not loop forever — the VM has a p
 
 ## 16. Logic Programming (miniKanren)
 
-Edict has an embedded miniKanren logic engine. Logic queries are expressed as JSON objects and run with `logic_run !` or the `logic { ... }` block syntax.
+Edict has an embedded miniKanren logic engine. Logic queries can be expressed either as object IR consumed by `logic_run !` or with native call-form `logic(...)` syntax that lowers into the same IR.
 
 ### Basic unification
 
@@ -752,16 +784,76 @@ logic {
 -- stack: [ <list: [["tea", ["cake"]]]> ]
 ```
 
+### Native call-form logic
+
+```edict
+logic(
+  fresh(q)
+  membero(q [tea cake jam])
+  results(q)
+)
+-- equivalent in effect to:
+-- {"fresh": ["q"], "where": [["membero", "q", ["tea", "cake", "jam"]]], "results": ["q"]} logic_run !
+```
+
+Think of `logic(...)` as the preferred human-facing surface. Conceptually it matches the same literal-first model as:
+
+```edict
+[
+  fresh(q)
+  membero(q [tea cake jam])
+  results(q)
+] logic!
+```
+
+The current implementation lowers `logic(...)` through the compiler into the object-shaped logic IR that `VMOP_LOGIC_RUN` already understands.
+
 ### Limiting results
 
 ```edict
-logic {
-  "fresh": ["q"],
-  "where": [["membero", "q", ["a", "b", "c", "d", "e"]]],
-  "results": ["q"],
-  "limit": "2"
-}
+logic(
+  fresh(q)
+  membero(q [a b c d e])
+  results(q)
+  limit('2)
+)
 -- stack: [ <list: ["a", "b"]> ]
+```
+
+### Disjunction with `conde(...)`
+
+Single-goal branches can be written directly:
+
+```edict
+logic(
+  fresh(q)
+  conde(
+    ==(q 'tea)
+    ==(q 'coffee)
+  )
+  results(q)
+)
+-- stack: [ <list: ["tea", "coffee"]> ]
+```
+
+When a branch needs multiple conjunctive goals, wrap that branch in `all(...)`:
+
+```edict
+logic(
+  fresh(q category)
+  conde(
+    all(
+      ==(q 'tea)
+      ==(category 'hot)
+    )
+    all(
+      ==(q 'coffee)
+      ==(category 'iced)
+    )
+  )
+  results(q category)
+)
+-- stack: [ <list: [["tea", "hot"], ["coffee", "iced"]]> ]
 ```
 
 ### Supported relations
@@ -776,7 +868,7 @@ logic {
 | `["tailo", lst, t]` | t is the tail of lst |
 | `["pairo", lst]` | lst is a non-empty list (a pair) |
 
-### Logic block syntax (native keyword)
+### Logic block syntax (`logic { ... }`)
 
 ```edict
 logic { "fresh": ["q"], "where": [...], "results": ["q"] }
@@ -785,6 +877,8 @@ logic { "fresh": ["q"], "where": [...], "results": ["q"] }
 @answers
 answers    -- push the results list
 ```
+
+`logic { ... }` remains supported for compatibility and for direct object-shaped authoring, but `logic(...)` is now the cleaner native form for human-authored queries.
 
 ---
 
@@ -1204,12 +1298,12 @@ greeting subject 'greet
 ### A.3 Logic-driven data selection
 
 ```edict
-logic {
-  "fresh": ["item"],
-  "where": [["membero", "item", ["apple", "banana", "cherry"]]],
-  "results": ["item"],
-  "limit": "2"
-} @fruits
+logic(
+  fresh(item)
+  membero(item [apple banana cherry])
+  results(item)
+  limit('2)
+) @fruits
 -- fruits is a list: ["apple", "banana"]
 ```
 

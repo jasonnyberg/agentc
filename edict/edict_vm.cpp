@@ -393,199 +393,6 @@ static void addBootstrapMetadata(CPtr<agentc::ListreeValue> object,
     agentc::addNamedItem(object, "__cartographer", metadata);
 }
 
-static CPtr<agentc::ListreeValue> pairListFromJsonArray(
-    CPtr<agentc::ListreeValue> value,
-    const std::unordered_map<std::string, CPtr<agentc::ListreeValue>>& vars);
-
-static CPtr<agentc::ListreeValue> logicTermFromSpec(
-    CPtr<agentc::ListreeValue> value,
-    const std::unordered_map<std::string, CPtr<agentc::ListreeValue>>& vars) {
-    if (!value) {
-        return nullptr;
-    }
-
-    if (value->isListMode()) {
-        return pairListFromJsonArray(value, vars);
-    }
-
-    std::string text;
-    if (valueToString(value, text)) {
-        auto it = vars.find(text);
-        if (it != vars.end()) {
-            return it->second;
-        }
-        return agentc::createStringValue(text);
-    }
-
-    auto out = agentc::createNullValue();
-    value->forEachTree([&](const std::string& name, CPtr<agentc::ListreeItem>& item) {
-        if (item) {
-            auto child = item->getValue(false, false);
-            if (child) {
-                agentc::addNamedItem(out, name, logicTermFromSpec(child, vars));
-            }
-        }
-    });
-    return out;
-}
-
-static CPtr<agentc::ListreeValue> pairListFromJsonArray(
-    CPtr<agentc::ListreeValue> value,
-    const std::unordered_map<std::string, CPtr<agentc::ListreeValue>>& vars) {
-    auto items = listValues(value);
-    CPtr<agentc::ListreeValue> out = agentc::createNullValue();
-    for (auto it = items.rbegin(); it != items.rend(); ++it) {
-        auto pair = agentc::createListValue();
-        agentc::addListItem(pair, logicTermFromSpec(*it, vars));
-        agentc::addListItem(pair, out);
-        out = pair;
-    }
-    return out;
-}
-
-static bool appendAtomGoal(
-    const std::vector<CPtr<agentc::ListreeValue>>& atom,
-    const std::unordered_map<std::string, CPtr<agentc::ListreeValue>>& vars,
-    std::vector<agentc::kanren::Goal>& goals,
-    std::string& error) {
-    if (atom.empty()) {
-        error = "Empty logic atom";
-        return false;
-    }
-
-    std::string op;
-    if (!valueToString(atom[0], op)) {
-        error = "Logic atom opcode must be a string";
-        return false;
-    }
-
-    if (op == "==") {
-        if (atom.size() != 3) {
-            error = "== expects two operands";
-            return false;
-        }
-        goals.push_back(agentc::kanren::equal(
-            logicTermFromSpec(atom[1], vars),
-            logicTermFromSpec(atom[2], vars)));
-        return true;
-    }
-
-    if (op == "membero") {
-        if (atom.size() != 3) {
-            error = "membero expects two operands";
-            return false;
-        }
-        goals.push_back(agentc::kanren::membero(
-            logicTermFromSpec(atom[1], vars),
-            logicTermFromSpec(atom[2], vars)));
-        return true;
-    }
-
-    if (op == "appendo") {
-        if (atom.size() != 4) {
-            error = "appendo expects three operands";
-            return false;
-        }
-        goals.push_back(agentc::kanren::appendo(
-            logicTermFromSpec(atom[1], vars),
-            logicTermFromSpec(atom[2], vars),
-            logicTermFromSpec(atom[3], vars)));
-        return true;
-    }
-
-    if (op == "conso") {
-        if (atom.size() != 4) {
-            error = "conso expects three operands";
-            return false;
-        }
-        goals.push_back(agentc::kanren::conso(
-            logicTermFromSpec(atom[1], vars),
-            logicTermFromSpec(atom[2], vars),
-            logicTermFromSpec(atom[3], vars)));
-        return true;
-    }
-
-    if (op == "heado") {
-        if (atom.size() != 3) {
-            error = "heado expects two operands";
-            return false;
-        }
-        goals.push_back(agentc::kanren::heado(
-            logicTermFromSpec(atom[1], vars),
-            logicTermFromSpec(atom[2], vars)));
-        return true;
-    }
-
-    if (op == "tailo") {
-        if (atom.size() != 3) {
-            error = "tailo expects two operands";
-            return false;
-        }
-        goals.push_back(agentc::kanren::tailo(
-            logicTermFromSpec(atom[1], vars),
-            logicTermFromSpec(atom[2], vars)));
-        return true;
-    }
-
-    if (op == "pairo") {
-        if (atom.size() != 2) {
-            error = "pairo expects one operand";
-            return false;
-        }
-        goals.push_back(agentc::kanren::pairo(logicTermFromSpec(atom[1], vars)));
-        return true;
-    }
-
-    error = "Unknown logic atom: " + op;
-    return false;
-}
-
-static bool buildLogicGoal(
-    CPtr<agentc::ListreeValue> spec,
-    const std::unordered_map<std::string, CPtr<agentc::ListreeValue>>& vars,
-    agentc::kanren::Goal& out,
-    std::string& error) {
-    auto condeValue = namedValue(spec, "conde");
-    auto whereValue = namedValue(spec, "where");
-
-    std::vector<std::vector<agentc::kanren::Goal>> clauses;
-    auto source = condeValue ? listValues(condeValue) : std::vector<CPtr<agentc::ListreeValue>>{};
-    if (!condeValue && whereValue) {
-        source.push_back(whereValue);
-    }
-    if (source.empty()) {
-        error = "Logic query requires 'conde' or 'where'";
-        if (spec && !spec->isListMode()) {
-            std::string keys;
-            spec->forEachTree([&](const std::string& name, CPtr<agentc::ListreeItem>&) {
-                if (!keys.empty()) {
-                    keys += ",";
-                }
-                keys += name;
-            });
-            if (!keys.empty()) {
-                error += " (available keys: " + keys + ")";
-            }
-        }
-        return false;
-    }
-
-    for (const auto& clauseSpec : source) {
-        auto atomSpecs = listValues(clauseSpec);
-        std::vector<agentc::kanren::Goal> goals;
-        for (const auto& atomSpec : atomSpecs) {
-            auto atom = listValues(atomSpec);
-            if (!appendAtomGoal(atom, vars, goals, error)) {
-                return false;
-            }
-        }
-        clauses.push_back(goals);
-    }
-
-    out = agentc::kanren::conde(clauses);
-    return true;
-}
-
 EdictVM::EdictVM(CPtr<agentc::ListreeValue> root)
     : cursor(root),
       state(VM_NORMAL),
@@ -601,7 +408,12 @@ EdictVM::EdictVM(CPtr<agentc::ListreeValue> root)
 EdictVM::~EdictVM() = default;
 
 EdictVM::TransactionCheckpoint EdictVM::beginTransaction() {
+    return beginTransaction(true);
+}
+
+EdictVM::TransactionCheckpoint EdictVM::beginTransaction(bool restoreCodeResource) {
     EdictVM::TransactionCheckpoint checkpoint;
+    checkpoint.restoreCodeResource = restoreCodeResource;
 
     // Capture deep copies of all resource root nodes before taking slab
     // watermarks.  These copies serve as stable pre-mutation snapshots: the
@@ -614,6 +426,10 @@ EdictVM::TransactionCheckpoint EdictVM::beginTransaction() {
     // committed transaction is bounded by resource tree size and reclaimed
     // only on full VM reset.  (Tracked as a known limitation in G006.)
     for (size_t i = 0; i < VMRES_COUNT; ++i) {
+        if (i == VMRES_CODE && !restoreCodeResource) {
+            checkpoint.resources[i] = resources[i];
+            continue;
+        }
         checkpoint.resources[i] = resources[i] ? resources[i]->copy() : nullptr;
     }
     checkpoint.rewriteRules.reserve(rewrite_rules.size());
@@ -684,6 +500,9 @@ bool EdictVM::rollbackTransaction(EdictVM::TransactionCheckpoint& checkpoint) {
     }
 
     for (size_t i = 0; i < VMRES_COUNT; ++i) {
+        if (i == VMRES_CODE && !checkpoint.restoreCodeResource) {
+            continue;
+        }
         resources[i] = checkpoint.resources[i];
     }
     rewrite_rules.clear();
@@ -1415,35 +1234,33 @@ void EdictVM::op_SPECULATE() {
         return;
     }
 
-    // NOTE: op_SPECULATE uses a separate EdictVM because the execute() loop is
-    // non-reentrant with respect to VMRES_CODE and related state.  Calling
-    // beginTransaction()/rollbackTransaction() within the currently-running
-    // execute() loop would restore VMRES_CODE to the pre-speculation watermark
-    // position (pointing back at SPECULATE), creating an infinite loop.
-    //
-    // The speculate()/speculateValue() helpers are safe to use from *outside*
-    // execute() (e.g., from host code), but not from within a running opcode
-    // handler.  A future O(1) implementation would require making execute()
-    // re-entrant or reformulating it as an explicit continuation.  (G006.)
-    EdictVM speculativeVm;
-    speculativeVm.rewrite_rules = rewrite_rules;
-    speculativeVm.rewrite_mode = rewrite_mode;
-    speculativeVm.last_rewrite_trace = last_rewrite_trace ? last_rewrite_trace->copy() : nullptr;
-    for (size_t i = 0; i < VMRES_COUNT; ++i) {
-        if (i == VMRES_CODE) {
-            continue;
-        }
-        speculativeVm.resources[i] = resources[i] ? resources[i]->copy() : nullptr;
-    }
-
-    BytecodeBuffer speculativeCode = EdictCompiler().compile(source);
-    if (speculativeVm.execute(speculativeCode) & VM_ERROR) {
+    BytecodeBuffer speculativeCode;
+    try {
+        speculativeCode = EdictCompiler().compile(source);
+    } catch (...) {
         pushData(agentc::createNullValue());
         return;
     }
 
-    auto result = speculativeVm.peekData();
-    auto snapshot = captureSpeculativeSnapshot(result);
+    auto checkpoint = beginTransaction(false);
+    if (!checkpoint.valid) {
+        pushData(agentc::createNullValue());
+        return;
+    }
+
+    SpeculativeSnapshot snapshot;
+    bool succeeded = false;
+    if (!(executeNested(speculativeCode) & VM_ERROR)) {
+        snapshot = captureSpeculativeSnapshot(peekData());
+        succeeded = true;
+    }
+
+    rollbackTransaction(checkpoint);
+    if (!succeeded) {
+        pushData(agentc::createNullValue());
+        return;
+    }
+
     pushData(materializeSpeculativeSnapshot(snapshot));
 }
 
@@ -2524,18 +2341,7 @@ void EdictVM::op_LIST_ADD() {
     pushData(node);
 }
 
-int EdictVM::execute(const BytecodeBuffer& code) {
-    state &= ~(VM_ERROR | VM_YIELD | VM_COMPLETE | VM_SCANNING);
-    error_message.clear();
-    instruction_ptr = 0;
-    tail_eval = false;
-    scan_mode = ScanMode::None;
-    scan_depth = 0;
-    resources[VMRES_CODE] = agentc::createListValue();
-    CPtr<agentc::ListreeValue> frame = makeCodeFrame(code);
-    if (!frame) { setError("Code frame alloc"); return state; }
-    enq(VMRES_CODE, frame);
-
+int EdictVM::runCodeLoop(size_t stopCodeDepth, bool markCompleteOnDrain) {
 #if defined(__GNUC__) || defined(__clang__)
     static void* dispatch[] = {
         &&op_RESET, // Index 0
@@ -2553,7 +2359,7 @@ int EdictVM::execute(const BytecodeBuffer& code) {
         &&op_READ_TEXT, &&op_REQUEST_ID,
         &&op_BOOTSTRAP_CURATE_PARSER, &&op_BOOTSTRAP_CURATE_RESOLVER,
         &&op_BOOTSTRAP_CURATE_CARTOGRAPHER,
-        &&op_CLOSURE, &&op_LOGIC_RUN, &&op_REWRITE_DEFINE,
+        &&op_CLOSURE, &&op_REWRITE_DEFINE,
         &&op_REWRITE_LIST, &&op_REWRITE_REMOVE, &&op_REWRITE_APPLY,
         &&op_REWRITE_MODE, &&op_REWRITE_TRACE, &&op_SPECULATE,
         &&op_UNSAFE_EXTENSIONS_ALLOW, &&op_UNSAFE_EXTENSIONS_BLOCK,
@@ -2567,6 +2373,9 @@ int EdictVM::execute(const BytecodeBuffer& code) {
                   "dispatch table size does not match VMOP_COUNT — add a handler for the new opcode");
 #endif
     while (!(state & (VM_ERROR | VM_YIELD))) {
+        if (getResourceDepth(VMRES_CODE) <= stopCodeDepth) {
+            break;
+        }
         auto cur = peek(VMRES_CODE);
         if (!cur) break;
         if (!cur->getData() || cur->getLength() == 0) {
@@ -2711,7 +2520,6 @@ op_BOOTSTRAP_CURATE_PARSER: op_BOOTSTRAP_CURATE_PARSER(); goto op_epilogue;
 op_BOOTSTRAP_CURATE_RESOLVER: op_BOOTSTRAP_CURATE_RESOLVER(); goto op_epilogue;
  op_BOOTSTRAP_CURATE_CARTOGRAPHER: op_BOOTSTRAP_CURATE_CARTOGRAPHER(); goto op_epilogue;
 op_CLOSURE: op_CLOSURE(); goto op_epilogue;
-op_LOGIC_RUN: op_LOGIC_RUN(); goto op_epilogue;
 op_REWRITE_DEFINE: op_REWRITE_DEFINE(); goto op_epilogue;
 op_REWRITE_LIST: op_REWRITE_LIST(); goto op_epilogue;
 op_REWRITE_REMOVE: op_REWRITE_REMOVE(); goto op_epilogue;
@@ -2737,10 +2545,42 @@ op_epilogue:
         continue;
     }
     code_ptr = nullptr;
-        code_size = 0;
-        if (!(state & (VM_ERROR | VM_YIELD))) state |= VM_COMPLETE;
+    code_size = 0;
+    if (markCompleteOnDrain && !(state & (VM_ERROR | VM_YIELD)) && getResourceDepth(VMRES_CODE) <= stopCodeDepth) {
+        state |= VM_COMPLETE;
+    }
+    return state;
+}
+
+int EdictVM::execute(const BytecodeBuffer& code) {
+    state &= ~(VM_ERROR | VM_YIELD | VM_COMPLETE | VM_SCANNING);
+    error_message.clear();
+    instruction_ptr = 0;
+    tail_eval = false;
+    scan_mode = ScanMode::None;
+    scan_depth = 0;
+    resources[VMRES_CODE] = agentc::createListValue();
+    CPtr<agentc::ListreeValue> frame = makeCodeFrame(code);
+    if (!frame) { setError("Code frame alloc"); return state; }
+    enq(VMRES_CODE, frame);
+    return runCodeLoop(0, true);
+}
+
+int EdictVM::executeNested(const BytecodeBuffer& code) {
+    state &= ~(VM_ERROR | VM_YIELD | VM_COMPLETE | VM_SCANNING);
+    error_message.clear();
+    scan_mode = ScanMode::None;
+    scan_depth = 0;
+
+    const size_t parentDepth = getResourceDepth(VMRES_CODE);
+    CPtr<agentc::ListreeValue> frame = makeCodeFrame(code);
+    if (!frame) {
+        setError("Code frame alloc");
         return state;
     }
+    enq(VMRES_CODE, frame);
+    return runCodeLoop(parentDepth, false);
+}
     
     void EdictVM::registerCursorOperations() {
         auto dictVal = stack_deq(VMRES_DICT, false);
@@ -2909,7 +2749,6 @@ op_epilogue:
         addBuiltinThunk(dictVal, "fail", VMOP_FAIL);
         addBuiltinThunk(dictVal, "test", VMOP_TEST);
         addBuiltinThunk(dictVal, "ffi_closure", VMOP_CLOSURE);
-        addBuiltinThunk(dictVal, "logic_run", VMOP_LOGIC_RUN);
         addBuiltinThunk(dictVal, "rewrite_define", VMOP_REWRITE_DEFINE);
         addBuiltinThunk(dictVal, "rewrite_list", VMOP_REWRITE_LIST);
         addBuiltinThunk(dictVal, "rewrite_remove", VMOP_REWRITE_REMOVE);
@@ -2977,63 +2816,5 @@ void EdictVM::op_CLOSURE() {
     if (closureValue) pushData(closureValue);
     else pushData(agentc::createNullValue());
 }
-
-void EdictVM::op_LOGIC_RUN() {
-    auto spec = popData();
-    if (!spec || spec->isListMode()) {
-        setError("LOGIC_RUN expects query object");
-        return;
-    }
-
-    std::unordered_map<std::string, CPtr<agentc::ListreeValue>> vars;
-    auto freshList = listValues(namedValue(spec, "fresh"));
-    for (size_t i = 0; i < freshList.size(); ++i) {
-        std::string name;
-        if (!valueToString(freshList[i], name)) {
-            setError("fresh entries must be strings");
-            return;
-        }
-        vars.emplace(name, agentc::kanren::createLogicVar(static_cast<int>(i)));
-    }
-
-    agentc::kanren::Goal goal;
-    std::string error;
-    if (!buildLogicGoal(spec, vars, goal, error)) {
-        setError(error);
-        return;
-    }
-
-    auto resultTerms = listValues(namedValue(spec, "results"));
-    if (resultTerms.empty()) {
-        setError("Logic query requires 'results'");
-        return;
-    }
-
-    size_t limit = 0;
-    auto limitValue = namedValue(spec, "limit");
-    std::string limitText;
-    if (limitValue && valueToString(limitValue, limitText) && !limitText.empty()) {
-        limit = static_cast<size_t>(std::strtoul(limitText.c_str(), nullptr, 10));
-    }
-
-    auto out = agentc::createListValue();
-    if (resultTerms.size() == 1) {
-        auto query = logicTermFromSpec(resultTerms[0], vars);
-        for (const auto& answer : agentc::kanren::run(limit, query, goal)) {
-            agentc::addListItem(out, answer);
-        }
-    } else {
-        std::vector<CPtr<agentc::ListreeValue>> queries;
-        for (const auto& term : resultTerms) {
-            queries.push_back(logicTermFromSpec(term, vars));
-        }
-        for (const auto& answer : agentc::kanren::run(limit, queries, goal)) {
-            agentc::addListItem(out, answer);
-        }
-    }
-
-    pushData(out);
-}
-
 
 } // namespace agentc::edict

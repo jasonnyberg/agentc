@@ -205,6 +205,28 @@ The first acceptable implementation slice is not the full feature. It is:
 
 That sequence keeps the riskiest runtime change reviewable and makes rollback of the implementation itself straightforward if problems appear.
 
+## Implementation Status (2026-03-23)
+
+### What landed
+
+- The VM now exposes `runCodeLoop(size_t stopCodeDepth, bool markCompleteOnDrain)` and `executeNested(const BytecodeBuffer& code)` so nested bytecode can run against the existing code-frame stack without spawning a second VM.
+- Transaction checkpoints gained a `restoreCodeResource` flag. The speculation path uses `beginTransaction(false)` so rollback restores ordinary VM resources and allocator watermarks without rewinding the active caller code stack.
+- `op_SPECULATE()` was rewritten to use the planned flow: compile -> checkpoint -> nested execute -> snapshot -> rollback -> materialize.
+
+### Validation completed
+
+- `VMStackTest.SpeculateLiteralReturnsResultWithoutChangingBaseline`
+- `VMStackTest.SpeculateFailureReturnsNullWithoutChangingBaseline`
+- `VMStackTest.SpeculateRollsBackNestedMutationInRunningVm`
+- `VMStackTest.SpeculateRollsBackRewriteRulesDefinedInsideProbe`
+- `VMStackTest.SpeculateRollsBackClosureDrivenMutation`
+- `VMStackTest.NestedSpeculateKeepsInnerMutationIsolatedFromOuterProbe`
+- Full `ctest` suite passed: `7/7` targets.
+
+### Remaining follow-up
+
+- Add repeated planner-style probe coverage if future planner work starts leaning on nested speculation loops more heavily.
+
 ## Bottom Line
 
 This change does not make the language larger. It makes the runtime more honest about what AgentC already claims to be: a reversible execution substrate where speculative execution is a normal property of the VM rather than a second-VM escape hatch.

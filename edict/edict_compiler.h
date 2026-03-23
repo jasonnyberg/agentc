@@ -103,7 +103,6 @@ private:
     void compileTerm();
     void compileLiteral();
     void compileIdentifier();
-    void compileLogicBlock();
     void compileSpeculateBlock();
     void compileOperator(const std::string& op);
     void compileContextOperator(char op);

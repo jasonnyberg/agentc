@@ -122,7 +122,6 @@ protected:
             case VMOP_READ_TEXT:                 // File I/O
             case VMOP_BOOTSTRAP_CURATE_PARSER:
             case VMOP_BOOTSTRAP_CURATE_RESOLVER:
-            case VMOP_LOGIC_RUN:                 // Mini-Kanren search (potentially unbounded)
             case VMOP_SPECULATE:                 // Spawns a separate VM
                 return true;
             default:

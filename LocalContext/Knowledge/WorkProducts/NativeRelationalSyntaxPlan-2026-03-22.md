@@ -348,6 +348,27 @@ The first slice should stop at call-form native logic without capability migrati
 
 into the current object form with passing equivalence tests, then the feature is already valuable and reviewable.
 
+## Implementation Status (2026-03-23)
+
+### What landed
+
+- `logic(...)` now has a dedicated compiler lowering path via `compileNativeLogicCall()`.
+- The native parser/lowering layer supports `fresh(...)`, supported relation calls, direct `conde(...)`, grouped conjunctive `all(...)` branches inside `conde(...)`, `results(...)`, and `limit(...)`.
+- The lowering path serializes the native call form into the existing object-shaped logic IR and continues to emit `VMOP_LOGIC_RUN`, so runtime logic execution remains unchanged in this slice.
+- Tokenization was tightened so operator `==` and quote-word forms like `limit('1)` parse correctly in native logic calls.
+- `edict_language_reference.md` now documents both the landed call-form logic syntax and the grouped-branch `conde(...)` form.
+
+### Validation completed
+
+- `LogicSurfaceTest.NativeLogicCallSupportsMembershipQueries`
+- `LogicSurfaceTest.NativeLogicCallSupportsCondeAndLimit`
+- `LogicSurfaceTest.NativeLogicCallSupportsCondeBranchesWithGroupedGoals`
+- Full `ctest` suite passed: `7/7` targets.
+
+### Remaining follow-up
+
+- Add explicit equivalence coverage for the conceptual `[...] logic!` representation once that form is surfaced directly.
+
 ## Bottom Line
 
 Native relational syntax begins as a compiler-lowering project, not a VM rewrite. Done carefully, it gives humans a better language for expressing queries while preserving the same runtime object model, the same unified literal philosophy, and the current backend in the MVP. `logic(...)` should be the clean primary surface, `[...] logic!` should remain the conceptual anchor, and later rewrite-hosted DSLs plus library/FFI migration can build on that substrate instead of replacing it prematurely.

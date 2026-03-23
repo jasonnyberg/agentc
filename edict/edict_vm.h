@@ -45,6 +45,7 @@ public:
 
     struct TransactionCheckpoint {
         bool valid = false;
+        bool restoreCodeResource = true;
         CPtr<agentc::ListreeValue> resources[VMRES_COUNT];
         std::vector<std::pair<std::vector<std::string>, std::vector<std::string>>> rewriteRules;
         Allocator<agentc::ListreeValue>::Checkpoint listreeValue;
@@ -178,6 +179,9 @@ private:
     int readInt();
     std::string readString();
     CPtr<agentc::ListreeValue> readValue();
+    int runCodeLoop(size_t stopCodeDepth, bool markCompleteOnDrain);
+    int executeNested(const BytecodeBuffer& code);
+    TransactionCheckpoint beginTransaction(bool restoreCodeResource);
     
     // Operation handlers
     void op_RESET();
@@ -233,7 +237,6 @@ private:
     void op_BOOTSTRAP_CURATE_RESOLVER();
     void op_BOOTSTRAP_CURATE_CARTOGRAPHER();
     void op_CLOSURE();
-    void op_LOGIC_RUN();
     void op_REWRITE_DEFINE();
     void op_REWRITE_LIST();
     void op_REWRITE_REMOVE();

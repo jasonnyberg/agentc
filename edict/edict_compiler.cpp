@@ -18,7 +18,6 @@
 #include <cstring>
 #include <iostream>
 #include <cstdlib>
-
 namespace agentc::edict {
 
 static bool edictTraceEnabled() {
@@ -103,7 +102,8 @@ Token Tokenizer::nextToken() {
     }
     // Check for operators
     else if (input[position] == '@' || input[position] == '!' || input[position] == '/' || input[position] == '^' ||
-        input[position] == ':' || input[position] == ',' || input[position] == '&' || input[position] == '|') {
+        input[position] == ':' || input[position] == ',' || input[position] == '&' || input[position] == '|' ||
+        input[position] == '=') {
         tok = parseOperator(skipped);
     }
     // Check for identifiers (digits allowed, * allowed for cursor prefix, utf-8 allowed)
@@ -171,7 +171,12 @@ Token Tokenizer::parseQuoteWord(bool hadSpaceBefore) {
     size_t start = position;
     ++col_; position++; // skip the leading '
     size_t wordStart = position;
-    while (position < input.length() && !std::isspace(input[position])) {
+    while (position < input.length() &&
+           !std::isspace(input[position]) &&
+           input[position] != '(' && input[position] != ')' &&
+           input[position] != '{' && input[position] != '}' &&
+           input[position] != '[' && input[position] != ']' &&
+           input[position] != ',') {
         ++col_;
         position++;
     }
@@ -193,6 +198,11 @@ Token Tokenizer::parseQuoteWord(bool hadSpaceBefore) {
 
 Token Tokenizer::parseOperator(bool hadSpaceBefore) {
     size_t start = position;
+    if (input[position] == '=' && position + 1 < input.length() && input[position + 1] == '=') {
+        position += 2;
+        col_ += 2;
+        return {TOKEN_OPERATOR, "==", start, hadSpaceBefore};
+    }
     ++col_; position++;
     return {TOKEN_OPERATOR, input.substr(start, 1), start, hadSpaceBefore};
 }
@@ -401,10 +411,6 @@ void EdictCompiler::compileIdentifier() {
     std::string identifier = currentToken.value;
     nextToken();
 
-    if (identifier == "logic" && match(TOKEN_CONTEXT_OPEN) && currentToken.value == "{") {
-        compileLogicBlock();
-        return;
-    }
     if (identifier == "speculate" && match(TOKEN_LITERAL)) {
         compileSpeculateBlock();
         return;
@@ -427,11 +433,6 @@ void EdictCompiler::compileIdentifier() {
         output.addValue(Value(identifier));
         output.addOp(VMOP_REF);
     }
-}
-
-void EdictCompiler::compileLogicBlock() {
-    compileJSONObject();
-    emitOperation(VMOP_LOGIC_RUN);
 }
 
 void EdictCompiler::compileSpeculateBlock() {

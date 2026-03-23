@@ -1,6 +1,6 @@
 # G046 - Continuation-Based Speculation
 
-## Status: PLANNED
+## Status: IN PROGRESS
 
 ## Parent Context
 
@@ -37,6 +37,23 @@ Replace the current separate-VM implementation of `speculate [ ... ]` with an in
 ## Work Product
 
 - Detailed plan: 🔗[`ContinuationBasedSpeculationPlan-2026-03-22.md`](../../WorkProducts/ContinuationBasedSpeculationPlan-2026-03-22.md)
+
+## Implementation Checklist
+
+- [x] Confirm runtime path against current VM code/resource stack behavior.
+- [x] Extract reusable nested execution path from the main execute loop.
+- [x] Add transaction checkpoint mode that preserves the active code-resource stack during rollback.
+- [x] Reimplement `op_SPECULATE()` as in-VM checkpoint -> nested execute -> snapshot -> rollback -> materialize.
+- [x] Add regression coverage for success, failure, and nested speculative mutation rollback.
+- [x] Add deeper hardening coverage for nested speculation plus rewrite/closure isolation.
+- [x] Update language/runtime docs to explain the in-VM speculation model.
+
+## Implementation Progress (2026-03-23)
+
+- `op_SPECULATE()` no longer clones a second `EdictVM`; it now compiles the speculative literal, starts a transaction that preserves `VMRES_CODE`, runs nested bytecode in the current VM, snapshots the speculative result, rolls back, and materializes the result back into the caller VM.
+- The execute loop has been factored through `runCodeLoop(...)` plus `executeNested(...)`, which exposes the existing code-frame stack as the reusable continuation substrate for nested evaluation.
+- Transaction checkpoints now support a `restoreCodeResource` mode so rollback can preserve the currently running code stack when speculation is invoked from inside execution.
+- Validation now includes rewrite-rule isolation, closure-driven mutation isolation, and nested-speculation isolation tests, plus a full `ctest` pass (`7/7`).
 
 ## Scope
 

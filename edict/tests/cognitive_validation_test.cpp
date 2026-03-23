@@ -15,15 +15,51 @@
 
 #include <gtest/gtest.h>
 
+#include <filesystem>
+#include <fstream>
+
+#include "../../cartographer/parser.h"
+#include "../../cartographer/resolver.h"
 #include "../edict_compiler.h"
 #include "../edict_vm.h"
+
+#ifndef TEST_SOURCE_DIR
+#define TEST_SOURCE_DIR "."
+#endif
+#ifndef TEST_BUILD_DIR
+#define TEST_BUILD_DIR "."
+#endif
 
 using namespace agentc::edict;
 
 namespace {
 
 void executeScript(EdictVM& vm, const std::string& script) {
-    auto code = EdictCompiler().compile(script);
+    static const std::string logicPrelude = []() {
+        const std::filesystem::path buildDir(TEST_BUILD_DIR);
+        const std::filesystem::path rootBuildDir = buildDir.parent_path();
+        const std::filesystem::path sourceDir(TEST_SOURCE_DIR);
+        const std::filesystem::path libPath = rootBuildDir / "kanren" / "libkanren.so";
+        const std::filesystem::path headerPath = sourceDir / "kanren_runtime_ffi_poc.h";
+        const std::filesystem::path resolvedPath = buildDir / "cognitive_validation_kanren_runtime_ffi.json";
+
+        agentc::cartographer::Mapper mapper;
+        agentc::cartographer::Mapper::ParseDescription description;
+        std::string error;
+        EXPECT_TRUE(agentc::cartographer::parser::parseHeaderToDescription(mapper, headerPath.string(), description, error)) << error;
+
+        agentc::cartographer::resolver::ResolvedApi resolved;
+        EXPECT_TRUE(agentc::cartographer::resolver::resolveApiDescription(libPath.string(), description, resolved, error)) << error;
+
+        std::ofstream output(resolvedPath);
+        EXPECT_TRUE(output.good());
+        output << agentc::cartographer::resolver::encodeResolvedApi(resolved);
+        output.close();
+
+        return std::string("[") + resolvedPath.string() + "] resolver.import_resolved ! @logicffi logicffi.agentc_logic_eval_ltv @logic logic @logic_run ";
+    }();
+
+    auto code = EdictCompiler().compile(logicPrelude + script);
     ASSERT_FALSE(vm.execute(code) & VM_ERROR) << vm.getError();
 }
 

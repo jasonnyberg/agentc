@@ -15,6 +15,7 @@
 
 #include <gtest/gtest.h>
 #include "../kanren.h"
+#include "../runtime_ffi.h"
 
 #include <algorithm>
 #include <string>
@@ -44,6 +45,14 @@ CPtr<ListreeValue> makePairList(const std::vector<std::string>& values) {
     CPtr<ListreeValue> out = createNullValue();
     for (auto it = values.rbegin(); it != values.rend(); ++it) {
         out = pairValue(createStringValue(*it), out);
+    }
+    return out;
+}
+
+CPtr<ListreeValue> makeList(const std::vector<CPtr<ListreeValue>>& values) {
+    auto out = createListValue();
+    for (const auto& value : values) {
+        addListItem(out, value);
     }
     return out;
 }
@@ -289,4 +298,50 @@ TEST(KanrenTest, NestedCondeFairProducesAllAnswers) {
     }
     std::sort(got.begin(), got.end());
     EXPECT_EQ(got, (std::vector<std::string>{"a", "b", "c", "d"}));
+}
+
+TEST(KanrenTest, RuntimeAbiEvaluatesLogicSpecThroughOpaqueHandles) {
+    auto spec = createNullValue();
+    addNamedItem(spec, "fresh", makeList({createStringValue("q")}));
+    addNamedItem(spec, "where", makeList({makeList({
+        createStringValue("membero"),
+        createStringValue("q"),
+        makeList({createStringValue("tea"), createStringValue("cake")})
+    })}));
+    addNamedItem(spec, "results", makeList({createStringValue("q")}));
+
+    agentc_runtime_ctx* ctx = agentc_runtime_create();
+    ASSERT_NE(ctx, nullptr);
+
+    agentc_value specHandle = agentc_runtime_value_from_ltv(ctx, cptr_to_ltv(spec));
+    ASSERT_NE(specHandle, AGENTC_VALUE_NULL);
+
+    agentc_value resultHandle = agentc_logic_eval(ctx, specHandle);
+    if (resultHandle == AGENTC_VALUE_NULL) {
+        auto errorHandle = agentc_runtime_copy_last_error(ctx);
+        auto errorLtv = agentc_runtime_value_to_ltv(ctx, errorHandle);
+        auto error = ltv_adopt(errorLtv);
+        agentc_runtime_value_release(ctx, errorHandle);
+        FAIL() << asText(error);
+    }
+
+    LTV resultLtv = agentc_runtime_value_to_ltv(ctx, resultHandle);
+    ASSERT_NE(resultLtv, LTV_NULL);
+    auto result = ltv_adopt(resultLtv);
+
+    std::vector<std::string> values;
+    result->forEachList([&](CPtr<ListreeValueRef>& ref) {
+        if (ref && ref->getValue()) {
+            values.push_back(asText(ref->getValue()));
+        }
+    });
+    std::reverse(values.begin(), values.end());
+
+    ASSERT_EQ(values.size(), 2u);
+    EXPECT_EQ(values[0], "tea");
+    EXPECT_EQ(values[1], "cake");
+
+    agentc_runtime_value_release(ctx, resultHandle);
+    agentc_runtime_value_release(ctx, specHandle);
+    agentc_runtime_destroy(ctx);
 }
