@@ -922,22 +922,19 @@ void EdictVM::op_LOAD() {
 }
 
 void EdictVM::op_IMPORT() {
-    auto scopeValue = popData();
     auto headerValue = popData();
     auto libraryValue = popData();
 
-    std::string scopeName;
     std::string headerPath;
     std::string libraryPath;
-    if (!valueToString(scopeValue, scopeName) || !valueToString(headerValue, headerPath) || !valueToString(libraryValue, libraryPath)) {
-        setError("IMPORT expects library path, header path, and scope name strings");
+    if (!valueToString(headerValue, headerPath) || !valueToString(libraryValue, libraryPath)) {
+        setError("IMPORT expects library path and header path strings");
         return;
     }
 
     agentc::cartographer::ImportRequest request;
     request.libraryPath = libraryPath;
     request.headerPath = headerPath;
-    request.scopeName = scopeName;
     auto result = cartographer ? cartographer->import(request) : agentc::cartographer::ImportResult{};
     if (!result.ok) {
         setError(result.error.empty() ? "Cartographer import failed" : result.error);
@@ -948,17 +945,15 @@ void EdictVM::op_IMPORT() {
 }
 
 void EdictVM::op_IMPORT_RESOLVED() {
-    auto scopeValue = popData();
     auto resolvedValue = popData();
 
-    std::string scopeName;
     std::string resolvedSchemaPath;
-    if (!valueToString(scopeValue, scopeName) || !valueToString(resolvedValue, resolvedSchemaPath)) {
-        setError("IMPORT_RESOLVED expects resolved schema path and scope name strings");
+    if (!valueToString(resolvedValue, resolvedSchemaPath)) {
+        setError("IMPORT_RESOLVED expects a resolved schema path string");
         return;
     }
 
-    auto result = cartographer ? cartographer->importResolvedFile(resolvedSchemaPath, scopeName)
+    auto result = cartographer ? cartographer->importResolvedFile(resolvedSchemaPath)
                                : agentc::cartographer::ImportResult{};
     if (!result.ok) {
         setError(result.error.empty() ? "Cartographer resolved import failed" : result.error);
@@ -969,22 +964,19 @@ void EdictVM::op_IMPORT_RESOLVED() {
 }
 
 void EdictVM::op_IMPORT_DEFERRED() {
-    auto scopeValue = popData();
     auto headerValue = popData();
     auto libraryValue = popData();
 
-    std::string scopeName;
     std::string headerPath;
     std::string libraryPath;
-    if (!valueToString(scopeValue, scopeName) || !valueToString(headerValue, headerPath) || !valueToString(libraryValue, libraryPath)) {
-        setError("IMPORT_DEFERRED expects library path, header path, and scope name strings");
+    if (!valueToString(headerValue, headerPath) || !valueToString(libraryValue, libraryPath)) {
+        setError("IMPORT_DEFERRED expects library path and header path strings");
         return;
     }
 
     agentc::cartographer::ImportRequest request;
     request.libraryPath = libraryPath;
     request.headerPath = headerPath;
-    request.scopeName = scopeName;
     request.executionMode = agentc::cartographer::ImportExecutionMode::Deferred;
 
     auto result = cartographer ? cartographer->importDeferred(request) : agentc::cartographer::ImportResult{};
@@ -1094,17 +1086,15 @@ void EdictVM::op_RESOLVE_JSON() {
 }
 
 void EdictVM::op_IMPORT_RESOLVED_JSON() {
-    auto scopeValue = popData();
     auto resolvedValue = popData();
 
-    std::string scopeName;
     std::string resolvedJson;
-    if (!valueToString(scopeValue, scopeName) || !valueToString(resolvedValue, resolvedJson)) {
-        setError("IMPORT_RESOLVED_JSON expects resolved schema JSON and scope name strings");
+    if (!valueToString(resolvedValue, resolvedJson)) {
+        setError("IMPORT_RESOLVED_JSON expects a resolved schema JSON string");
         return;
     }
 
-    auto result = cartographer ? cartographer->importResolverJson(resolvedJson, scopeName, "<memory>")
+    auto result = cartographer ? cartographer->importResolverJson(resolvedJson, "<memory>")
                                : agentc::cartographer::ImportResult{};
     if (!result.ok) {
         setError(result.error.empty() ? "Cartographer in-memory resolved import failed" : result.error);
@@ -1197,14 +1187,14 @@ CPtr<agentc::ListreeValue> EdictVM::createBootstrapCuratedResolver() {
     addCompiledThunk(resolver, "resolve_json", "resolver.__native.resolve_json !");
     addCompiledThunk(resolver, "import_resolved_json", "resolver.__native.import_resolved_json !");
     addCompiledThunk(resolver, "import",
-                     "@scope @header @library "
+                     "@header @library "
                      "header parser.parse_json ! @schema "
                      "library schema resolver.resolve_json ! @resolved "
-                     "resolved scope resolver.import_resolved_json !");
+                     "resolved resolver.import_resolved_json !");
     addCompiledThunk(resolver, "import_resolved",
-                     "@scope @resolved_path "
+                     "@resolved_path "
                      "resolved_path resolver.__native.read_text ! @resolved "
-                     "resolved scope resolver.import_resolved_json !");
+                     "resolved resolver.import_resolved_json !");
     addCompiledThunk(resolver, "import_deferred", "resolver.__native.import_deferred !");
     addCompiledThunk(resolver, "import_collect",
                      "@request "

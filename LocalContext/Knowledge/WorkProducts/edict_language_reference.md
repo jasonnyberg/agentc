@@ -925,7 +925,7 @@ After boot, `parser` and `resolver` are available in the global scope.
 ### Full import (parse + resolve in one step)
 
 ```edict
-'./libmylib.so './mylib.h 'mylib resolver.import ! @mylib
+'./libmylib.so './mylib.h resolver.import ! @mylib
 '10 '32 mylib.add !
 -- stack: [ "42" ]
 ```
@@ -939,7 +939,7 @@ For full control over the parse/resolve pipeline:
 ```edict
 './mylib.h     parser.parse_json !    @schema_json
 './libmylib.so schema_json resolver.resolve_json !  @resolved_json
-resolved_json   'mylib resolver.import_resolved_json ! @mylib
+resolved_json   resolver.import_resolved_json ! @mylib
 ```
 
 ### Materialize pipeline (alternative)
@@ -955,7 +955,7 @@ resolved_json   'mylib resolver.import_resolved_json ! @mylib
 For large libraries, import can run asynchronously:
 
 ```edict
-'./mylib.h './libmylib.so 'mylib resolver.import_deferred ! @req
+'./mylib.h './libmylib.so resolver.import_deferred ! @req
 
 -- Poll status:
 req resolver.import_status ! @status
@@ -971,7 +971,7 @@ The `status` field cycles through `"queued"` → `"running"` → `"ready"`.
 ### Pre-resolved import
 
 ```edict
-resolved_json './libmylib.so 'mylib resolver.import_resolved ! @mylib
+resolved_json './libmylib.so resolver.import_resolved ! @mylib
 ```
 
 ### Reading a text file

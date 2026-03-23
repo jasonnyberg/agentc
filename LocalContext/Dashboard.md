@@ -7,10 +7,10 @@
 ## Current Focus
 
 **Active Goals**: None
-**Status**: G002–G013 Complete. G014 Cancelled. G016–G020 Complete. G018 Phase D **fully complete** (VM boxing opcodes removed, pure FFI path via `evalDispatchFFI`). Namespace migration `j3` → `agentc` complete. Directory restructure complete. **G020: Early type binding — `bindTypes()` post-parse pass; `ns` param eliminated from entire boxing API. 7/7 test suites pass (90/90+ tests). `test_boxing_ffi.sh` 24/24. `demo_boxing.sh` clean.** **Edict string literal migration complete — `"abc"` standalone syntax removed; `'word`/`[multi word]` syntax enforced; `edict_language_reference.md` fully updated.**
+**Status**: G002–G013 Complete. G014 Cancelled. G016–G021 Complete. G018 Phase D **fully complete** (VM boxing opcodes removed, pure FFI path via `evalDispatchFFI`). Namespace migration `j3` → `agentc` complete. Directory restructure complete. **G020: Early type binding — `bindTypes()` post-parse pass; `ns` param eliminated from entire boxing API. 7/7 test suites pass (90/90+ tests). `test_boxing_ffi.sh` 24/24. `demo_boxing.sh` clean.** **Edict string literal migration complete — `"abc"` standalone syntax removed; `'word`/`[multi word]` syntax enforced; `edict_language_reference.md` fully updated.** **G021: Module name (`scopeName`) removed from resolver import API — 8 tasks across 9 files; protocol bumped to `protocol_v2`; all tests pass.**
 **Last Updated**: 2026-03-22
 
-**Active Task**: None — Edict string literal migration complete. `edict_language_reference.md` fully updated. Recommended next: LMDB persistence goals (G040–G042).
+**Active Task**: None — G021 complete. Recommended next: LMDB persistence goals (G040–G042).
 
 **Previous Active Task**: G020 — Early Type Binding (`bindTypes()`) — **COMPLETE** (2026-03-21). `bindTypes()` pass added to `Mapper::materialize()`; resolves `"struct X"` field types into `type_def` CPtr children. `ns` param fully removed from `box()`/`unbox()`/`packStruct()`/`unpackStruct()`, C ABI, edict bootstrap, unit tests, and demo/test scripts. New `BindTypesCreatesTypeDef` test in `mapper_tests.cpp`; `Rect` struct added to `test_input.h`.
 
@@ -57,9 +57,10 @@
 ---
 
 ### Active Goals
-- None — Boxing nested struct support complete (commit 2754d88). LMDB persistence goals (G040–G042) ready when desired.
+- None
 
 ### Completed Goals (recent)
+- ✅ G021 — Remove Module Name from Resolver Import API — **COMPLETE** (2026-03-22). `scopeName` removed from `ImportRequest`/`ImportResult` structs, all service methods, wire protocol (bumped to `protocol_v2`), all 4 VM opcodes, 2 thunks, service tests, callback tests, and language reference. 7/7 suites pass; all shell scripts pass.
 - ✅ G020 — Early type binding (`bindTypes()`) in `Mapper::materialize()` — `ns` param eliminated from boxing API; `BindTypesCreatesTypeDef` test added; 7/7 suites pass (2026-03-21)
 - ✅ Boxing nested struct support (2026-03-21) — `ns` param added to `agentc_box`/`agentc_unbox`; nested struct field lookup via namespace; `demo/demo_complex.h` with 10 scalar types + `InnerPoint` nested struct; `test_boxing_ffi.sh` 24/24; committed
 - ✅ G018 Phase D — Remove VM Boxing Opcodes (2026-03-21) — `VMOP_BOX/UNBOX/BOX_FREE` removed; `evalDispatchFFI` path; `ffi_type_ltv_handle` size/encoding bugs fixed; 7/7 pass; `test_boxing_ffi.sh` 11/11; `demo_boxing.sh` clean
@@ -120,7 +121,7 @@ Complete index of LOCAL knowledge. Load items relevant to your current task.
         - G016 — LMDB Optional Compile-Time Build — **Complete** 🔗[index](./Knowledge/Goals/G016-LmdbOptionalBuild/index.md)
         - G017 — Edict Stdin/File Script Mode — **Complete** 🔗[index](./Knowledge/Goals/G017-EdictScriptMode/index.md)
         - G018 — FFI LTV Passthrough — **Complete (via G019)** 🔗[index](./Knowledge/Goals/G018-FfiLtvPassthrough/index.md)
-        - G020 — Early Type Binding (`bindTypes()`) — **Complete** (2026-03-21) 🔗[index](./Knowledge/Goals/G020-EarlyTypeBinding/index.md)
+        - G021 — Remove Module Name from Resolver Import API — **PLANNED** 🔗[index](./Knowledge/Goals/G021-RemoveModuleName/index.md)
         - G019 — SlabId LTV Type Unification — **Complete** 🔗[index](./Knowledge/Goals/G019-SlabIdLtvUnification/index.md)
 
 ### Facts
@@ -141,6 +142,7 @@ Complete index of LOCAL knowledge. Load items relevant to your current task.
 ## Timeline Highlights
 
 ### Recent Events (Last 7 Days)
+- 🔗[2026-03-22: G021 module name removed + edict string literal migration](./Knowledge/Timeline/2026/03/22/index.md) — `scopeName` removed from entire resolver import API (structs, methods, wire protocol → `protocol_v2`, opcodes, thunks, tests); `TOKEN_STRING` removed from `compileTerm()`; `'word`/`[multi word]` syntax enforced; `edict_language_reference.md` fully updated; 7/7 suites pass
 - 🔗[2026-03-21: G019 SlabId Unification, G018 Phase D, G020 Early Type Binding, Cartographer CLI pipeline, agentc.sh wrappers](./Knowledge/Timeline/2026/03/21/index.md) — `LTV=SlabId`; VM boxing opcodes removed; `bindTypes()` pass; full 5-stage CLI pipeline; `agentc_test`/`agentc_demo`; 90/90 tests; `test_boxing_ffi.sh` 24/24; `test_cartographer_*.sh` 24/24 + 24/24 + 22/22
 - 🔗[2026-03-20: G017 Edict Script Mode + G016 LMDB Optional Build](./Knowledge/Timeline/2026/03/20/index.md) — `runScript(istream&)`, `edict -`/`edict FILE` CLI modes; `AGENTC_WITH_LMDB` CMake option; 74/74 tests pass
 - 🔗[2026-03-16: HRM Bootstrap + Codebase Review](./Knowledge/Timeline/2026/03/16/0000-0200/index.md) — Initial HRM structure; full code review; G002–G013 created

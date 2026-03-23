@@ -390,7 +390,6 @@ CartographerService::CartographerService(Mapper& mapperRef, FFI& ffiRef)
             running.ok = true;
             running.executionMode = ImportExecutionMode::Deferred;
             running.requestId = request.requestId;
-            running.scopeName = request.scopeName;
             running.status = statusRunning();
             if (!writeFramedMessage(childToParent[1], protocol::encodeImportStatus(request, running))) {
                 break;
@@ -400,7 +399,6 @@ CartographerService::CartographerService(Mapper& mapperRef, FFI& ffiRef)
             ImportResult result;
             result.executionMode = ImportExecutionMode::Deferred;
             result.requestId = request.requestId;
-            result.scopeName = request.scopeName;
 
             if (request.libraryPath.empty()) {
                 result.status = statusImportFailed();
@@ -408,9 +406,6 @@ CartographerService::CartographerService(Mapper& mapperRef, FFI& ffiRef)
             } else if (request.headerPath.empty()) {
                 result.status = statusImportFailed();
                 result.error = "Cartographer import requires a header path";
-            } else if (request.scopeName.empty()) {
-                result.status = statusImportFailed();
-                result.error = "Cartographer import requires a scope name";
             } else if (!workerFfi.loadLibrary(request.libraryPath)) {
                 result.status = statusImportFailed();
                 result.error = "Failed to load library: " + request.libraryPath;
@@ -489,7 +484,6 @@ CartographerService::CartographerService(Mapper& mapperRef, FFI& ffiRef)
                 ImportResult failed;
                 failed.executionMode = ImportExecutionMode::Deferred;
                 failed.requestId = state->request.requestId;
-                failed.scopeName = state->request.scopeName;
                 failed.status = statusTransportFailed();
                 failed.error = "Cartographer subprocess disconnected";
                 state->status = failed.status;
@@ -542,14 +536,12 @@ CPtr<ListreeValue> CartographerService::createImportHandleValue(const ImportResu
     auto handle = createNullValue();
     addNamedItem(handle, "library", createStringValue(request.libraryPath));
     addNamedItem(handle, "header", createStringValue(request.headerPath));
-    addNamedItem(handle, "scope", createStringValue(request.scopeName));
     addNamedItem(handle, "execution_mode", createStringValue(executionModeName(result.executionMode)));
     addNamedItem(handle, "protocol", createStringValue(protocol::versionName()));
     addNamedItem(handle, "api_schema_format", createStringValue(protocol::parserSchemaFormatName()));
     addNamedItem(handle, "service_boundary", createStringValue(serviceBoundaryName()));
     addNamedItem(handle, "response_owner", createStringValue("vm_collect"));
     addNamedItem(handle, "binding_mode", createStringValue("programmer_managed"));
-    addNamedItem(handle, "requested_name", createStringValue(request.scopeName));
     addNamedItem(handle, "status", createStringValue(result.status.empty() ? "queued" : result.status));
     if (!result.requestId.empty()) {
         addNamedItem(handle, "request_id", createStringValue(result.requestId));
@@ -572,7 +564,6 @@ ImportResult CartographerService::createStatusResult(const ImportRequest& reques
     result.executionMode = request.executionMode;
     result.status = status;
     result.requestId = request.requestId;
-    result.scopeName = request.scopeName;
     result.error = error;
     result.symbolCount = symbolCount;
     result.definitions = createImportHandleValue(result, request);
@@ -603,14 +594,12 @@ CPtr<ListreeValue> CartographerService::materializeImportedDefinitions(const Map
     auto metadata = createNullValue();
     addNamedItem(metadata, "library", createStringValue(request.libraryPath));
     addNamedItem(metadata, "header", createStringValue(request.headerPath));
-    addNamedItem(metadata, "scope", createStringValue(request.scopeName));
     addNamedItem(metadata, "execution_mode", createStringValue(executionModeName(reportedMode)));
     addNamedItem(metadata, "protocol", createStringValue(protocol::versionName()));
     addNamedItem(metadata, "api_schema_format", createStringValue(protocol::parserSchemaFormatName()));
     addNamedItem(metadata, "service_boundary", createStringValue(serviceBoundaryName()));
     addNamedItem(metadata, "response_owner", createStringValue("vm_collect"));
     addNamedItem(metadata, "binding_mode", createStringValue("programmer_managed"));
-    addNamedItem(metadata, "requested_name", createStringValue(request.scopeName));
     addNamedItem(metadata, "status", createStringValue(statusReady()));
     if (!request.requestId.empty()) {
         addNamedItem(metadata, "request_id", createStringValue(request.requestId));
@@ -628,7 +617,6 @@ ImportResult CartographerService::performImport(const ImportRequest& request,
     ImportResult result;
     result.executionMode = reportedMode;
     result.requestId = request.requestId;
-    result.scopeName = request.scopeName;
 
     if (request.libraryPath.empty()) {
         result.error = "Cartographer import requires a library path";
@@ -637,11 +625,6 @@ ImportResult CartographerService::performImport(const ImportRequest& request,
     }
     if (request.headerPath.empty()) {
         result.error = "Cartographer import requires a header path";
-        result.status = statusImportFailed();
-        return result;
-    }
-    if (request.scopeName.empty()) {
-        result.error = "Cartographer import requires a scope name";
         result.status = statusImportFailed();
         return result;
     }
@@ -747,20 +730,13 @@ ImportResult CartographerService::import(const ImportRequest& request) {
     return result;
 }
 
-ImportResult CartographerService::importResolvedFile(const std::string& resolvedSchemaPath,
-                                                    const std::string& scopeName) {
+ImportResult CartographerService::importResolvedFile(const std::string& resolvedSchemaPath) {
     ImportResult result;
     result.executionMode = ImportExecutionMode::Sync;
-    result.scopeName = scopeName;
 
     if (resolvedSchemaPath.empty()) {
         result.status = statusImportFailed();
         result.error = "Cartographer resolved import requires a resolved schema path";
-        return result;
-    }
-    if (scopeName.empty()) {
-        result.status = statusImportFailed();
-        result.error = "Cartographer resolved import requires a scope name";
         return result;
     }
 
@@ -771,24 +747,17 @@ ImportResult CartographerService::importResolvedFile(const std::string& resolved
         return result;
     }
 
-    return importResolverJson(resolvedJson, scopeName, resolvedSchemaPath);
+    return importResolverJson(resolvedJson, resolvedSchemaPath);
 }
 
 ImportResult CartographerService::importResolverJson(const std::string& resolvedSchemaJson,
-                                                    const std::string& scopeName,
                                                     const std::string& sourceLabel) {
     ImportResult result;
     result.executionMode = ImportExecutionMode::Sync;
-    result.scopeName = scopeName;
 
     if (resolvedSchemaJson.empty()) {
         result.status = statusImportFailed();
         result.error = "Cartographer resolved import requires resolved schema JSON";
-        return result;
-    }
-    if (scopeName.empty()) {
-        result.status = statusImportFailed();
-        result.error = "Cartographer resolved import requires a scope name";
         return result;
     }
 
@@ -825,7 +794,6 @@ ImportResult CartographerService::importResolverJson(const std::string& resolved
     ImportRequest request;
     request.libraryPath = resolved.libraryPath;
     request.headerPath = sourceLabel;
-    request.scopeName = scopeName;
 
     result.ok = true;
     result.status = statusReady();
@@ -864,16 +832,14 @@ ImportResult CartographerService::importResolverJson(const std::string& resolved
 }
 
 ImportResult CartographerService::importDeferred(const ImportRequest& request) {
-    if (request.libraryPath.empty() || request.headerPath.empty() || request.scopeName.empty()) {
+    if (request.libraryPath.empty() || request.headerPath.empty()) {
         ImportRequest invalidRequest = request;
         invalidRequest.executionMode = ImportExecutionMode::Deferred;
         ImportResult invalid = createStatusResult(invalidRequest, statusImportFailed());
         if (request.libraryPath.empty()) {
             invalid.error = "Cartographer import requires a library path";
-        } else if (request.headerPath.empty()) {
-            invalid.error = "Cartographer import requires a header path";
         } else {
-            invalid.error = "Cartographer import requires a scope name";
+            invalid.error = "Cartographer import requires a header path";
         }
         invalid.ok = false;
         invalid.definitions = createImportHandleValue(invalid, invalidRequest);
@@ -955,7 +921,6 @@ bool CartographerService::processDeferredRequest(const std::string& requestId, I
     result.ok = true;
     result.executionMode = ImportExecutionMode::Deferred;
     result.requestId = request.requestId;
-    result.scopeName = request.scopeName;
     result.status = statusReady();
     result.definitions = materializeImportedDefinitions(description, request, ImportExecutionMode::Deferred, result.symbolCount);
     if (!result.definitions) {

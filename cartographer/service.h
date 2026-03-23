@@ -31,7 +31,6 @@ enum class ImportExecutionMode {
 struct ImportRequest {
     std::string libraryPath;
     std::string headerPath;
-    std::string scopeName;
     ImportExecutionMode executionMode = ImportExecutionMode::Sync;
     std::string requestId;
 };
@@ -44,7 +43,6 @@ struct ImportResult {
     ImportExecutionMode executionMode = ImportExecutionMode::Sync;
     std::string status;
     std::string requestId;
-    std::string scopeName;
 };
 
 class CartographerService {
@@ -55,9 +53,8 @@ public:
     void terminateSubprocess();
 
     ImportResult import(const ImportRequest& request);
-    ImportResult importResolvedFile(const std::string& resolvedSchemaPath, const std::string& scopeName);
+    ImportResult importResolvedFile(const std::string& resolvedSchemaPath);
     ImportResult importResolverJson(const std::string& resolvedSchemaJson,
-                                    const std::string& scopeName,
                                     const std::string& sourceLabel);
     ImportResult importDeferred(const ImportRequest& request);
     ImportResult importStatus(const std::string& requestId);

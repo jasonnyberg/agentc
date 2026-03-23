@@ -54,7 +54,6 @@ TEST(CartographerServiceTest, ImportReturnsSelfContainedDefinitions) {
     ImportRequest request;
     request.libraryPath = (buildDir / "libagentmath_poc.so").string();
     request.headerPath = (sourceDir / "libagentmath_poc.h").string();
-    request.scopeName = "defs";
     request.requestId = "cartographer-test-sync";
 
     ImportResult result = service.import(request);
@@ -74,14 +73,12 @@ TEST(CartographerServiceTest, ImportReturnsSelfContainedDefinitions) {
     ASSERT_TRUE(bool(metaItem));
     auto metadata = metaItem->getValue(false, false);
     ASSERT_TRUE(bool(metadata));
-    EXPECT_EQ(readStringField(metadata, "scope"), "defs");
     EXPECT_EQ(readStringField(metadata, "library"), request.libraryPath);
     EXPECT_EQ(readStringField(metadata, "header"), request.headerPath);
     EXPECT_EQ(readStringField(metadata, "execution_mode"), "sync");
-    EXPECT_EQ(readStringField(metadata, "protocol"), "protocol_v1");
+    EXPECT_EQ(readStringField(metadata, "protocol"), "protocol_v2");
     EXPECT_EQ(readStringField(metadata, "api_schema_format"), "parser_json_v1");
     EXPECT_EQ(readStringField(metadata, "binding_mode"), "programmer_managed");
-    EXPECT_EQ(readStringField(metadata, "requested_name"), request.scopeName);
     EXPECT_EQ(readStringField(metadata, "request_id"), request.requestId);
     EXPECT_EQ(readStringField(metadata, "status"), "ready");
     EXPECT_FALSE(readStringField(metadata, "symbol_count").empty());
@@ -97,7 +94,6 @@ TEST(CartographerServiceTest, DeferredImportQueuesHandleAndCollectsImportObject)
     ImportRequest request;
     request.libraryPath = (buildDir / "libagentmath_poc.so").string();
     request.headerPath = (sourceDir / "libagentmath_poc.h").string();
-    request.scopeName = "defs";
     request.executionMode = ImportExecutionMode::Deferred;
     request.requestId = "cartographer-test-deferred";
 
@@ -107,7 +103,7 @@ TEST(CartographerServiceTest, DeferredImportQueuesHandleAndCollectsImportObject)
     EXPECT_EQ(result.requestId, request.requestId);
     EXPECT_EQ(result.status, "queued");
     EXPECT_EQ(readStringField(result.definitions, "status"), "queued");
-    EXPECT_EQ(readStringField(result.definitions, "protocol"), "protocol_v1");
+    EXPECT_EQ(readStringField(result.definitions, "protocol"), "protocol_v2");
     EXPECT_EQ(readStringField(result.definitions, "api_schema_format"), "parser_json_v1");
     EXPECT_EQ(readStringField(result.definitions, "service_boundary"), "subprocess_pipe");
     EXPECT_EQ(readStringField(result.definitions, "response_owner"), "vm_collect");
@@ -128,7 +124,7 @@ TEST(CartographerServiceTest, DeferredImportQueuesHandleAndCollectsImportObject)
     ASSERT_TRUE(ready) << "Deferred import never became ready";
     EXPECT_EQ(readStringField(status.definitions, "status"), "ready");
     EXPECT_EQ(readStringField(status.definitions, "request_id"), request.requestId);
-    EXPECT_EQ(readStringField(status.definitions, "protocol"), "protocol_v1");
+    EXPECT_EQ(readStringField(status.definitions, "protocol"), "protocol_v2");
     EXPECT_EQ(readStringField(status.definitions, "api_schema_format"), "parser_json_v1");
 
     ImportResult collected = service.collect(result.requestId);
@@ -145,12 +141,11 @@ TEST(CartographerServiceTest, DeferredImportQueuesHandleAndCollectsImportObject)
     EXPECT_EQ(readStringField(metadata, "execution_mode"), "deferred");
     EXPECT_EQ(readStringField(metadata, "request_id"), request.requestId);
     EXPECT_EQ(readStringField(metadata, "status"), "ready");
-    EXPECT_EQ(readStringField(metadata, "protocol"), "protocol_v1");
+    EXPECT_EQ(readStringField(metadata, "protocol"), "protocol_v2");
     EXPECT_EQ(readStringField(metadata, "api_schema_format"), "parser_json_v1");
     EXPECT_EQ(readStringField(metadata, "service_boundary"), "subprocess_pipe");
     EXPECT_EQ(readStringField(metadata, "response_owner"), "vm_collect");
     EXPECT_EQ(readStringField(metadata, "binding_mode"), "programmer_managed");
-    EXPECT_EQ(readStringField(metadata, "requested_name"), request.scopeName);
 }
 
 TEST(CartographerServiceTest, DeferredImportSurfacesImportFailureStatus) {
@@ -162,7 +157,6 @@ TEST(CartographerServiceTest, DeferredImportSurfacesImportFailureStatus) {
     ImportRequest request;
     request.libraryPath = "/definitely/missing/libagentmath_poc.so";
     request.headerPath = (sourceDir / "libagentmath_poc.h").string();
-    request.scopeName = "defs";
     request.executionMode = ImportExecutionMode::Deferred;
     request.requestId = "cartographer-test-import-failure";
 
@@ -203,7 +197,6 @@ TEST(CartographerServiceTest, DeferredImportSurfacesTransportFailureStatus) {
     ImportRequest request;
     request.libraryPath = (buildDir / "libagentmath_poc.so").string();
     request.headerPath = (sourceDir / "libagentmath_poc.h").string();
-    request.scopeName = "defs";
     request.executionMode = ImportExecutionMode::Deferred;
     request.requestId = "cartographer-test-transport-failure";
 
@@ -237,7 +230,6 @@ TEST(CartographerProtocolTest, EdictProtocolRoundTripsRequestAndStatus) {
     ImportRequest request;
     request.libraryPath = "/tmp/libagent math.so";
     request.headerPath = "/tmp/agent math.h";
-    request.scopeName = "defs";
     request.executionMode = ImportExecutionMode::Deferred;
     request.requestId = "request-42";
 
@@ -247,14 +239,12 @@ TEST(CartographerProtocolTest, EdictProtocolRoundTripsRequestAndStatus) {
     ASSERT_TRUE(protocol::decodeImportRequest(requestMessage, decodedRequest, error)) << error;
     EXPECT_EQ(decodedRequest.libraryPath, request.libraryPath);
     EXPECT_EQ(decodedRequest.headerPath, request.headerPath);
-    EXPECT_EQ(decodedRequest.scopeName, request.scopeName);
     EXPECT_EQ(decodedRequest.executionMode, request.executionMode);
     EXPECT_EQ(decodedRequest.requestId, request.requestId);
 
     ImportResult status;
     status.executionMode = ImportExecutionMode::Deferred;
     status.requestId = request.requestId;
-    status.scopeName = request.scopeName;
     status.status = "ready";
     status.symbolCount = 2;
 
@@ -281,7 +271,6 @@ TEST(CartographerProtocolTest, EdictProtocolRoundTripsRequestAndStatus) {
     ASSERT_TRUE(protocol::decodeImportStatus(statusMessage, decodedStatusRequest, decodedStatus, &decodedDescription, error)) << error;
     EXPECT_EQ(decodedStatusRequest.libraryPath, request.libraryPath);
     EXPECT_EQ(decodedStatusRequest.headerPath, request.headerPath);
-    EXPECT_EQ(decodedStatusRequest.scopeName, request.scopeName);
     EXPECT_EQ(decodedStatus.requestId, request.requestId);
     EXPECT_EQ(decodedStatus.status, "ready");
     EXPECT_EQ(decodedStatus.symbolCount, 2u);
@@ -318,7 +307,7 @@ TEST(CartographerServiceTest, ImportResolvedFileReturnsDefinitionsAndResolutionM
     output << resolver::encodeResolvedApi(resolved);
     output.close();
 
-    ImportResult result = service.importResolvedFile(resolvedPath.string(), "defs");
+    ImportResult result = service.importResolvedFile(resolvedPath.string());
     ASSERT_TRUE(result.ok);
 
     auto defs = result.definitions;
@@ -340,7 +329,6 @@ TEST(CartographerServiceTest, ImportResolvedFileReturnsDefinitionsAndResolutionM
     EXPECT_EQ(readStringField(metadata, "api_schema_format"), protocol::parserSchemaFormatName());
     EXPECT_EQ(readStringField(metadata, "resolved_address_bindings_process_local"), "true");
     EXPECT_EQ(readStringField(metadata, "binding_mode"), "programmer_managed");
-    EXPECT_EQ(readStringField(metadata, "requested_name"), "defs");
     EXPECT_FALSE(readStringField(metadata, "resolved_content_hash").empty());
 }
 
@@ -368,7 +356,7 @@ TEST(CartographerServiceTest, ImportResolvedFileRejectsStaleArtifactFingerprint)
     output << resolver::encodeResolvedApi(resolved);
     output.close();
 
-    ImportResult result = service.importResolvedFile(resolvedPath.string(), "defs");
+    ImportResult result = service.importResolvedFile(resolvedPath.string());
     ASSERT_FALSE(result.ok);
     EXPECT_EQ(result.status, "import_failed");
     EXPECT_EQ(result.error, "Resolved schema is stale for library: " + libraryPath.string());

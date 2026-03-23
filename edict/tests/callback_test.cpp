@@ -446,7 +446,7 @@ TEST(CallbackTest, ImportBuiltinInjectsDefinitionsAndInvokesImmediately) {
     const std::string source =
         "[" + libPath + "] "
         "[" + headerPath + "] "
-        "'defs resolver.import ! @defs "
+        "resolver.import ! @defs "
         "defs.add.safety "
         "10 32 defs.add !";
 
@@ -472,7 +472,7 @@ TEST(CallbackTest, InterpretedImportPipelineCanRoundTripThroughJson) {
     const std::string source =
         "[" + headerPath + "] parser.parse_json ! @schema "
         "[" + libPath + "] schema resolver.resolve_json ! @resolved "
-        "resolved 'defs resolver.import_resolved_json ! @defs "
+        "resolved resolver.import_resolved_json ! @defs "
         "defs.add.safety "
         "10 32 defs.add !";
 
@@ -544,7 +544,7 @@ TEST(CallbackTest, SourceLevelUnsafeExtensionPolicyCanAllowAndReblock) {
     BytecodeBuffer importDefs = compiler.compile(
         "[" + libPath + "] "
         "[" + headerPath + "] "
-        "'defs resolver.import ! dup @defs");
+        "resolver.import ! dup @defs");
     int state = vm.execute(importDefs);
     ASSERT_FALSE(state & VM_ERROR) << vm.getError();
 
@@ -594,7 +594,7 @@ TEST(CallbackTest, DeferredImportStatusReturnsHandleSnapshot) {
     BytecodeBuffer queueImport = compiler.compile(
         "[" + libPath + "] "
         "[" + headerPath + "] "
-        "'defs resolver.import_deferred ! dup resolver.import_status !");
+        "resolver.import_deferred ! dup resolver.import_status !");
     int state = vm.execute(queueImport);
     ASSERT_FALSE(state & VM_ERROR) << vm.getError();
 
@@ -625,7 +625,7 @@ TEST(CallbackTest, DeferredImportStatusReturnsHandleSnapshot) {
     ASSERT_TRUE(bool(protocolItem));
     auto protocolValue = protocolItem->getValue(false, false);
     ASSERT_TRUE((bool)protocolValue);
-    EXPECT_EQ(std::string(static_cast<char*>(protocolValue->getData()), protocolValue->getLength()), "protocol_v1");
+    EXPECT_EQ(std::string(static_cast<char*>(protocolValue->getData()), protocolValue->getLength()), "protocol_v2");
 
     auto schemaFormatItem = statusHandle->find("api_schema_format");
     ASSERT_TRUE(bool(schemaFormatItem));
@@ -651,7 +651,7 @@ TEST(CallbackTest, DeferredImportCollectCanUseHandleThroughRequestIdWrapper) {
     BytecodeBuffer queueImport = compiler.compile(
         "[" + libPath + "] "
         "[" + headerPath + "] "
-        "'defs resolver.import_deferred !");
+        "resolver.import_deferred !");
     int state = vm.execute(queueImport);
     ASSERT_FALSE(state & VM_ERROR) << vm.getError();
 
@@ -734,7 +734,7 @@ TEST(CallbackTest, ImportResolvedInjectsDefinitionsAndInvokesImmediately) {
 
     BytecodeBuffer importCode = compiler.compile(
         "[" + resolvedPath.string() + "] "
-        "'defs resolver.import_resolved ! dup @defs 10 32 defs.add !");
+        "resolver.import_resolved ! dup @defs 10 32 defs.add !");
     int state = vm.execute(importCode);
     ASSERT_FALSE(state & VM_ERROR) << vm.getError();
 
@@ -783,7 +783,7 @@ TEST(CallbackTest, EdictCliImportResolvedDemoPrintsExpectedResult) {
 
     const std::string source =
         "[" + resolvedPath.string() + "] "
-        "'defs resolver.import_resolved ! dup @defs 10 32 defs.add !";
+        "resolver.import_resolved ! dup @defs 10 32 defs.add !";
 
     ProcessResult result = runProcess(makeArgList({edictPath.string(), "-e", source}));
     ASSERT_EQ(result.exitCode, 0) << result.stderrText;

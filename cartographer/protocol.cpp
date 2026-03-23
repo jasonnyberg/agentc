@@ -402,8 +402,6 @@ static bool decodeImportRequestFields(TokenReader& reader,
         !reader.readToken(out.libraryPath, error) ||
         !expectToken(reader, "header", error) ||
         !reader.readToken(out.headerPath, error) ||
-        !expectToken(reader, "scope", error) ||
-        !reader.readToken(out.scopeName, error) ||
         !expectToken(reader, "mode", error)) {
         return false;
     }
@@ -445,14 +443,13 @@ static bool expectEndVerb(TokenReader& reader,
 } // namespace
 
 const char* versionName() {
-    return "protocol_v1";
+    return "protocol_v2";
 }
 
 std::string encodeImportRequest(const ImportRequest& request) {
     return std::string(versionName()) +
            " library " + quote(request.libraryPath) +
            " header " + quote(request.headerPath) +
-           " scope " + quote(request.scopeName) +
            " mode " + quote(executionModeName(request.executionMode)) +
            " request_id " + quote(request.requestId) +
            " " + importVerb();
@@ -481,7 +478,6 @@ std::string encodeImportStatus(const ImportRequest& request,
     return std::string(versionName()) +
            " library " + quote(request.libraryPath) +
            " header " + quote(request.headerPath) +
-           " scope " + quote(request.scopeName) +
            " mode " + quote(executionModeName(result.executionMode)) +
            " request_id " + quote(result.requestId) +
            " status " + quote(result.status) +
@@ -547,7 +543,6 @@ bool decodeImportStatus(const std::string& message,
     resultOut = {};
     resultOut.executionMode = requestOut.executionMode;
     resultOut.requestId = requestOut.requestId;
-    resultOut.scopeName = requestOut.scopeName;
     if (!expectToken(reader, "status", error) ||
         !reader.readToken(resultOut.status, error) ||
         !expectToken(reader, "symbol_count", error)) {

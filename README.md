@@ -40,7 +40,7 @@ Edict is a **stack-based concatenative language** — tokens either push values 
 operations. Programs are sequences; results accumulate on the data stack.
 
 ```edict
-"hello" "world" print   -- pushes two strings, prints "world"
+'hello 'world print   -- pushes two strings, prints "world"
 ```
 
 **Thunks and eval.** Square brackets push their contents as a literal string (a thunk). `!`
@@ -48,7 +48,7 @@ pops and executes whatever is on top — a thunk, a built-in, or an FFI function
 the last instruction in the current frame, it tail-calls.
 
 ```edict
-["hello" print] @greet
+['hello print] @greet
 greet !                 -- executes the thunk; prints "hello"
 ```
 
@@ -67,7 +67,7 @@ value test & [do_this !] | [do_that !]
 success, the result is returned; on failure, null. The host VM is never mutated:
 
 ```edict
-"default"
+'default
 speculate [risky_op !]
 dup test & [swap /] | [/]    -- use result if non-null, else keep default
 ```
@@ -88,8 +88,8 @@ logic {
 like any other word:
 
 ```edict
-"./libmath.so" "./math.h" "math" resolver.import ! @math
-"3" "4" math.hypot !    -- stack: [ "5" ]
+'./libmath.so './math.h resolver.import ! @math
+'3 '4 math.hypot !    -- stack: [ "5" ]
 ```
 
 Rewrite rules, transactions, cursor navigation, FFI closures, and the full opcode set are

@@ -75,7 +75,7 @@ agentc_test() {
     # edict: run a trivial inline script
     local _edict_out
     _edict_out=$(edict - 2>&1 <<'EDICT' || true
-"hello" print
+'hello print
 EDICT
 )
     if [ -n "$_edict_out" ]; then
@@ -169,7 +169,7 @@ agentc_demo() {
 
     _section "edict"
     _run edict - <<'EDICT'
-"hello" print
+'hello print
 EDICT
 
     _section "cartographer_dump"
