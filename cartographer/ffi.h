@@ -50,6 +50,7 @@ public:
     // Helpers for marshalling
     void convertValue(CPtr<ListreeValue> val, ffi_type* type, void* storage);
     CPtr<ListreeValue> convertReturn(void* storage, ffi_type* type);
+    static bool isLtvType(ffi_type* type);
 
 private:
     struct ClosureInfo {

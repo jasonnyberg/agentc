@@ -14,7 +14,11 @@
 // License along with AgentC. If not, see <https://www.gnu.org/licenses/>.
 
 #include <iostream>
+#include <filesystem>
+#include <fstream>
 
+#include "../cartographer/parser.h"
+#include "../cartographer/resolver.h"
 #include "../edict/edict_compiler.h"
 #include "../edict/edict_vm.h"
 
@@ -31,6 +35,39 @@ bool runScript(EdictVM& vm, const std::string& script) {
 
 int main() {
     EdictVM vm;
+
+    const std::filesystem::path buildDir = std::filesystem::current_path();
+    const std::filesystem::path rootDir = buildDir.parent_path();
+    const std::filesystem::path libPath = buildDir / "kanren" / "libkanren.so";
+    const std::filesystem::path headerPath = rootDir / "cartographer" / "tests" / "kanren_runtime_ffi_poc.h";
+    const std::filesystem::path resolvedPath = buildDir / "demo_cognitive_validation_kanren_runtime_ffi.json";
+
+    agentc::cartographer::Mapper mapper;
+    agentc::cartographer::Mapper::ParseDescription description;
+    std::string error;
+    if (!agentc::cartographer::parser::parseHeaderToDescription(mapper, headerPath.string(), description, error)) {
+        std::cerr << error << "\n";
+        return 1;
+    }
+
+    agentc::cartographer::resolver::ResolvedApi resolved;
+    if (!agentc::cartographer::resolver::resolveApiDescription(libPath.string(), description, resolved, error)) {
+        std::cerr << error << "\n";
+        return 1;
+    }
+
+    std::ofstream output(resolvedPath);
+    if (!output.good()) {
+        std::cerr << "failed to write resolved kanren import json\n";
+        return 1;
+    }
+    output << agentc::cartographer::resolver::encodeResolvedApi(resolved);
+    output.close();
+
+    if (!runScript(vm, "[" + resolvedPath.string() + "] resolver.import_resolved ! @logicffi logicffi.agentc_logic_eval_ltv @logic logic @logic_run")) {
+        std::cerr << vm.getError() << "\n";
+        return 1;
+    }
 
     if (!runScript(vm, R"(
         {"pattern": ["dup", "dot", "sqrt"], "replacement": ["magnitude"]}
@@ -53,7 +90,7 @@ int main() {
         {"fresh": ["q"],
          "where": [["membero", "q", ["tea", "cake"]]],
          "results": ["q"]}
-        logic_run !
+        logic!
     )")) {
         std::cerr << vm.getError() << "\n";
         return 1;

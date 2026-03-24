@@ -178,6 +178,184 @@ static CPtr<agentc::ListreeValue> make_callback_signature() {
     return signature;
 }
 
+static CPtr<agentc::ListreeValue> make_ltv_unary_callback_signature() {
+    auto signature = agentc::createNullValue();
+    agentc::addNamedItem(signature, "return_type", agentc::createStringValue("ltv"));
+
+    auto children = agentc::createNullValue();
+    auto parameter = agentc::createNullValue();
+    agentc::addNamedItem(parameter, "kind", agentc::createStringValue("Parameter"));
+    agentc::addNamedItem(parameter, "type", agentc::createStringValue("ltv"));
+    agentc::addNamedItem(children, "p0", parameter);
+    agentc::addNamedItem(signature, "children", children);
+    return signature;
+}
+
+static void attach_ltv_unary_callback_signature(CPtr<agentc::ListreeValue> defs,
+                                                const std::string& functionName,
+                                                const std::string& paramName = "p0") {
+    ASSERT_TRUE((bool)defs);
+    auto functionItem = defs->find(functionName);
+    ASSERT_TRUE((bool)functionItem);
+    auto functionDef = functionItem->getValue(false, false);
+    ASSERT_TRUE((bool)functionDef);
+
+    auto childrenItem = functionDef->find("children");
+    ASSERT_TRUE((bool)childrenItem);
+    auto children = childrenItem->getValue(false, false);
+    ASSERT_TRUE((bool)children);
+
+    auto paramItem = children->find(paramName);
+    if (!paramItem) {
+        children->forEachTree([&](const std::string&, CPtr<agentc::ListreeItem>& item) {
+            if (!paramItem) {
+                paramItem = item;
+            }
+        });
+    }
+    ASSERT_TRUE((bool)paramItem);
+    auto paramDef = paramItem->getValue(false, false);
+    ASSERT_TRUE((bool)paramDef);
+
+    paramDef->remove("type");
+    agentc::addNamedItem(paramDef, "type", agentc::createStringValue("pointer"));
+    agentc::addNamedItem(paramDef, "signature", make_ltv_unary_callback_signature());
+}
+
+static CPtr<agentc::ListreeValue> require_function_def(CPtr<agentc::ListreeValue> defs,
+                                                       const std::string& functionName) {
+    if (!defs) {
+        ADD_FAILURE() << "Missing defs object";
+        return nullptr;
+    }
+    auto functionItem = defs->find(functionName);
+    if (!functionItem) {
+        ADD_FAILURE() << "Missing function: " << functionName;
+        return nullptr;
+    }
+    auto functionDef = functionItem->getValue(false, false);
+    if (!functionDef) {
+        ADD_FAILURE() << "Missing function def: " << functionName;
+        return nullptr;
+    }
+    return functionDef;
+}
+
+static CPtr<agentc::ListreeValue> require_children(CPtr<agentc::ListreeValue> functionDef) {
+    if (!functionDef) {
+        ADD_FAILURE() << "Missing functionDef";
+        return nullptr;
+    }
+    auto childrenItem = functionDef->find("children");
+    if (!childrenItem) {
+        ADD_FAILURE() << "Missing children item";
+        return nullptr;
+    }
+    auto children = childrenItem->getValue(false, false);
+    if (!children) {
+        ADD_FAILURE() << "Missing children value";
+        return nullptr;
+    }
+    return children;
+}
+
+static CPtr<agentc::ListreeValue> require_child(CPtr<agentc::ListreeValue> parent,
+                                                const std::string& name) {
+    if (!parent) {
+        ADD_FAILURE() << "Missing parent for child: " << name;
+        return nullptr;
+    }
+    auto item = parent->find(name);
+    if (!item) {
+        ADD_FAILURE() << "Missing child: " << name;
+        return nullptr;
+    }
+    auto value = item->getValue(false, false);
+    if (!value) {
+        ADD_FAILURE() << "Missing child value: " << name;
+        return nullptr;
+    }
+    return value;
+}
+
+static void set_type_field(CPtr<agentc::ListreeValue> node,
+                           const std::string& field,
+                           const std::string& type) {
+    ASSERT_TRUE((bool)node);
+    node->remove(field);
+    agentc::addNamedItem(node, field, agentc::createStringValue(type));
+}
+
+static void replace_children_in_order(CPtr<agentc::ListreeValue> functionDef,
+                                      const std::vector<std::pair<std::string, CPtr<agentc::ListreeValue>>>& orderedChildren) {
+    ASSERT_TRUE((bool)functionDef);
+    functionDef->remove("children");
+    auto children = agentc::createNullValue();
+    for (size_t i = 0; i < orderedChildren.size(); ++i) {
+        auto child = orderedChildren[i].second;
+        ASSERT_TRUE((bool)child);
+        agentc::addNamedItem(children, "p" + std::to_string(i), child);
+        agentc::addNamedItem(child, "name", agentc::createStringValue(orderedChildren[i].first));
+    }
+    agentc::addNamedItem(functionDef, "children", children);
+}
+
+static void normalize_thread_runtime_defs(CPtr<agentc::ListreeValue> defs) {
+    auto spawn = require_function_def(defs, "agentc_thread_spawn_ltv");
+    set_type_field(spawn, "return_type", "pointer");
+    auto spawnChildren = require_children(spawn);
+    auto entry = require_child(spawnChildren, "entry");
+    auto arg = require_child(spawnChildren, "arg");
+    set_type_field(entry, "type", "pointer");
+    set_type_field(arg, "type", "ltv");
+    replace_children_in_order(spawn, {{"entry", entry}, {"arg", arg}});
+
+    auto join = require_function_def(defs, "agentc_thread_join_ltv");
+    set_type_field(join, "return_type", "ltv");
+    auto joinHandle = require_child(require_children(join), "handle");
+    set_type_field(joinHandle, "type", "pointer");
+    replace_children_in_order(join, {{"handle", joinHandle}});
+
+    auto detach = require_function_def(defs, "agentc_thread_detach");
+    set_type_field(detach, "return_type", "void");
+    auto detachHandle = require_child(require_children(detach), "handle");
+    set_type_field(detachHandle, "type", "pointer");
+    replace_children_in_order(detach, {{"handle", detachHandle}});
+
+    auto destroy = require_function_def(defs, "agentc_thread_destroy");
+    set_type_field(destroy, "return_type", "void");
+    auto destroyHandle = require_child(require_children(destroy), "handle");
+    set_type_field(destroyHandle, "type", "pointer");
+    replace_children_in_order(destroy, {{"handle", destroyHandle}});
+
+    auto sharedCreate = require_function_def(defs, "agentc_shared_create_ltv");
+    set_type_field(sharedCreate, "return_type", "pointer");
+    auto sharedInitial = require_child(require_children(sharedCreate), "initial");
+    set_type_field(sharedInitial, "type", "ltv");
+    replace_children_in_order(sharedCreate, {{"initial", sharedInitial}});
+
+    auto sharedDestroy = require_function_def(defs, "agentc_shared_destroy");
+    set_type_field(sharedDestroy, "return_type", "void");
+    auto sharedDestroyCell = require_child(require_children(sharedDestroy), "cell");
+    set_type_field(sharedDestroyCell, "type", "pointer");
+    replace_children_in_order(sharedDestroy, {{"cell", sharedDestroyCell}});
+
+    auto sharedRead = require_function_def(defs, "agentc_shared_read_ltv");
+    set_type_field(sharedRead, "return_type", "ltv");
+    auto sharedReadCell = require_child(require_children(sharedRead), "cell");
+    set_type_field(sharedReadCell, "type", "pointer");
+    replace_children_in_order(sharedRead, {{"cell", sharedReadCell}});
+
+    auto sharedWrite = require_function_def(defs, "agentc_shared_write_ltv");
+    set_type_field(sharedWrite, "return_type", "int");
+    auto sharedWriteChildren = require_children(sharedWrite);
+    auto sharedWriteCell = require_child(sharedWriteChildren, "cell");
+    auto sharedWriteReplacement = require_child(sharedWriteChildren, "replacement");
+    set_type_field(sharedWriteCell, "type", "pointer");
+    set_type_field(sharedWriteReplacement, "type", "ltv");
+    replace_children_in_order(sharedWrite, {{"cell", sharedWriteCell}, {"replacement", sharedWriteReplacement}});
+}
+
 static CPtr<agentc::ListreeValue> make_apply_op_definition() {
     auto definition = agentc::createNullValue();
     agentc::addNamedItem(definition, "kind", agentc::createStringValue("Function"));
@@ -275,6 +453,25 @@ static std::vector<CPtr<agentc::ListreeValue>> listItems(const CPtr<agentc::List
     });
     std::reverse(out.begin(), out.end());
     return out;
+}
+
+static void writeResolvedApi(const std::filesystem::path& libPath,
+                             const std::filesystem::path& headerPath,
+                             const std::filesystem::path& resolvedPath) {
+    agentc::cartographer::Mapper mapper;
+    agentc::cartographer::Mapper::ParseDescription description;
+    std::string error;
+    ASSERT_TRUE(agentc::cartographer::parser::parseHeaderToDescription(
+        mapper, headerPath.string(), description, error)) << error;
+
+    agentc::cartographer::resolver::ResolvedApi resolved;
+    ASSERT_TRUE(agentc::cartographer::resolver::resolveApiDescription(
+        libPath.string(), description, resolved, error)) << error;
+
+    std::ofstream output(resolvedPath);
+    ASSERT_TRUE(output.good());
+    output << agentc::cartographer::resolver::encodeResolvedApi(resolved);
+    output.close();
 }
 
 static void expectCodeFrameLongerThanBuiltinThunk(CPtr<agentc::ListreeValue> value) {
@@ -911,6 +1108,119 @@ TEST(CallbackTest, PureEdictWrappersBuildCanonicalLogicSpecForImportedKanren) {
     ASSERT_EQ(values.size(), 2u);
     EXPECT_EQ(values[0], "tea");
     EXPECT_EQ(values[1], "cake");
+}
+
+TEST(CallbackTest, ImportResolvedThreadRuntimeSpawnsThunkAndJoinsResult) {
+    EdictVM vm;
+    EdictCompiler compiler;
+
+    const std::filesystem::path buildDir(TEST_BUILD_DIR);
+    const std::filesystem::path sourceDir(TEST_SOURCE_DIR);
+    const std::filesystem::path libPath = buildDir / "libagentthreads_poc.so";
+    const std::filesystem::path headerPath = sourceDir / "libagentthreads_poc.h";
+    const std::filesystem::path resolvedPath = buildDir / "edict_import_agentthreads_runtime.json";
+
+    writeResolvedApi(libPath, headerPath, resolvedPath);
+
+    int state = vm.execute(compiler.compile(
+        "[" + resolvedPath.string() + "] resolver.import_resolved ! @threadffi threadffi"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+
+    auto defs = vm.popData();
+    normalize_thread_runtime_defs(defs);
+    const std::string source =
+        "{\"return_type\": \"ltv\", \"children\": {\"p0\": {\"kind\": \"Parameter\", \"type\": \"ltv\"}}} "
+        "[pop 'threaded-result] ffi_closure ! "
+        "'threaded-result threadffi.agentc_thread_spawn_ltv ! @handle "
+        "handle threadffi.agentc_thread_join_ltv ! @result "
+        "handle threadffi.agentc_thread_destroy ! "
+        "result";
+
+    state = vm.execute(compiler.compile(source));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+
+    auto result = vm.popData();
+    ASSERT_TRUE((bool)result);
+    ASSERT_TRUE(result->getData());
+    EXPECT_EQ(std::string(static_cast<const char*>(result->getData()), result->getLength()), "threaded-result");
+}
+
+TEST(CallbackTest, ImportResolvedThreadRuntimeSharedCellProvidesSnapshotIsolation) {
+    EdictVM vm;
+    EdictCompiler compiler;
+
+    const std::filesystem::path buildDir(TEST_BUILD_DIR);
+    const std::filesystem::path sourceDir(TEST_SOURCE_DIR);
+    const std::filesystem::path libPath = buildDir / "libagentthreads_poc.so";
+    const std::filesystem::path headerPath = sourceDir / "libagentthreads_poc.h";
+    const std::filesystem::path resolvedPath = buildDir / "edict_import_agentthreads_snapshot.json";
+
+    writeResolvedApi(libPath, headerPath, resolvedPath);
+
+    int state = vm.execute(compiler.compile(
+        "[" + resolvedPath.string() + "] resolver.import_resolved ! @threadffi threadffi"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+
+    auto defs = vm.popData();
+    normalize_thread_runtime_defs(defs);
+
+    const std::string source =
+        "{} threadffi.agentc_shared_create_ltv ! @cell "
+        "cell threadffi.agentc_shared_read_ltv ! @snapshot "
+        "'local @snapshot.kind "
+        "cell threadffi.agentc_shared_read_ltv ! @stored "
+        "cell threadffi.agentc_shared_destroy ! "
+        "stored";
+
+    state = vm.execute(compiler.compile(source));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+
+    auto stored = vm.popData();
+    ASSERT_TRUE((bool)stored);
+    auto kind = stored->find("kind");
+    EXPECT_FALSE((bool)kind);
+}
+
+TEST(CallbackTest, ImportResolvedThreadRuntimeUpdatesSharedCellFromThread) {
+    EdictVM vm;
+    EdictCompiler compiler;
+
+    const std::filesystem::path buildDir(TEST_BUILD_DIR);
+    const std::filesystem::path sourceDir(TEST_SOURCE_DIR);
+    const std::filesystem::path libPath = buildDir / "libagentthreads_poc.so";
+    const std::filesystem::path headerPath = sourceDir / "libagentthreads_poc.h";
+    const std::filesystem::path resolvedPath = buildDir / "edict_import_agentthreads_shared_write.json";
+
+    writeResolvedApi(libPath, headerPath, resolvedPath);
+
+    int state = vm.execute(compiler.compile(
+        "[" + resolvedPath.string() + "] resolver.import_resolved ! @threadffi threadffi"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+
+    auto defs = vm.popData();
+    normalize_thread_runtime_defs(defs);
+    const std::string source =
+        "{} threadffi.agentc_shared_create_ltv ! @cell "
+        "{\"return_type\": \"ltv\", \"children\": {\"p0\": {\"kind\": \"Parameter\", \"type\": \"ltv\"}}} "
+        "[ARG0 {\"status\": \"threaded\"} threadffi.agentc_shared_write_ltv ! pop 'written] ffi_closure ! "
+        "cell threadffi.agentc_thread_spawn_ltv ! @handle "
+        "handle threadffi.agentc_thread_join_ltv ! pop "
+        "cell threadffi.agentc_shared_read_ltv ! @stored "
+        "handle threadffi.agentc_thread_destroy ! "
+        "cell threadffi.agentc_shared_destroy ! "
+        "stored";
+
+    state = vm.execute(compiler.compile(source));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+
+    auto stored = vm.popData();
+    ASSERT_TRUE((bool)stored);
+    auto status = stored->find("status");
+    ASSERT_TRUE((bool)status);
+    auto value = status->getValue(false, false);
+    ASSERT_TRUE((bool)value);
+    ASSERT_TRUE(value->getData());
+    EXPECT_EQ(std::string(static_cast<const char*>(value->getData()), value->getLength()), "threaded");
 }
 
 TEST(CallbackTest, EdictCliImportResolvedDemoPrintsExpectedResult) {

@@ -72,17 +72,24 @@ speculate [risky_op !]
 dup test & [swap /] | [/]    -- use result if non-null, else keep default
 ```
 
-**Logic queries.** An embedded miniKanren engine supports relational constraint solving.
-Backtracking uses Slab watermark reset — no copying:
+**Logic queries.** miniKanren is exposed as an imported capability. The canonical
+input is an object/Listree query spec, and you can alias the imported evaluator to
+`logic` like any other word:
 
 ```edict
-logic {
-  "fresh":   ["head", "tail"],
-  "where":   [["conso", "head", "tail", ["tea", "cake"]]],
+[./libkanren.so] [./kanren_runtime_ffi_poc.h] resolver.import ! @logicffi
+logicffi.agentc_logic_eval_ltv @logic
+
+{
+  "fresh": ["head", "tail"],
+  "where": [["conso", "head", "tail", ["tea", "cake"]]],
   "results": ["head", "tail"]
-}
+} logic!
 -- stack: [ [["tea", ["cake"]]] ]
 ```
+
+Ordinary Edict wrappers can build the same canonical spec when you want a more
+call-shaped authoring style.
 
 **FFI.** Native C/C++ libraries are imported at runtime. After import, functions are called
 like any other word:

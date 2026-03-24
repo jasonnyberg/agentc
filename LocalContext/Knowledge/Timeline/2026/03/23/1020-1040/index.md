@@ -1,5 +1,9 @@
 # Session 1020-1040
 
+## Historical Status
+
+This planning note captures an intermediate migration design for G048. Mentions of `logic(...)`, `[...] logic!`, builtin `logic` / `logic_run`, or `VMOP_LOGIC_RUN` are preserved as staged migration history; the final landed model is imported capability evaluation over canonical object/Listree specs plus optional ordinary Edict wrappers.
+
 ## Summary
 
 Created a new follow-on planning slice, G048, to turn the current G047 logic-syntax work into a canonical literal-plus-evaluator model centered on real `[...] logic!` evaluation and a later library/FFI-backed logic capability boundary.

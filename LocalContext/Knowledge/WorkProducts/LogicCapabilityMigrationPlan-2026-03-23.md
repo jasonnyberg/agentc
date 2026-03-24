@@ -1,5 +1,17 @@
 # Logic Capability Migration Plan
 
+## Historical Status
+
+This document is preserved as a migration log. Earlier sections describe intermediate stages that were later completed and then superseded, including temporary `logic(...)` lowering, `[...] logic!` canonicalization work, builtin `logic` / `logic_run` aliases, and the transitional `VMOP_LOGIC_RUN` path.
+
+Current landed state:
+
+- miniKanren is exposed as imported capability functionality over canonical object/Listree specs,
+- higher-level syntax belongs in ordinary Edict wrappers,
+- compiler-native logic lowering, `logic { ... }` compiler sugar, and `VMOP_LOGIC_RUN` have all been removed.
+
+Read this file as implementation history plus rationale. For current guidance, prefer `LocalContext/Knowledge/Goals/G047-NativeRelationalSyntax/index.md`, `LocalContext/Knowledge/Goals/G048-LibraryBackedLogicCapability/index.md`, and `LocalContext/Knowledge/WorkProducts/edict_language_reference.md`.
+
 ## Objective
 
 Turn Edict logic into a canonical literal-plus-evaluator capability by making `[...] logic!` a first-class execution path, lowering `logic(...)` through that same path, and then moving miniKanren execution behind a reusable library/FFI-backed evaluator boundary.
@@ -258,15 +270,9 @@ This slice delivers the architectural turning point without prematurely forcing 
 
 ### Remaining follow-up
 
-- G048 implementation work is complete. Future follow-up is documentation/ergonomic alignment: describe wrapper-based or object-spec logic construction as the post-detachment path anywhere older docs still describe `logic { ... }`, compiler-native `logic(...)` lowering, or `VMOP_LOGIC_RUN`.
+- G048 implementation work is complete.
+- Future follow-up, if desired, is ergonomic only: package reusable wrapper libraries or rewrite-hosted sugar on top of the imported object-spec evaluator path.
 
 ## Bottom Line
 
-There is a real path from the current G047 implementation to library-backed logic evaluation, but the right path is:
-
-1. canonically define `logic!`,
-2. route `logic(...)` through it,
-3. shrink `VMOP_LOGIC_RUN` into an adapter,
-4. then move the evaluator behind a reusable capability boundary.
-
-That preserves working behavior, fits Edict's unified literal model, and gives the project a realistic route toward “miniKanren as capability” instead of “miniKanren as VM privilege.”
+This migration path has now been completed: miniKanren is exposed as imported capability functionality over canonical object/Listree specs, and any higher-level syntax is expected to live in ordinary Edict wrappers rather than compiler or VM special cases.

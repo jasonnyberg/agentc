@@ -15,8 +15,12 @@
 
 #include <iostream>
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
 #include <vector>
 
+#include "../cartographer/parser.h"
+#include "../cartographer/resolver.h"
 #include "../edict/edict_compiler.h"
 #include "../edict/edict_vm.h"
 
@@ -24,15 +28,45 @@ using namespace agentc::edict;
 
 int main() {
     EdictVM vm;
+    const std::filesystem::path buildDir = std::filesystem::current_path();
+    const std::filesystem::path rootDir = buildDir.parent_path();
+    const std::filesystem::path libPath = buildDir / "kanren" / "libkanren.so";
+    const std::filesystem::path headerPath = rootDir / "cartographer" / "tests" / "kanren_runtime_ffi_poc.h";
+    const std::filesystem::path resolvedPath = buildDir / "demo_kanren_runtime_ffi.json";
+
+    agentc::cartographer::Mapper mapper;
+    agentc::cartographer::Mapper::ParseDescription description;
+    std::string error;
+    if (!agentc::cartographer::parser::parseHeaderToDescription(mapper, headerPath.string(), description, error)) {
+        std::cerr << error << "\n";
+        return 1;
+    }
+
+    agentc::cartographer::resolver::ResolvedApi resolved;
+    if (!agentc::cartographer::resolver::resolveApiDescription(libPath.string(), description, resolved, error)) {
+        std::cerr << error << "\n";
+        return 1;
+    }
+
+    std::ofstream output(resolvedPath);
+    if (!output.good()) {
+        std::cerr << "failed to write resolved kanren import json\n";
+        return 1;
+    }
+    output << agentc::cartographer::resolver::encodeResolvedApi(resolved);
+    output.close();
+
     std::string script = R"(
-        logic {
+        [)" + resolvedPath.string() + R"(] resolver.import_resolved ! @logicffi
+        logicffi.agentc_logic_eval_ltv @logic
+        {
           "fresh": ["q"],
           "conde": [
             [["==", "q", "tea"]],
             [["membero", "q", ["cake", "jam"]]]
           ],
           "results": ["q"]
-        } @answers
+        } logic! @answers
         answers
     )";
 
@@ -48,7 +82,7 @@ int main() {
         return 1;
     }
 
-    std::cout << "Edict logic block results:\n";
+    std::cout << "Imported Edict logic results:\n";
     std::vector<std::string> values;
     result->forEachList([&](CPtr<agentc::ListreeValueRef>& ref) {
         if (!ref || !ref->getValue() || !ref->getValue()->getData()) {

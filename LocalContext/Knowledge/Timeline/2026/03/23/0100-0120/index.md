@@ -1,5 +1,9 @@
 # Session 0100-0120
 
+## Historical Status
+
+This session records the first G047 implementation slice from before the later G048 detachment work completed. References here to compiler-native `logic(...)`, `logic { ... }`, or `VMOP_LOGIC_RUN` are historical implementation notes rather than current behavior.
+
 ## Summary
 
 Implemented the first code slice for G046 continuation-based speculation and G047 native relational syntax, created implementation checklists in both goal records, updated the work products with landing status, and verified the full Edict test suite passes.

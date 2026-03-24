@@ -75,6 +75,7 @@ Make Edict logic evaluation look like an ordinary capability over literal data b
 - Retired the legacy VM opcode completely: `VMOP_LOGIC_RUN` has been removed from `edict/edict_types.h`, `edict/edict_vm.h`, `edict/edict_vm.cpp`, and the regression-matrix heavy-op list, leaving no VM-owned kanren execution path behind.
 - Updated detached-logic validation to keep the imported-capability path green after the final removal: focused `LogicSurfaceTest.*`, `CallbackTest.PureEdictWrappersBuildCanonicalLogicSpecForImportedKanren`, and `CognitiveValidationTest.TransactionRollbackContainsLogicAndRewriteExecution` all passed, and full `ctest` remained green (`7/7`).
 - Landed a final cleanup pass after goal completion: removed the last compiler special-case for `logic { ... }` from `EdictCompiler`, converted the remaining non-duplicative tests to imported object-spec flows, and confirmed focused detached-logic coverage plus full `ctest` still pass.
+- README, `demo/demo_cognitive_core.sh`, and `LocalContext/Knowledge/WorkProducts/edict_language_reference.md` are now aligned to the post-detachment model and no longer present `logic { ... }`, compiler-native `logic(...)`, or `VMOP_LOGIC_RUN` as active behavior.
 - Goal complete: kanren capabilities are now detached from the VM, available through import/FFI, and no longer depend on compiler-native lowering or a legacy logic opcode.
 
 ## Scope

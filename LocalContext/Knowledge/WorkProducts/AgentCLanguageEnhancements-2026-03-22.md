@@ -1,5 +1,11 @@
 # AgentC Language Enhancements for Human + Agent Workflows
 
+## Historical Status
+
+This review is preserved as a design exploration artifact. Most proposals remain useful as idea sources, but some logic-specific examples reflect an earlier architecture phase before G047 and G048 completed the shift to imported capability evaluation over canonical object/Listree specs.
+
+In particular, proposal 5 should now be read as historical exploration, not current implementation guidance. The landed direction is wrapper-based sugar over imported logic capability paths rather than compiler-native `logic(...)`, `logic { ... }`, or `VMOP_LOGIC_RUN`.
+
 ## Thesis
 
 AgentC is most compelling when treated as a compact cognitive substrate rather than a replacement for a general-purpose host language. Its real advantages are not conventional application syntax, but a tighter combination of:
@@ -141,6 +147,8 @@ Benefits:
 ## 5. Native Relational Syntax That Compiles to the Existing IR
 
 **Category:** logic
+
+Historical note: this proposal helped shape G047/G048, but the final implementation moved further toward imported capability paths plus ordinary Edict wrappers. Treat the `logic(...)` and `[...] logic!` examples here as exploratory design sketches rather than active guidance.
 
 Keep the current JSON logic object as the implementation IR, but add a lighter native syntax that compiles into it. The best direction now looks like call-form `logic(...)` as the clean human-facing form, with `[...] logic!` as the equivalent literal/evaluator model underneath.
 

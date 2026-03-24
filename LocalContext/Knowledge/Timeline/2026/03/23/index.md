@@ -1,8 +1,32 @@
+# Timeline: 2026-03-23
+
+## Historical Status
+
+This daily timeline spans the full G047/G048 migration, so earlier entries intentionally record intermediate states that were later removed. Mentions of compiler-native `logic(...)`, `[...] logic!`, builtin `logic` / `logic_run`, `logic { ... }`, or `VMOP_LOGIC_RUN` in older sessions are historical unless a later session in this file explicitly says they were removed. For current behavior, use `LocalContext/Dashboard.md`, `LocalContext/Knowledge/Goals/G047-NativeRelationalSyntax/index.md`, `LocalContext/Knowledge/Goals/G048-LibraryBackedLogicCapability/index.md`, and `LocalContext/Knowledge/WorkProducts/edict_language_reference.md`.
+
+## Session 1805-1825
+
+🔗[Session Notes](./1805-1825/index.md) — Planned G049 around pthread-backed threaded thunk execution with fresh VMs per thread and protected shared-value cells as the first concurrency boundary.
+
+## Session 1800-1815
+
+🔗[Session Notes](./1800-1815/index.md) — Added archival-status framing to older timeline entries and marked the workspace ready for the next plan/goal.
+
+## Session 1750-1805
+
+🔗[Session Notes](./1750-1805/index.md) — Annotated older work products/plans with explicit historical-status notes so superseded logic/compiler paths no longer read as current guidance.
+
+## Session 1700-1715
+
+🔗[Session Notes](./1700-1715/index.md) — Completed a broader stale-doc sweep across remaining demo and fact artifacts so they now describe imported object-spec evaluation instead of pre-detachment logic forms.
+
+## Session 1615-1630
+
+🔗[Session Notes](./1615-1630/index.md) — Aligned README, demo, and language-reference docs to the post-G048 logic story: imported object-spec evaluation plus ordinary Edict wrapper-based sugar.
+
 ## Session 1420-1435
 
 🔗[Session Notes](./1420-1435/index.md) — Removed the last `logic { ... }` compiler special case, converted remaining non-duplicative tests to imported object-spec flows, and kept focused validation plus `ctest` green.
-
-# Timeline: 2026-03-23
 
 ## Session 1410-1430
 
@@ -180,3 +204,43 @@ The project moved both planning tracks into implementation.
 - Removed the final compiler special-case for `logic { ... }`, so no miniKanren-specific compiler entrypoint remains in `EdictCompiler`.
 - Replaced the remaining non-duplicative `logic { ... }` tests with imported object-spec `logic!` flows and dropped the redundant imported-evaluator block test.
 - Focused detached-logic validation passed again, and full `ctest` remained `7/7`.
+
+---
+
+## G047 / G048 — Primary Logic Docs Aligned
+
+- `README.md`, `demo/demo_cognitive_core.sh`, and `LocalContext/Knowledge/WorkProducts/edict_language_reference.md` now describe the post-detachment logic model instead of older compiler- or VM-owned logic forms.
+- The public-facing story is now consistent: canonical object/Listree specs are evaluated through imported kanren capability paths, and any more ergonomic call-shaped sugar lives in ordinary Edict wrappers.
+- The updated cognitive-core demo runs successfully against that imported-capability model.
+
+---
+
+## G047 / G048 — Broader Demo And Fact Sweep
+
+- Remaining non-historical demo and fact artifacts were updated to match the same post-detachment logic model.
+- `demo/demo_kanren_edict.cpp` now imports `libkanren.so` and evaluates canonical specs through imported `logic!`.
+- `demo/demo_cognitive_core_validation.cpp` and the J3 logic fact notes now use imported-capability wording instead of older `logic_run !` / `logic { ... }` framing.
+
+---
+
+## G047 / G048 — Older Work Products Reframed As Historical
+
+- Older planning/work-product artifacts that still discuss `logic(...)`, `[...] logic!`, `logic { ... }`, or `VMOP_LOGIC_RUN` as active paths were kept intact for history but now begin with explicit historical-status framing.
+- `NativeRelationalSyntaxPlan-2026-03-22.md` and `LogicCapabilityMigrationPlan-2026-03-23.md` now clearly distinguish superseded migration/planning stages from the landed imported-capability architecture.
+- `AgentCLanguageEnhancements-2026-03-22.md` now marks proposal 5's earlier logic sketches as exploratory design history rather than current implementation guidance.
+
+---
+
+## G047 / G048 — Older Timeline Entries Reframed As Historical
+
+- Added explicit historical-status framing to the daily timeline summaries for `2026-03-22` and `2026-03-23` so older logic-migration entries do not read as current guidance.
+- Added concise historical notes to representative pre-detachment session records that still discussed compiler-native `logic(...)`, `logic { ... }`, builtin `logic` / `logic_run`, `[...] logic!`, or `VMOP_LOGIC_RUN` as active intermediate states.
+- Current guidance remains centralized in `LocalContext/Dashboard.md`, `LocalContext/Knowledge/Goals/G047-NativeRelationalSyntax/index.md`, `LocalContext/Knowledge/Goals/G048-LibraryBackedLogicCapability/index.md`, and `LocalContext/Knowledge/WorkProducts/edict_language_reference.md`.
+
+---
+
+## G049 — Edict VM Multithreading — Planning Created
+
+- Established the first safe threading direction around imported pthread-backed helpers that invoke Edict continuations through the existing callback/closure path.
+- Chose a conservative concurrency model: a fresh `EdictVM` per thread and explicit protected shared-value cells for cross-thread mutation instead of arbitrary live Listree sharing.
+- Captured the design in new planning artifacts so the next step can be an implementation review rather than open-ended architecture search.

@@ -15,6 +15,7 @@
 
 #include "ffi.h"
 #include "ltv_api.h"
+#include <cstdio>
 #include <cstring>
 #include <climits>    // PATH_MAX
 #include <stdlib.h>   // realpath
@@ -139,6 +140,10 @@ static size_t countInvokeArgs(CPtr<ListreeValue> args) {
 // M5: Public static isBlocked() — exact string lookup, no custom hashing.
 bool FFI::isBlocked(const std::string& funcName) {
     return blocklist().count(funcName) != 0;
+}
+
+bool FFI::isLtvType(ffi_type* type) {
+    return type == &ffi_type_ltv_handle;
 }
 
 FFI::FFI() {}
@@ -493,6 +498,13 @@ CPtr<ListreeValue> FFI::invoke(const std::string& funcName, CPtr<ListreeValue> d
     ffi_type* rtype = getFFIType(retTypeStr);
     unsigned int nargs = static_cast<unsigned int>(countInvokeArgs(args));
 
+    std::fprintf(stderr,
+                 "[ffi.invoke] func=%s ptr=%p return_type=%s nargs=%u\n",
+                 funcName.c_str(),
+                 ptr,
+                 retTypeStr.c_str(),
+                 nargs);
+
     // G007.3: Use stack storage for arg types/pointers to avoid heap allocation for
     // the common case of small argument lists. Fall back to heap for large lists.
     constexpr unsigned int kStackArgLimit = 16;
@@ -541,6 +553,13 @@ CPtr<ListreeValue> FFI::invoke(const std::string& funcName, CPtr<ListreeValue> d
     }
     unsigned int argIndex = 0;
     auto convertArgument = [&](CPtr<ListreeValue> argValue) {
+        std::fprintf(stderr,
+                     "[ffi.invoke] arg%u type=%p val=%p len=%zu data=%p\n",
+                     argIndex,
+                     static_cast<void*>(types[argIndex]),
+                     static_cast<void*>(argValue ? argValue.operator->() : nullptr),
+                     argValue ? argValue->getLength() : 0,
+                     argValue ? argValue->getData() : nullptr);
         convertValue(argValue, types[argIndex], values[argIndex]);
         ++argIndex;
     };
@@ -561,7 +580,17 @@ CPtr<ListreeValue> FFI::invoke(const std::string& funcName, CPtr<ListreeValue> d
     CPtr<ListreeValue> res = nullptr;
     if (ffi_prep_cif(&cif, FFI_DEFAULT_ABI, nargs, rtype, types) == FFI_OK) {
         ffi_call(&cif, FFI_FN(ptr), rvalBuf, values);
+        if (rtype == &ffi_type_ltv_handle) {
+            std::fprintf(stderr,
+                         "[ffi.invoke] raw ltv return=%u\n",
+                         static_cast<unsigned>(*reinterpret_cast<uint32_t*>(rvalBuf)));
+        }
         res = convertReturn(rvalBuf, rtype);
+        std::fprintf(stderr,
+                     "[ffi.invoke] converted return=%p len=%zu data=%p\n",
+                     static_cast<void*>(res ? res.operator->() : nullptr),
+                     res ? res->getLength() : 0,
+                     res ? res->getData() : nullptr);
     }
 
     // Free heap-allocated arg buffers only for the oversized case.

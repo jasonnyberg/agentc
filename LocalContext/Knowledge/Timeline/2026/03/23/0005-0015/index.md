@@ -1,5 +1,9 @@
 # Session 0005-0015
 
+## Historical Status
+
+This note records an early G047 planning step that was later superseded. The `logic(...)` / `[...] logic!` direction described here is preserved as design history, not current implementation guidance after the imported-capability detachment completed.
+
 ## Summary
 
 Refined G047 native relational syntax planning so the preferred human-facing form is `logic(...)`, with `[...] logic!` documented as the equivalent literal/evaluator model underneath.

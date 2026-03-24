@@ -17,6 +17,7 @@
 #include "edict_compiler.h"
 #include "../cartographer/mapper.h"
 #include "../cartographer/ffi.h"
+#include "../cartographer/ltv_api.h"
 #include "../cartographer/parser.h"
 #include "../cartographer/protocol.h"
 #include "../cartographer/resolver.h"
@@ -26,6 +27,7 @@
 #include <cctype>
 #include <cstring>
 #include <cstdlib>
+#include <cstdio>
 #include <chrono>
 #include <fstream>
 #include <filesystem>
@@ -2676,13 +2678,29 @@ int EdictVM::executeNested(const BytecodeBuffer& code) {
         CPtr<agentc::ListreeValue> agentFunction = get_named_value(continuation, "THUNK");
         CPtr<agentc::ListreeValue> root = get_named_value(continuation, "ROOT");
         if (!agentFunction) return;
-        if (!root) root = agentc::createNullValue();
+        if (root) root = root->copy();
+        else root = agentc::createNullValue();
+
+        std::fprintf(stderr,
+                     "[closure_thunk] nargs=%u rtype=%p thunk=%p root=%p\n",
+                     cif ? cif->nargs : 0,
+                     cif ? static_cast<void*>(cif->rtype) : nullptr,
+                     static_cast<void*>(agentFunction.operator->()),
+                     static_cast<void*>(root.operator->()));
 
         EdictVM vm(root);
 
         // Mirror J2 callback bindings by exposing ARGi and RETURN in callback scope.
         for (unsigned i = 0; i < cif->nargs; ++i) {
             auto ltv = vm.ffi->convertReturn(args[i], cif->arg_types[i]);
+            std::fprintf(stderr,
+                         "[closure_thunk] arg%u raw=%p arg_type=%p converted=%p len=%zu data=%p\n",
+                         i,
+                         args[i],
+                         static_cast<void*>(cif->arg_types[i]),
+                         static_cast<void*>(ltv ? ltv.operator->() : nullptr),
+                         ltv ? ltv->getLength() : 0,
+                         ltv ? ltv->getData() : nullptr);
             vm.pushData(ltv);
             bind_named_value(root, "ARG" + std::to_string(i), ltv ? ltv : agentc::createNullValue());
         }
@@ -2696,8 +2714,26 @@ int EdictVM::executeNested(const BytecodeBuffer& code) {
 
         auto res = vm.popData();
         bind_named_value(root, "RETURN", res ? res : agentc::createNullValue());
+        std::fprintf(stderr,
+                     "[closure_thunk] result=%p len=%zu data=%p is_ltv=%d\n",
+                     static_cast<void*>(res ? res.operator->() : nullptr),
+                     res ? res->getLength() : 0,
+                     res ? res->getData() : nullptr,
+                     (cif && agentc::cartographer::FFI::isLtvType(cif->rtype)) ? 1 : 0);
         if (res) {
+            if (agentc::cartographer::FFI::isLtvType(cif->rtype)) {
+                auto handle = agentc::cptr_to_ltv(res);
+                ltv_ref(handle);
+                std::fprintf(stderr,
+                             "[closure_thunk] ltv_ref handle=%u\n",
+                             static_cast<unsigned>(handle));
+            }
             vm.ffi->convertValue(res, cif->rtype, ret);
+            if (ret && cif && agentc::cartographer::FFI::isLtvType(cif->rtype)) {
+                std::fprintf(stderr,
+                             "[closure_thunk] wrote_ltv=%u\n",
+                             static_cast<unsigned>(*static_cast<uint32_t*>(ret)));
+            }
         } else if (ret) {
             if (cif->rtype == &ffi_type_sint) *(int*)ret = 0;
             else if (cif->rtype == &ffi_type_double) *(double*)ret = 0.0;
@@ -2710,7 +2746,8 @@ int EdictVM::executeNested(const BytecodeBuffer& code) {
         if (!signature || !agentFunction) return nullptr;
 
         CPtr<agentc::ListreeValue> rootScope = stack_deq(VMRES_DICT, false);
-        if (!rootScope) rootScope = agentc::createNullValue();
+        if (rootScope) rootScope = rootScope->copy();
+        else rootScope = agentc::createNullValue();
 
         auto continuation = agentc::createNullValue();
         agentc::addNamedItem(continuation, "THUNK", agentFunction);

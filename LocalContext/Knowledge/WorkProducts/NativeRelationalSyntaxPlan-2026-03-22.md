@@ -1,5 +1,17 @@
 # Native Relational Syntax Plan
 
+## Historical Status
+
+This document is preserved as a planning artifact from an earlier G047 direction. References here to compiler-native `logic(...)`, `[...] logic!`, `logic { ... }`, and `VMOP_LOGIC_RUN` are historical rather than current guidance.
+
+Final landed direction:
+
+- canonical object/Listree specs are the machine-facing contract,
+- logic evaluation happens through imported `kanren` capability paths,
+- higher-level sugar is expected to live in ordinary Edict wrappers rather than compiler or VM special cases.
+
+For current guidance, prefer `LocalContext/Knowledge/Goals/G047-NativeRelationalSyntax/index.md`, `LocalContext/Knowledge/Goals/G048-LibraryBackedLogicCapability/index.md`, and `LocalContext/Knowledge/WorkProducts/edict_language_reference.md`.
+
 ## Objective
 
 Add a readable native syntax centered on call-form `logic(...)` that lowers into the existing object-shaped logic IR used by `VMOP_LOGIC_RUN`. The MVP backend stays the same, but the syntax should also establish a path toward moving miniKanren behavior out of VM-owned primitives and into library/FFI-backed evaluators whose semantics still match a literal consumed by `logic!`.

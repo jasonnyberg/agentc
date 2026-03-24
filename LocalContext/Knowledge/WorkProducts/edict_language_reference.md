@@ -721,13 +721,25 @@ A self-referential rule (`"x" → "x"`) will not loop forever — the VM has a p
 
 ## 16. Logic Programming (miniKanren)
 
-Edict has an embedded miniKanren logic engine. Logic queries can be expressed either as object IR consumed by `logic_run !` or with native call-form `logic(...)` syntax that lowers into the same IR.
+miniKanren is no longer a VM opcode or compiler-owned language form. The active model is:
+
+- the canonical query is an object/Listree spec with keys such as `fresh`, `where`, `conde`, `results`, and optional `limit`;
+- the evaluator is imported through the normal Cartographer/FFI path;
+- any more ergonomic authoring style is ordinary Edict wrapper code that builds that same canonical spec.
+
+The examples below assume you have already imported `libkanren.so` and aliased its direct `ltv -> ltv` evaluator to `logic`:
+
+```edict
+[./libkanren.so] [./kanren_runtime_ffi_poc.h] resolver.import ! @logicffi
+logicffi.agentc_logic_eval_ltv @logic
+logic @logic_run   -- optional compatibility alias
+```
 
 ### Basic unification
 
 ```edict
 { "fresh": ["q"], "where": [["==", "q", "tea"]], "results": ["q"] }
-logic_run !
+logic!
 -- stack: [ <list: ["tea"]> ]
 ```
 
@@ -742,7 +754,7 @@ logic_run !
   ],
   "results": ["q"]
 }
-logic_run !
+logic!
 -- stack: [ <list: ["tea", "coffee"]> ]
 ```
 
@@ -754,7 +766,7 @@ logic_run !
   "where": [["membero", "q", ["tea", "cake", "jam"]]],
   "results": ["q"]
 }
-logic_run !
+logic!
 -- stack: [ <list: ["tea", "cake", "jam"]> ]
 ```
 
@@ -769,92 +781,55 @@ logic_run !
   ],
   "results": ["q"]
 }
-logic_run !
+logic!
 -- stack: [ <empty list> ]
 ```
 
 ### Multi-variable results
 
 ```edict
-logic {
+{
   "fresh": ["head", "tail"],
   "where": [["conso", "head", "tail", ["tea", "cake"]]],
   "results": ["head", "tail"]
-}
+} logic!
 -- stack: [ <list: [["tea", ["cake"]]]> ]
 ```
-
-### Native call-form logic
-
-```edict
-logic(
-  fresh(q)
-  membero(q [tea cake jam])
-  results(q)
-)
--- equivalent in effect to:
--- {"fresh": ["q"], "where": [["membero", "q", ["tea", "cake", "jam"]]], "results": ["q"]} logic_run !
-```
-
-Think of `logic(...)` as the preferred human-facing surface. Conceptually it matches the same literal-first model as:
-
-```edict
-[
-  fresh(q)
-  membero(q [tea cake jam])
-  results(q)
-] logic!
-```
-
-The current implementation lowers `logic(...)` through the compiler into the object-shaped logic IR that `VMOP_LOGIC_RUN` already understands.
 
 ### Limiting results
 
 ```edict
-logic(
-  fresh(q)
-  membero(q [a b c d e])
-  results(q)
-  limit('2)
-)
+{
+  "fresh": ["q"],
+  "where": [["membero", "q", ["a", "b", "c", "d", "e"]]],
+  "results": ["q"],
+  "limit": "2"
+} logic!
 -- stack: [ <list: ["a", "b"]> ]
 ```
 
-### Disjunction with `conde(...)`
+### Ordinary wrapper-based sugar
 
-Single-goal branches can be written directly:
-
-```edict
-logic(
-  fresh(q)
-  conde(
-    ==(q 'tea)
-    ==(q 'coffee)
-  )
-  results(q)
-)
--- stack: [ <list: ["tea", "coffee"]> ]
-```
-
-When a branch needs multiple conjunctive goals, wrap that branch in `all(...)`:
+If you want a more call-shaped authoring style, define wrappers in ordinary Edict and have them build the canonical spec. Nothing in this layer needs compiler or VM support.
 
 ```edict
-logic(
-  fresh(q category)
-  conde(
-    all(
-      ==(q 'tea)
-      ==(category 'hot)
-    )
-    all(
-      ==(q 'coffee)
-      ==(category 'iced)
-    )
-  )
-  results(q category)
-)
--- stack: [ <list: [["tea", "hot"], ["coffee", "iced"]]> ]
+[@rhs @lhs rhs lhs [] @items items ^] @pair
+[@x x [] @items items ^] @fresh
+[@x x [] @items items ^] @results
+[@rhs @lhs rhs lhs 'membero [] @goal goal ^] @membero
+[@results_list @goal_atom @fresh_list {"fresh": [], "where": [], "results": []} @spec
+ fresh_list @spec.fresh
+ goal_atom [] @where_clause where_clause ^ @spec.where
+ results_list @spec.results
+ spec] @logic_spec
+[logicffi.agentc_logic_eval_ltv !] @logic_eval
+
+logic_spec(fresh(q) membero(q pair(tea cake)) results(q))
+logic_eval !
+-- stack: [ <list: ["tea", "cake"]> ]
 ```
+
+The important architectural point is that `fresh(q)`, `membero(...)`, `results(...)`, and similar forms are now just user-defined wrapper code if you want them. The canonical runtime contract remains the object/Listree spec consumed by imported kanren.
 
 ### Supported relations
 
@@ -868,17 +843,11 @@ logic(
 | `["tailo", lst, t]` | t is the tail of lst |
 | `["pairo", lst]` | lst is a non-empty list (a pair) |
 
-### Logic block syntax (`logic { ... }`)
+You can still create a local `logic_run` alias if you want older naming:
 
 ```edict
-logic { "fresh": ["q"], "where": [...], "results": ["q"] }
--- equivalent to: { ... } logic_run !
--- result can be assigned:
-@answers
-answers    -- push the results list
+logic @logic_run
 ```
-
-`logic { ... }` remains supported for compatibility and for direct object-shaped authoring, but `logic(...)` is now the cleaner native form for human-authored queries.
 
 ---
 
@@ -1221,7 +1190,6 @@ reset   -- clear VM_ERROR flag and error message; resume from error state
 | `VMOP_FUN_EVAL` | `)` | Evaluate function on VMRES_FUNC |
 | `VMOP_SPLICE` | `^` or `^name` | Splice current frame into named node |
 | `VMOP_SPECULATE` | `speculate [code]` | Run code in isolated snapshot |
-| `VMOP_LOGIC_RUN` | `logic_run !` / `logic { }` | Run miniKanren query |
 | `VMOP_REWRITE_DEFINE` | `rewrite_define !` | Register a rewrite rule |
 | `VMOP_REWRITE_LIST` | `rewrite_list !` | List all rules |
 | `VMOP_REWRITE_REMOVE` | `rewrite_remove !` | Remove rule by index |
@@ -1298,12 +1266,13 @@ greeting subject 'greet
 ### A.3 Logic-driven data selection
 
 ```edict
-logic(
-  fresh(item)
-  membero(item [apple banana cherry])
-  results(item)
-  limit('2)
-) @fruits
+-- assuming imported evaluator alias: logicffi.agentc_logic_eval_ltv @logic
+{
+  "fresh": ["item"],
+  "where": [["membero", "item", ["apple", "banana", "cherry"]]],
+  "results": ["item"],
+  "limit": "2"
+} logic! @fruits
 -- fruits is a list: ["apple", "banana"]
 ```
 

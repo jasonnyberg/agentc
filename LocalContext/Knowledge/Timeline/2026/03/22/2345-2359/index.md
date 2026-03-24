@@ -1,5 +1,9 @@
 # Session 2345-2359
 
+## Historical Status
+
+This note captures the original G046/G047 planning direction before the later imported-capability detachment work completed. Mentions of compiler-native `logic(...)`, `logic { ... }`, `[...] logic!`, or `VMOP_LOGIC_RUN` are preserved as planning history rather than current implementation guidance.
+
 ## Summary
 
 Created implementation-planning artifacts for two G045 follow-up tracks: continuation-based speculation and native relational syntax.

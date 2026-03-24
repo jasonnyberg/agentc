@@ -1,5 +1,9 @@
 # Session 1030-1045
 
+## Historical Status
+
+This session captures the first G048 implementation slice before the later evaluator extraction, runtime ABI work, and full VM/compiler detachment completed. Mentions of builtin `logic`, `logic_run`, `[...] logic!`, `logic(...)`, or `op_LOGIC_RUN()` describe that intermediate migration stage rather than the final architecture.
+
 ## Summary
 
 Landed the first G048 implementation slice so logic evaluation now has a real canonical `logic!` path: direct object specs, native bracket literals, and `logic(...)` all converge on the same evaluator entrypoint. Verified focused logic tests, full `edict_tests`, and full `ctest` all pass.

@@ -44,8 +44,8 @@ J3 integrates a Mini-Kanren relational programming engine to enable logic planni
 - Recursive relations such as `membero` and `appendo` are verified in `kanren/tests/kanren_tests.cpp`.
 - A runnable reasoning demo exists in `tst/demo_kanren_reasoning.cpp`.
 - Added first-pass fair finite-branch interleaving helpers (`disj_fair`, `conde_fair`) plus focused coverage for their ordering behavior.
-- Edict now exposes a thin logic surface through `logic_run !`, with structured query objects carrying `fresh`, `where`/`conde`, and `results` fields.
-- Language-level logic coverage exists in `edict/tests/logic_surface_test.cpp`, with a runnable Edict demo in `tst/demo_kanren_edict.cpp`.
+- Edict now treats logic as an imported capability over canonical object/Listree query specs carrying `fresh`, `where`/`conde`, and `results` fields.
+- Language-level logic coverage exists in `edict/tests/logic_surface_test.cpp`, with imported-capability demos in `demo/demo_kanren_edict.cpp` and `demo/demo_cognitive_core.sh`.
 
 ## Known Limits
 - Search is still eager overall. `disj_fair` and `conde_fair` improve result interleaving for finite branch streams, but recursive infinite branches still need a later lazy-stream redesign.

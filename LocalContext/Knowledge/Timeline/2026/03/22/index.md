@@ -1,5 +1,9 @@
 # Timeline: 2026-03-22
 
+## Historical Status
+
+This daily timeline preserves planning history from before G047/G048 completed. References here to compiler-native `logic(...)`, `[...] logic!`, `logic { ... }`, or `VMOP_LOGIC_RUN` describe the state and proposals of that day, not the current architecture. For current guidance, use `LocalContext/Dashboard.md`, `LocalContext/Knowledge/Goals/G047-NativeRelationalSyntax/index.md`, `LocalContext/Knowledge/Goals/G048-LibraryBackedLogicCapability/index.md`, and `LocalContext/Knowledge/WorkProducts/edict_language_reference.md`.
+
 ## Session 2140-2200
 🔗[Session Notes](./2140-2200/index.md) — HRM Bootstrap and project state verification.
 
