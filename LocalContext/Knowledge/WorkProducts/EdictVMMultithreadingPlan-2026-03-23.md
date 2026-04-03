@@ -4,6 +4,16 @@
 
 Add multithreaded Edict execution by combining imported pthread-backed helpers with the existing FFI callback/closure system, while keeping the VM itself single-owner and making shared mutable Listree state explicit through protected cells rather than unsynchronized live graph sharing.
 
+## Implementation Status
+
+- In progress: a first helper library now exists in `cartographer/tests/libagentthreads_poc.h` / `.cpp` with pthread-backed `agentc_thread_spawn_ltv(...)`, `agentc_thread_join_ltv(...)`, `agentc_thread_detach(...)`, `agentc_thread_destroy(...)`, plus mutex-protected `agentc_shared_create_ltv(...)`, `agentc_shared_read_ltv(...)`, and `agentc_shared_write_ltv(...)`.
+- In progress: callback execution now copies captured callback roots and preloads imported libraries from copied callback scope metadata before worker execution, which lets threaded callback VMs invoke imported helper functions reliably.
+- In progress: focused callback tests demonstrate three working slices when run individually:
+  - direct `ltv` thread spawn/join result round-trip,
+  - shared-cell snapshot isolation,
+  - threaded shared-cell update through a status-returning worker callback.
+- Remaining gap: the helper/runtime path is not yet stable under the full mixed `edict_tests` / `ctest` run, so the next hardening pass should remove or gate temporary debug instrumentation and isolate the remaining abort in the combined run.
+
 ## Current Baseline
 
 ### What already exists

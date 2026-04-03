@@ -8,6 +8,10 @@ This daily timeline spans the full G047/G048 migration, so earlier entries inten
 
 🔗[Session Notes](./1805-1825/index.md) — Planned G049 around pthread-backed threaded thunk execution with fresh VMs per thread and protected shared-value cells as the first concurrency boundary.
 
+## Session 2209-2230
+
+🔗[Session Notes](./2209-2230/index.md) — Advanced G049 into active implementation: helper library, callback-root copying/import preloading, and individually passing focused thread/shared-value tests; remaining work is full-suite stabilization.
+
 ## Session 1800-1815
 
 🔗[Session Notes](./1800-1815/index.md) — Added archival-status framing to older timeline entries and marked the workspace ready for the next plan/goal.
@@ -244,3 +248,12 @@ The project moved both planning tracks into implementation.
 - Established the first safe threading direction around imported pthread-backed helpers that invoke Edict continuations through the existing callback/closure path.
 - Chose a conservative concurrency model: a fresh `EdictVM` per thread and explicit protected shared-value cells for cross-thread mutation instead of arbitrary live Listree sharing.
 - Captured the design in new planning artifacts so the next step can be an implementation review rather than open-ended architecture search.
+
+---
+
+## G049 — First Implementation Slice In Progress
+
+- Imported pthread-backed helper APIs now exist for thread spawn/join and mutex-protected shared-value cells.
+- Worker callback execution now uses copied roots and preloads imported libraries referenced from callback scope metadata before invoking worker thunks.
+- Focused G049 tests now pass individually for direct `ltv` thread result round-trip, shared-cell snapshot isolation, and threaded shared-cell update.
+- Remaining work is stabilization under the full mixed `edict_tests` / `ctest` run, then documenting the landed first-slice limits.

@@ -7,12 +7,15 @@ extern "C" {
 
 typedef unsigned int ltv;
 typedef ltv (*LtvUnaryOp)(ltv);
+typedef int (*PointerUnaryStatusOp)(void*);
 
 typedef struct agentc_thread_handle agentc_thread_handle;
 typedef struct agentc_shared_value agentc_shared_value;
 
 agentc_thread_handle* agentc_thread_spawn_ltv(LtvUnaryOp entry, ltv arg);
 ltv agentc_thread_join_ltv(agentc_thread_handle* handle);
+agentc_thread_handle* agentc_thread_spawn_status(PointerUnaryStatusOp entry, void* arg);
+int agentc_thread_join_status(agentc_thread_handle* handle);
 void agentc_thread_detach(agentc_thread_handle* handle);
 void agentc_thread_destroy(agentc_thread_handle* handle);
 

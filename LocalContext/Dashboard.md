@@ -6,11 +6,11 @@
 
 ## Current Focus
 
-**Active Goals**: G046 (continuation-based speculation implementation), G049 (Edict/VM multithreading planning)
+**Active Goals**: G046 (continuation-based speculation implementation), G049 (Edict/VM multithreading implementation)
 **Status**: G044 (JSON module cache) complete. G045 (language enhancement review) complete and refined so both the literal-model note and the remaining proposals explicitly preserve Edict's intentional unified literal model. G046 remains in active implementation: `op_SPECULATE()` now runs nested speculative code in the current VM via checkpoint + nested code-frame execution, and follow-up tests now cover rewrite-rule rollback, closure-driven mutation rollback, and nested-speculation isolation. G047 is now complete: the active logic authoring story is canonical object/Listree specs plus imported evaluation, with higher-level sugar expected to live in ordinary Edict wrappers rather than compiler or VM special cases. G048 is complete: the Listree-spec-to-kanren bridge lives in `kanren/logic_evaluator.cpp`, `kanren/runtime_ffi.cpp` exposes both the generalized runtime-handle ABI and direct imported `agentc_logic_eval_ltv(...)`, Edict-side imported-capability coverage exercises that boundary through the normal Cartographer resolve/import path, pure Edict wrapper thunks prove canonical logic specs can be built with ordinary `f(x)` forms and evaluated through imported `libkanren.so`, `VMOP_LOGIC_RUN` has been removed entirely, `libedict` no longer links directly against `kanren`, the main README/demo/reference/fact artifacts now describe the imported-capability model instead of `logic { ... }`, `logic_run !`, or compiler-native `logic(...)`, and older work products/plans now carry explicit historical-status notes where they still discuss superseded logic forms. G049 is now planned: the chosen first multithreading direction is fresh-VM-per-thread execution through imported pthread-backed callback helpers, with explicit protected shared-value cells rather than arbitrary concurrent mutation of live Listree/VM objects. Full validation remains green: the updated cognitive-core demo runs successfully, the updated demo binaries build cleanly, focused detached-logic tests pass, and the full `ctest` suite passes (`7/7`). Project remains positioned as a reversible cognitive substrate with LMDB persistence goals and new runtime concurrency follow-up available.
 **Last Updated**: 2026-03-23
 
-**Active Task**: G049 planning is now prepared for review. The next follow-up is to decide whether to implement the first conservative multithreading slice (pthread-backed thunk spawn/join plus protected shared-value cells), continue optional G046 repeated-probe hardening, or pivot to another runtime goal.
+**Active Task**: Continue G049 stabilization. Imported pthread-backed spawn/join and shared-value behavior now work in focused tests, and the next follow-up is to remove or gate temporary debug instrumentation, isolate the remaining full-suite abort, and then document the landed first-slice threading model and limits.
 
 **Previous Active Task**: G020 — Early Type Binding (`bindTypes()`) — **COMPLETE** (2026-03-21). `bindTypes()` pass added to `Mapper::materialize()`; resolves `"struct X"` field types into `type_def` CPtr children. `ns` param fully removed from `box()`/`unbox()`/`packStruct()`/`unpackStruct()`, C ABI, edict bootstrap, unit tests, and demo/test scripts. New `BindTypesCreatesTypeDef` test in `mapper_tests.cpp`; `Rect` struct added to `test_input.h`.
 
@@ -58,7 +58,7 @@
 
 ### Active Goals
 - G046 — Continuation-Based Speculation — **In Progress**
-- G049 — Edict VM Multithreading — **Planned**
+- G049 — Edict VM Multithreading — **In Progress**
 - G047 — Native Relational Syntax — **Complete**
 - G048 — Library-Backed Logic Capability — **Complete**
 
@@ -75,10 +75,10 @@
 - 🔗[G018 — FFI LTV Passthrough](./Knowledge/Goals/G018-FfiLtvPassthrough/index.md) — All phases A–D + E complete
 
 ### Recommended Next Steps
-1. **Review G049 Plan**: Decide whether to implement the first multithreading slice built around pthread-backed thunk spawn/join plus mutex-protected shared-value cells.
-2. **Harden G046**: Decide whether G046 needs repeated planner-style probe coverage beyond the newly landed isolation tests.
-3. **Language Follow-up**: Remaining high-leverage G045 candidates include strictness profiles, richer FFI capability metadata, and literal-intent inspection/tooling.
-4. **LMDB Integration**: G016+G017 complete — can proceed with LMDB persistence goals (G040–G042).
+1. **Stabilize G049**: Remove or gate temporary debug instrumentation and isolate the remaining full-suite abort so the pthread helper and shared-value path are green under `edict_tests` and `ctest`.
+2. **Document G049 Limits**: Record the landed first-slice model explicitly: fresh VM per thread, imported callback entrypoints, protected shared-value cells, and no general live-graph sharing.
+3. **Harden G046**: Decide whether G046 needs repeated planner-style probe coverage beyond the newly landed isolation tests.
+4. **LMDB Integration / Language Follow-up**: Continue LMDB persistence goals (G040–G042) or a new G045 follow-up after G049 stabilizes.
 
 ### Completed Goals
 - ✅ G017 — Edict Stdin/File Script Mode (2026-03-20) — `runScript(istream&)`; `edict -` stdin and `edict FILE` CLI modes; `#` comments; 74/74 tests pass
@@ -136,7 +136,7 @@ Complete index of LOCAL knowledge. Load items relevant to your current task.
         - G046 — Continuation-Based Speculation — **In Progress** 🔗[index](./Knowledge/Goals/G046-ContinuationBasedSpeculation/index.md)
         - G047 — Native Relational Syntax — **Complete** 🔗[index](./Knowledge/Goals/G047-NativeRelationalSyntax/index.md)
         - G048 — Library-Backed Logic Capability — **Complete** 🔗[index](./Knowledge/Goals/G048-LibraryBackedLogicCapability/index.md)
-        - G049 — Edict VM Multithreading — **Planned** 🔗[index](./Knowledge/Goals/G049-EdictVMMultithreading/index.md)
+        - G049 — Edict VM Multithreading — **In Progress** 🔗[index](./Knowledge/Goals/G049-EdictVMMultithreading/index.md)
 
 ### Facts
 (none yet)
@@ -154,13 +154,14 @@ Complete index of LOCAL knowledge. Load items relevant to your current task.
 - ContinuationBasedSpeculationPlan-2026-03-22 — implementation plan plus 2026-03-23 status for in-VM speculative execution via nested code-frame execution and checkpoint rollback, now including rewrite/closure/nested-speculation hardening coverage (2026-03-22)
 - NativeRelationalSyntaxPlan-2026-03-22 — implementation plan plus 2026-03-23 completion status for logic ergonomics that ultimately converged on canonical object/Listree specs, imported evaluation, wrapper-based sugar, and grouped conjunctive `all(...)` branches inside canonical `conde` objects (2026-03-22)
 - LogicCapabilityMigrationPlan-2026-03-23 — follow-on implementation plan plus completed G048 slices for canonical imported logic capability, extracted evaluator ownership in `kanren/`, the runtime ABI capability boundary via `agentc_runtime_ctx*` / `agentc_value` / `agentc_logic_eval(...)`, direct imported `agentc_logic_eval_ltv(...)`, Edict-side imported-capability coverage through Cartographer resolve/import, pure Edict wrapper construction of canonical logic specs, removal of compiler-native logic lowering and `logic { ... }` compiler sugar, retirement of `VMOP_LOGIC_RUN`, and final doc alignment around the imported-capability model (2026-03-23)
-- EdictVMMultithreadingPlan-2026-03-23 — planning artifact for pthread-backed threaded thunk execution via imported FFI callbacks, with a conservative first safety model based on fresh VMs per thread and mutex-protected shared-value cells instead of arbitrary live Listree sharing (2026-03-23)
+- EdictVMMultithreadingPlan-2026-03-23 — planning artifact plus in-progress status for pthread-backed threaded thunk execution via imported FFI callbacks, callback-root copying/import preloading, and mutex-protected shared-value cells instead of arbitrary live Listree sharing (2026-03-23)
 
 ---
 
 ## Timeline Highlights
 
 ### Recent Events (Last 7 Days)
+- 🔗[2026-03-23: Session 2209-2230](./Knowledge/Timeline/2026/03/23/2209-2230/index.md) — Advanced G049 into active implementation: helper library, callback-root copying/import preloading, and individually passing focused thread/shared-value tests; remaining work is full-suite stabilization
 - 🔗[2026-03-23: Session 1805-1825](./Knowledge/Timeline/2026/03/23/1805-1825/index.md) — Planned G049 around pthread-backed threaded thunk execution with fresh VMs per thread and protected shared-value cells as the first concurrency boundary
 - 🔗[2026-03-23: Session 1800-1815](./Knowledge/Timeline/2026/03/23/1800-1815/index.md) — Added archival-status framing to older timeline entries so superseded logic migration states read clearly as history, and marked the workspace ready for the next plan/goal
 - 🔗[2026-03-23: Session 1700-1715](./Knowledge/Timeline/2026/03/23/1700-1715/index.md) — Completed a broader stale-doc sweep across remaining demo and fact artifacts so they now describe imported object-spec evaluation instead of pre-detachment logic forms
@@ -193,7 +194,7 @@ Complete index of LOCAL knowledge. Load items relevant to your current task.
 - 🔗[2026-03-16: Phase 1 and 2 Complete](./Knowledge/Timeline/2026/03/16/2200-2300/index.md) — Final build fix (`demo_capabilities.cpp`) and project wrap-up; all goals completed or deferred.
 
 ### Current Phase
-Phase 3: Active — G016, G017, G019, G020, G044, G045, G047, and G048 complete. G046 remains in implementation: speculation runs in-VM via nested code-frame execution and checkpoint rollback with deeper rewrite/closure/nested-probe isolation coverage. Active kanren ownership is fully detached from the VM: evaluator ownership lives in `kanren/`, imported capability boundaries exist via both `agentc_runtime_ctx*` / `agentc_value` / `agentc_logic_eval(...)` and direct `agentc_logic_eval_ltv(...)`, Edict-side imported-capability coverage proves those boundaries work through ordinary Cartographer resolve/import, pure Edict wrappers prove canonical logic specs can be built and evaluated through imported `libkanren.so`, compiler-native native-logic lowering and `logic { ... }` compiler sugar have been removed from `EdictCompiler`, `VMOP_LOGIC_RUN` has been retired entirely, the primary README/demo/reference docs now describe the imported-capability model, and older planning, work-product, and timeline artifacts now explicitly frame superseded logic forms as historical. G049 is now planned as the next runtime-expansion candidate: imported pthread-backed thread launch plus fresh-VM thunk execution, with protected shared-value cells as the first concurrency boundary. Cartographer CLI pipeline + `agentc.sh` wrappers complete. LMDB persistence goals (G040–G042) ready to proceed.
+Phase 3: Active — G016, G017, G019, G020, G044, G045, G047, and G048 complete. G046 remains in implementation: speculation runs in-VM via nested code-frame execution and checkpoint rollback with deeper rewrite/closure/nested-probe isolation coverage. Active kanren ownership is fully detached from the VM: evaluator ownership lives in `kanren/`, imported capability boundaries exist via both `agentc_runtime_ctx*` / `agentc_value` / `agentc_logic_eval(...)` and direct `agentc_logic_eval_ltv(...)`, Edict-side imported-capability coverage proves those boundaries work through ordinary Cartographer resolve/import, pure Edict wrappers prove canonical logic specs can be built and evaluated through imported `libkanren.so`, compiler-native native-logic lowering and `logic { ... }` compiler sugar have been removed from `EdictCompiler`, `VMOP_LOGIC_RUN` has been retired entirely, the primary README/demo/reference docs now describe the imported-capability model, and older planning, work-product, and timeline artifacts now explicitly frame superseded logic forms as historical. G049 is now in active implementation: imported pthread-backed thread launch, copied-root worker VMs, and protected shared-value cells are working in focused tests, with remaining effort concentrated on full-suite stabilization and documentation of first-slice limits. Cartographer CLI pipeline + `agentc.sh` wrappers complete. LMDB persistence goals (G040–G042) ready to proceed.
 
 ---
 

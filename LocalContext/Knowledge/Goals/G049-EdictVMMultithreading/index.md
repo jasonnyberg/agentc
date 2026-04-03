@@ -1,6 +1,6 @@
 # G049 - Edict VM Multithreading
 
-## Status: PLANNED
+## Status: IN PROGRESS
 
 ## Parent Context
 
@@ -42,12 +42,19 @@ Introduce multithreaded Edict execution through imported FFI callbacks and `pthr
 
 ## Implementation Checklist
 
-- [ ] Confirm the first concurrency boundary: fresh VM per thread, no concurrent reuse of one `EdictVM` instance.
-- [ ] Design the protected shared-value mechanism for cross-thread Listree access.
-- [ ] Define a small pthread-backed helper ABI that uses callback signatures rather than VM-owned thread opcodes.
-- [ ] Add imported Edict-side coverage for spawn, join, and protected shared-value operations.
+- [x] Confirm the first concurrency boundary: fresh VM per thread, no concurrent reuse of one `EdictVM` instance.
+- [x] Design the protected shared-value mechanism for cross-thread Listree access.
+- [x] Define a small pthread-backed helper ABI that uses callback signatures rather than VM-owned thread opcodes.
+- [x] Add imported Edict-side coverage for spawn, join, and protected shared-value operations.
 - [ ] Validate that concurrent mutation only occurs through the protected-value path.
 - [ ] Document the threading model and its limitations.
+
+## Progress Notes
+
+- 2026-03-23: Added `cartographer/tests/libagentthreads_poc.h` / `.cpp` with imported pthread-backed helper APIs for `agentc_thread_spawn_ltv`, `agentc_thread_join_ltv`, mutex-protected shared-value cells, and experimental status-returning thread entrypoints.
+- 2026-03-23: Hardened callback execution so `closure_thunk(...)` uses a copied captured `ROOT` and preloads imported libraries referenced from copied callback scope metadata before executing worker thunks.
+- 2026-03-23: Focused G049 tests now prove three concrete behaviors in isolation: direct `ltv` thread spawn/join works, shared-cell snapshot isolation works, and threaded shared-cell update works.
+- 2026-03-23: Remaining work is stabilization: the focused G049 tests pass individually, but full `edict_tests` / `ctest` are not yet green because the debug-heavy mixed run still aborts, so the helper/runtime path needs one more hardening pass before this slice can be recorded as fully landed.
 
 ## Scope
 

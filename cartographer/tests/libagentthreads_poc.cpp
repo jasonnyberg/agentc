@@ -4,14 +4,16 @@
 #include "../../listree/listree.h"
 
 #include <pthread.h>
-#include <cstdio>
 #include <mutex>
 
 struct agentc_thread_handle {
     pthread_t thread{};
     LtvUnaryOp entry = nullptr;
-    LTV arg = LTV_NULL;
-    LTV result = LTV_NULL;
+    PointerUnaryStatusOp status_entry = nullptr;
+    ltv arg = 0;
+    void* status_arg = nullptr;
+    ltv result = 0;
+    int status = 0;
     std::mutex mutex;
     bool finished = false;
     bool joined = false;
@@ -20,65 +22,46 @@ struct agentc_thread_handle {
 
 struct agentc_shared_value {
     std::mutex mutex;
-    LTV value = LTV_NULL;
+    ltv value = 0;
 };
 
 namespace {
 
-LTV snapshot_ltv(LTV value) {
-    if (value == LTV_NULL) {
-        return LTV_NULL;
+static LTV decode_ltv_handle(ltv value) {
+    return LTV(static_cast<uint16_t>(value & 0xffffu),
+               static_cast<uint16_t>((value >> 16) & 0xffffu));
+}
+
+static ltv encode_ltv_handle(LTV value) {
+    return static_cast<ltv>(static_cast<uint32_t>(value.first)
+                            | (static_cast<uint32_t>(value.second) << 16));
+}
+
+ltv snapshot_ltv(ltv value) {
+    if (value == 0) {
+        return 0;
     }
 
-    CPtr<agentc::ListreeValue> borrowed = agentc::ltv_borrow(value);
+    CPtr<agentc::ListreeValue> borrowed = agentc::ltv_borrow(decode_ltv_handle(value));
     if (!borrowed) {
-        return LTV_NULL;
+        return 0;
     }
 
     CPtr<agentc::ListreeValue> copied = borrowed->copy();
-    return copied ? copied.release() : LTV_NULL;
-}
-
-void debug_print_ltv(const char* label, LTV value) {
-    std::fprintf(stderr, "[agentthreads] %s handle=%u\n", label, static_cast<unsigned>(value));
-    if (value == LTV_NULL) {
-        std::fprintf(stderr, "[agentthreads] %s value=<null>\n", label);
-        return;
-    }
-
-    CPtr<agentc::ListreeValue> borrowed = agentc::ltv_borrow(value);
-    if (!borrowed) {
-        std::fprintf(stderr, "[agentthreads] %s borrow failed\n", label);
-        return;
-    }
-
-    std::fprintf(stderr,
-                 "[agentthreads] %s ptr=%p len=%zu list=%d data=%p\n",
-                 label,
-                 static_cast<void*>(borrowed.operator->()),
-                 borrowed->getLength(),
-                 borrowed->isListMode() ? 1 : 0,
-                 borrowed->getData());
-    if (borrowed->getData() && borrowed->getLength() > 0) {
-        std::fprintf(stderr,
-                     "[agentthreads] %s text='%.*s'\n",
-                     label,
-                     static_cast<int>(borrowed->getLength()),
-                     static_cast<const char*>(borrowed->getData()));
-    }
+    return copied ? encode_ltv_handle(copied.release()) : 0;
 }
 
 void cleanup_thread_handle(agentc_thread_handle* handle) {
     if (!handle) {
         return;
     }
-    if (handle->arg != LTV_NULL) {
-        ltv_unref(handle->arg);
-        handle->arg = LTV_NULL;
+    if (handle->arg != 0) {
+        ltv_unref(decode_ltv_handle(handle->arg));
+        handle->arg = 0;
     }
-    if (handle->result != LTV_NULL) {
-        ltv_unref(handle->result);
-        handle->result = LTV_NULL;
+    if (handle->result != 0) {
+        ltv_unref(decode_ltv_handle(handle->result));
+        handle->result = 0;
     }
     delete handle;
 }
@@ -89,37 +72,40 @@ void* thread_main(void* user_data) {
         return nullptr;
     }
 
-    LTV arg = LTV_NULL;
+    ltv arg = 0;
     LtvUnaryOp entry = nullptr;
+    PointerUnaryStatusOp status_entry = nullptr;
+    void* status_arg = nullptr;
     {
         std::lock_guard<std::mutex> lock(handle->mutex);
         arg = handle->arg;
-        handle->arg = LTV_NULL;
+        handle->arg = 0;
         entry = handle->entry;
+        status_entry = handle->status_entry;
+        status_arg = handle->status_arg;
     }
 
-    std::fprintf(stderr, "[agentthreads] thread_main entry=%p\n", reinterpret_cast<void*>(entry));
-    debug_print_ltv("thread_main.arg", arg);
-
-    LTV raw_result = LTV_NULL;
+    ltv raw_result = 0;
+    int status = 0;
     if (entry) {
         raw_result = entry(arg);
-        debug_print_ltv("thread_main.raw_result", raw_result);
-    } else if (arg != LTV_NULL) {
-        ltv_unref(arg);
+    } else if (status_entry) {
+        status = status_entry(status_arg);
+    } else if (arg != 0) {
+        ltv_unref(decode_ltv_handle(arg));
     }
 
-    LTV result_snapshot = LTV_NULL;
-    if (raw_result != LTV_NULL) {
+    ltv result_snapshot = 0;
+    if (raw_result != 0) {
         result_snapshot = snapshot_ltv(raw_result);
-        debug_print_ltv("thread_main.result_snapshot", result_snapshot);
-        ltv_unref(raw_result);
+        ltv_unref(decode_ltv_handle(raw_result));
     }
 
     bool self_delete = false;
     {
         std::lock_guard<std::mutex> lock(handle->mutex);
         handle->result = result_snapshot;
+        handle->status = status;
         handle->finished = true;
         self_delete = handle->detached;
     }
@@ -142,9 +128,23 @@ agentc_thread_handle* agentc_thread_spawn_ltv(LtvUnaryOp entry, ltv arg) {
     auto* handle = new agentc_thread_handle();
     handle->entry = entry;
     handle->arg = snapshot_ltv(arg);
-    std::fprintf(stderr, "[agentthreads] spawn entry=%p\n", reinterpret_cast<void*>(entry));
-    debug_print_ltv("spawn.arg", arg);
-    debug_print_ltv("spawn.arg_snapshot", handle->arg);
+
+    if (pthread_create(&handle->thread, nullptr, thread_main, handle) != 0) {
+        cleanup_thread_handle(handle);
+        return nullptr;
+    }
+
+    return handle;
+}
+
+agentc_thread_handle* agentc_thread_spawn_status(PointerUnaryStatusOp entry, void* arg) {
+    if (!entry) {
+        return nullptr;
+    }
+
+    auto* handle = new agentc_thread_handle();
+    handle->status_entry = entry;
+    handle->status_arg = arg;
 
     if (pthread_create(&handle->thread, nullptr, thread_main, handle) != 0) {
         cleanup_thread_handle(handle);
@@ -156,28 +156,49 @@ agentc_thread_handle* agentc_thread_spawn_ltv(LtvUnaryOp entry, ltv arg) {
 
 ltv agentc_thread_join_ltv(agentc_thread_handle* handle) {
     if (!handle) {
-        return LTV_NULL;
+        return 0;
     }
 
     {
         std::lock_guard<std::mutex> lock(handle->mutex);
         if (handle->detached) {
-            return LTV_NULL;
+            return 0;
         }
     }
 
     if (!handle->joined) {
         if (pthread_join(handle->thread, nullptr) != 0) {
-            return LTV_NULL;
+            return 0;
         }
         handle->joined = true;
     }
 
     std::lock_guard<std::mutex> lock(handle->mutex);
-    debug_print_ltv("join.stored_result", handle->result);
-    LTV joined = snapshot_ltv(handle->result);
-    debug_print_ltv("join.snapshot", joined);
+    ltv joined = snapshot_ltv(handle->result);
     return joined;
+}
+
+int agentc_thread_join_status(agentc_thread_handle* handle) {
+    if (!handle) {
+        return 0;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(handle->mutex);
+        if (handle->detached) {
+            return 0;
+        }
+    }
+
+    if (!handle->joined) {
+        if (pthread_join(handle->thread, nullptr) != 0) {
+            return 0;
+        }
+        handle->joined = true;
+    }
+
+    std::lock_guard<std::mutex> lock(handle->mutex);
+    return handle->status;
 }
 
 void agentc_thread_detach(agentc_thread_handle* handle) {
@@ -237,8 +258,6 @@ void agentc_thread_destroy(agentc_thread_handle* handle) {
 agentc_shared_value* agentc_shared_create_ltv(ltv initial) {
     auto* cell = new agentc_shared_value();
     cell->value = snapshot_ltv(initial);
-    debug_print_ltv("shared.create.initial", initial);
-    debug_print_ltv("shared.create.snapshot", cell->value);
     return cell;
 }
 
@@ -248,9 +267,9 @@ void agentc_shared_destroy(agentc_shared_value* cell) {
     }
     {
         std::lock_guard<std::mutex> lock(cell->mutex);
-        if (cell->value != LTV_NULL) {
-            ltv_unref(cell->value);
-            cell->value = LTV_NULL;
+        if (cell->value != 0) {
+            ltv_unref(decode_ltv_handle(cell->value));
+            cell->value = 0;
         }
     }
     delete cell;
@@ -258,12 +277,10 @@ void agentc_shared_destroy(agentc_shared_value* cell) {
 
 ltv agentc_shared_read_ltv(agentc_shared_value* cell) {
     if (!cell) {
-        return LTV_NULL;
+        return 0;
     }
     std::lock_guard<std::mutex> lock(cell->mutex);
-    debug_print_ltv("shared.read.stored", cell->value);
-    LTV out = snapshot_ltv(cell->value);
-    debug_print_ltv("shared.read.snapshot", out);
+    ltv out = snapshot_ltv(cell->value);
     return out;
 }
 
@@ -272,12 +289,10 @@ int agentc_shared_write_ltv(agentc_shared_value* cell, ltv replacement) {
         return 0;
     }
 
-    LTV snapshot = snapshot_ltv(replacement);
-    debug_print_ltv("shared.write.replacement", replacement);
-    debug_print_ltv("shared.write.snapshot", snapshot);
+    ltv snapshot = snapshot_ltv(replacement);
     std::lock_guard<std::mutex> lock(cell->mutex);
-    if (cell->value != LTV_NULL) {
-        ltv_unref(cell->value);
+    if (cell->value != 0) {
+        ltv_unref(decode_ltv_handle(cell->value));
     }
     cell->value = snapshot;
     return 1;
