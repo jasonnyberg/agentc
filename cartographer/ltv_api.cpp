@@ -55,8 +55,7 @@ LTV ltv_create_binary(const void* data, size_t len) {
 
 void ltv_ref(LTV v) {
     if (v == LTV_NULL) return;
-    auto& alloc = Allocator<LV>::getAllocator();
-    if (alloc.valid(v)) alloc.modrefs(v, +1);
+    (void)Allocator<LV>::getAllocator().tryRetain(v);
 }
 
 void ltv_unref(LTV v) {

@@ -12,7 +12,8 @@ Add multithreaded Edict execution by combining imported pthread-backed helpers w
   - direct `ltv` thread spawn/join result round-trip,
   - shared-cell snapshot isolation,
   - threaded shared-cell update through a status-returning worker callback.
-- Remaining gap: the helper/runtime path is not yet stable under the full mixed `edict_tests` / `ctest` run, so the next hardening pass should remove or gate temporary debug instrumentation and isolate the remaining abort in the combined run.
+- Latest progress: after correcting raw ABI `ltv` handle encode/decode in `libagentthreads_poc.cpp`, cleaning the threaded spawn-result test stack setup, and rebuilding both `agentthreads_poc` and `edict_tests` together, regression coverage passes, the full `CallbackTest.*` suite is green, and `ctest --output-on-failure` is back to `7/7` passing.
+- Remaining gap: document the landed first-slice threading model/limits clearly and decide whether the auxiliary status-returning thread-entry API should remain once the direct `ltv` path is stable.
 
 ## Current Baseline
 

@@ -4,6 +4,14 @@
 
 This daily timeline spans the full G047/G048 migration, so earlier entries intentionally record intermediate states that were later removed. Mentions of compiler-native `logic(...)`, `[...] logic!`, builtin `logic` / `logic_run`, `logic { ... }`, or `VMOP_LOGIC_RUN` in older sessions are historical unless a later session in this file explicitly says they were removed. For current behavior, use `LocalContext/Dashboard.md`, `LocalContext/Knowledge/Goals/G047-NativeRelationalSyntax/index.md`, `LocalContext/Knowledge/Goals/G048-LibraryBackedLogicCapability/index.md`, and `LocalContext/Knowledge/WorkProducts/edict_language_reference.md`.
 
+## Session 2045-2100
+
+🔗[Session Notes](./2045-2100/index.md) — Captured the remaining mixed-run `ImportResolvedThreadRuntimeSpawnsThunkAndJoinsResult` instability into focused goal G050 so the defect can be debugged without losing context.
+
+## Session 1835-1850
+
+🔗[Session Notes](./1835-1850/index.md) — Stabilized G049 enough that regression coverage, the full callback suite, and `ctest` are green after raw ABI handle fixes and cleaner callback stack setup.
+
 ## Session 1805-1825
 
 🔗[Session Notes](./1805-1825/index.md) — Planned G049 around pthread-backed threaded thunk execution with fresh VMs per thread and protected shared-value cells as the first concurrency boundary.
@@ -256,4 +264,13 @@ The project moved both planning tracks into implementation.
 - Imported pthread-backed helper APIs now exist for thread spawn/join and mutex-protected shared-value cells.
 - Worker callback execution now uses copied roots and preloads imported libraries referenced from callback scope metadata before invoking worker thunks.
 - Focused G049 tests now pass individually for direct `ltv` thread result round-trip, shared-cell snapshot isolation, and threaded shared-cell update.
-- Remaining work is stabilization under the full mixed `edict_tests` / `ctest` run, then documenting the landed first-slice limits.
+- Raw ABI `ltv` handle normalization in the helper and cleaner callback stack setup now leave regression coverage, the full callback suite, and `ctest` green.
+- Remaining work is final documentation of the first-slice threading model/limits and deciding how much helper surface should remain in the first slice.
+
+---
+
+## G050 — Spawn/Join Mixed-Run Stability Captured
+
+- A dedicated child goal now records the remaining standalone-full-suite uncertainty around `CallbackTest.ImportResolvedThreadRuntimeSpawnsThunkAndJoinsResult`.
+- The goal captures the current failure signatures, known-good focused validations, known-risk areas, and the exact files and investigation steps most relevant to fixing the issue.
+- This keeps G049 focused on the broader threading slice while giving the mixed-run spawn/join problem a stable handoff artifact.

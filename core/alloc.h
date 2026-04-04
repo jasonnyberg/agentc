@@ -28,6 +28,7 @@
 #include <vector>
 #include <bitset>
 #include <iostream>
+#include <mutex>
 #include <type_traits>
 #include "debug.h"
 
@@ -388,6 +389,8 @@ public:
 template<typename T>
 class Allocator {
 private:
+    mutable std::recursive_mutex mutex_;
+
     struct Slab {
         size_t count;
         std::vector<size_t> inUse;
@@ -571,6 +574,7 @@ public:
     Allocator() { LOG_ALLOC("constructed allocator for " << typeid(T).name()); }
 
     ~Allocator() {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
         LOG_ALLOC("destructed allocator for " << typeid(T).name());
         for (size_t i = 0; i < NUM_SLABS; ++i) {
             if (slabs[i]) {
@@ -581,12 +585,14 @@ public:
 
     template<typename... Args>
     SlabId allocate(Args &&...args) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
         SlabId si = allocRaw();
         new (&slabs[si.first]->items[si.second]) T(std::forward<Args>(args)...);
         return si;
     }
 
     SlabId allocRaw() {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
         SlabId si;
         if (!checkpointStack.empty()) {
             si = allocateAppendOnlyRaw();
@@ -618,6 +624,7 @@ public:
     }
 
     Checkpoint checkpoint() {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
         checkpointStack.push_back(allocationLog.size());
         checkpointWatermarks.push_back(currentHighWatermark());
         checkpointAppendOnly.push_back(true);
@@ -627,10 +634,12 @@ public:
     }
 
     bool hasActiveCheckpoint() const {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
         return !checkpointStack.empty();
     }
 
     Checkpoint currentCheckpoint() const {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
         if (checkpointStack.empty()) {
             return {};
         }
@@ -638,6 +647,7 @@ public:
     }
 
     ArenaCheckpointMetadata exportArenaMetadata() const {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
         ArenaCheckpointMetadata metadata;
         metadata.allocationLogSize = allocationLog.size();
         metadata.checkpointLogStarts = checkpointStack;
@@ -684,6 +694,7 @@ public:
     };
 
     AllocatorStats getStats() const {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
         AllocatorStats stats;
         stats.itemSizeBytes = sizeof(T);
         for (size_t slabIndex = 0; slabIndex < NUM_SLABS; ++slabIndex) {
@@ -703,6 +714,7 @@ public:
     }
 
     bool restoreArenaMetadata(const ArenaCheckpointMetadata& metadata) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
         if (metadata.version != 1 || metadata.slabSize != SLAB_SIZE) {
             return false;
         }
@@ -721,6 +733,7 @@ public:
     }
 
     std::vector<ArenaSlabImage> exportSlabImages() const {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
         std::vector<ArenaSlabImage> out;
         if constexpr (!ArenaPersistenceTraits<T>::supported) {
             return out;
@@ -771,6 +784,7 @@ public:
     }
 
     bool restoreSlabImages(const std::vector<ArenaSlabImage>& images) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
         if constexpr (!ArenaPersistenceTraits<T>::supported) {
             return false;
         }
@@ -818,6 +832,7 @@ public:
     }
 
     void resetForTests() {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
         clearAllSlabs();
         SlabId sentinel = allocRaw();
         (void)sentinel;
@@ -830,6 +845,7 @@ public:
     }
 
     bool commit(const Checkpoint& checkpoint) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
         if (!checkpoint.valid || checkpointStack.empty() || checkpoint.depth != checkpointStack.size() ||
             checkpoint.logStart != checkpointStack.back()) {
             return false;
@@ -847,6 +863,7 @@ public:
     }
 
     bool rollback(const Checkpoint& checkpoint) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
         if (!checkpoint.valid || checkpointStack.empty() || checkpoint.depth != checkpointStack.size() ||
             checkpoint.logStart != checkpointStack.back()) {
             return false;
@@ -880,6 +897,7 @@ public:
     }
 
     bool deallocate(SlabId si) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
         if (valid(si)) {
             // Decrement reference count
             Slab *slab = slabs[si.first];
@@ -907,9 +925,13 @@ public:
         return false;
     }
 
-    T *getPtr(SlabId si) const { return valid(si) ? &(slabs[si.first]->items[si.second]) : nullptr; }
+    T *getPtr(SlabId si) const {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        return valid(si) ? &(slabs[si.first]->items[si.second]) : nullptr;
+    }
 
     SlabId getSlabId(const T *ptr) const {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
         SlabId si;
         for (si.first = 0; si.first < NUM_SLABS; ++si.first) {
             if (slabs[si.first]) {
@@ -926,6 +948,7 @@ public:
     }
 
     bool valid(SlabId si) const {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
         if (!si) return false;
         if (si.first < NUM_SLABS && slabs[si.first] && si.second < SLAB_SIZE) {
             return refs(si) > 0;
@@ -934,12 +957,24 @@ public:
     }
 
     void modrefs(SlabId si, int delta = 1) { 
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
         if (si.first < NUM_SLABS && slabs[si.first] && si.second < SLAB_SIZE) {
             slabs[si.first]->inUse[si.second] += delta; 
         }
     }
+
+    bool tryRetain(SlabId si) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        if (!si) return false;
+        if (si.first < NUM_SLABS && slabs[si.first] && si.second < SLAB_SIZE && slabs[si.first]->inUse[si.second] > 0) {
+            slabs[si.first]->inUse[si.second] += 1;
+            return true;
+        }
+        return false;
+    }
     
     size_t refs(const SlabId si) const { 
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
         if (si.first < NUM_SLABS && slabs[si.first] && si.second < SLAB_SIZE) {
             return slabs[si.first]->inUse[si.second]; 
         }
@@ -947,10 +982,12 @@ public:
     }
 
     bool lastRollbackUsedWatermarkFastPath() const {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
         return lastRollbackUsedFastPath;
     }
 
     bool lastRollbackUsedStrictWatermarkFastPath() const {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
         return lastRollbackUsedStrictFastPath;
     }
 };
@@ -984,10 +1021,7 @@ public:
     CPtr(AdoptRawSlabIdTag, const SlabId& other) : slabId(other) {}
 
     CPtr(const SlabId &other) {
-        if (Allocator<T>::getAllocator().valid(other)) {
-            Allocator<T>::getAllocator().modrefs(other);
-        }
-        slabId = other;
+        slabId = Allocator<T>::getAllocator().tryRetain(other) ? other : SlabId();
     }
 
     CPtr(const T *ptr) : CPtr(Allocator<T>::getAllocator().getSlabId(ptr)) {}
@@ -1007,10 +1041,7 @@ public:
             if (Allocator<T>::getAllocator().valid(slabId)) {
                 Allocator<T>::getAllocator().modrefs(slabId, -1);
             }
-            slabId = other.slabId;
-            if (Allocator<T>::getAllocator().valid(slabId)) {
-                Allocator<T>::getAllocator().modrefs(slabId);
-            }
+            slabId = Allocator<T>::getAllocator().tryRetain(other.slabId) ? other.slabId : SlabId();
         }
         return *this;
     }

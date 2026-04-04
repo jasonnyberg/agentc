@@ -1100,7 +1100,6 @@ TEST(CallbackTest, ImportResolvedThreadRuntimeSpawnsThunkAndJoinsResult) {
     auto defs = vm.popData();
     normalize_thread_runtime_defs(defs);
     const std::string source =
-        "'threaded-result "
         "{\"return_type\": \"ltv\", \"children\": {\"p0\": {\"kind\": \"Parameter\", \"type\": \"ltv\"}}} "
         "[pop 'threaded-result] ffi_closure ! @worker pop "
         "worker 'seed threadffi.agentc_thread_spawn_ltv ! @handle pop "

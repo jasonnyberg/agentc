@@ -54,7 +54,8 @@ Introduce multithreaded Edict execution through imported FFI callbacks and `pthr
 - 2026-03-23: Added `cartographer/tests/libagentthreads_poc.h` / `.cpp` with imported pthread-backed helper APIs for `agentc_thread_spawn_ltv`, `agentc_thread_join_ltv`, mutex-protected shared-value cells, and experimental status-returning thread entrypoints.
 - 2026-03-23: Hardened callback execution so `closure_thunk(...)` uses a copied captured `ROOT` and preloads imported libraries referenced from copied callback scope metadata before executing worker thunks.
 - 2026-03-23: Focused G049 tests now prove three concrete behaviors in isolation: direct `ltv` thread spawn/join works, shared-cell snapshot isolation works, and threaded shared-cell update works.
-- 2026-03-23: Remaining work is stabilization: the focused G049 tests pass individually, but full `edict_tests` / `ctest` are not yet green because the debug-heavy mixed run still aborts, so the helper/runtime path needs one more hardening pass before this slice can be recorded as fully landed.
+- 2026-03-23: Corrected raw ABI `ltv` handle encode/decode in `cartographer/tests/libagentthreads_poc.cpp`, cleaned the threaded spawn-result test stack setup, and rebuilt both `agentthreads_poc` and `edict_tests` together. Regression coverage now passes, the full `CallbackTest.*` suite is green, and `ctest --output-on-failure` is back to `7/7` passing.
+- 2026-03-23: Remaining work is now documentation/cleanup: explicitly record the first-slice threading limits and decide whether the auxiliary status-returning thread-entry API should remain in the helper surface.
 
 ## Scope
 
