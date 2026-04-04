@@ -15,7 +15,11 @@
 
 #include <gtest/gtest.h>
 #include "../ffi.h"
+#include "../ltv_api.h"
 #include "../mapper.h"
+#include "libagentthreads_poc.h"
+#include "../../core/cursor.h"
+#include "../../listree/listree.h"
 #include <iostream>
 #include <filesystem>
 
@@ -76,4 +80,32 @@ TEST(PoCTest, CallAddFromLib) {
     std::string resultStr(static_cast<const char*>(result->getData()), result->getLength());
     std::cout << "Result of add(" << a << ", " << b << ") = " << resultStr << std::endl;
     EXPECT_EQ(resultStr, "42");
+}
+
+namespace {
+
+ltv identity_ltv(ltv value) {
+    return value;
+}
+
+} // namespace
+
+TEST(PoCTest, ThreadHelperRejectsIteratorValTransfers) {
+    Cursor* liveCursor = new Cursor(createListValue());
+    CPtr<ListreeValue> iteratorValue = createCursorValue(liveCursor);
+    ASSERT_TRUE((bool)iteratorValue);
+
+    ltv owned = iteratorValue.release();
+
+    agentc_shared_value* cell = agentc_shared_create_ltv(owned);
+    ASSERT_NE(cell, nullptr);
+    EXPECT_EQ(agentc_shared_read_ltv(cell), 0u);
+    agentc_shared_destroy(cell);
+
+    agentc_thread_handle* handle = agentc_thread_spawn_ltv(identity_ltv, owned);
+    ASSERT_NE(handle, nullptr);
+    EXPECT_EQ(agentc_thread_join_ltv(handle), 0u);
+    agentc_thread_destroy(handle);
+
+    ltv_unref(owned);
 }

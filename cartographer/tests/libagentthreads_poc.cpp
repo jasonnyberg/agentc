@@ -29,6 +29,19 @@ static LTV decode_ltv_handle(ltv value) {
                static_cast<uint16_t>((value >> 16) & 0xffffu));
 }
 
+bool is_thread_transfer_safe(ltv value) {
+    if (value == 0) {
+        return true;
+    }
+
+    CPtr<agentc::ListreeValue> borrowed = agentc::ltv_borrow(decode_ltv_handle(value));
+    if (!borrowed) {
+        return false;
+    }
+
+    return (borrowed->getFlags() & agentc::LtvFlags::Iterator) == agentc::LtvFlags::None;
+}
+
 static ltv encode_ltv_handle(LTV value) {
     return static_cast<ltv>(static_cast<uint32_t>(value.first)
                             | (static_cast<uint32_t>(value.second) << 16));
@@ -36,6 +49,10 @@ static ltv encode_ltv_handle(LTV value) {
 
 ltv snapshot_ltv(ltv value) {
     if (value == 0) {
+        return 0;
+    }
+
+    if (!is_thread_transfer_safe(value)) {
         return 0;
     }
 

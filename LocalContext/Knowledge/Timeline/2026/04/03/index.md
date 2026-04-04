@@ -15,3 +15,7 @@
 ## Session 1720-1750
 
 🔗[Session Notes](./1720-1750/index.md) — Re-validated that protected shared-value cells remain the only supported mutable cross-thread path for G049, removed the auxiliary status-returning thread helper API, and kept full verification green.
+
+## Session 1750-1810
+
+🔗[Session Notes](./1750-1810/index.md) — Added misuse detection for unsupported iterator/cursor-valued thread transfers in the pthread helper and verified the new hardening with `cartographer_tests` plus full `ctest`.

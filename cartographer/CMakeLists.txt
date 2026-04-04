@@ -15,7 +15,7 @@ add_library(agentthreads_poc SHARED tests/libagentthreads_poc.cpp)
 target_link_libraries(agentthreads_poc PRIVATE cartographer pthread)
 
 add_executable(cartographer_tests tests/mapper_tests.cpp tests/ffi_tests.cpp tests/poc_test.cpp tests/service_tests.cpp tests/tool_tests.cpp tests/ltv_api_tests.cpp)
-target_link_libraries(cartographer_tests PRIVATE cartographer reflect ${LIBCLANG_LIBRARY} ${LIBFFI_LIBRARIES} dl gtest gtest_main pthread)
+target_link_libraries(cartographer_tests PRIVATE cartographer reflect agentthreads_poc ${LIBCLANG_LIBRARY} ${LIBFFI_LIBRARIES} dl gtest gtest_main pthread)
 target_compile_definitions(cartographer_tests PRIVATE
     TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests"
     TEST_BUILD_DIR="${CMAKE_CURRENT_BINARY_DIR}"

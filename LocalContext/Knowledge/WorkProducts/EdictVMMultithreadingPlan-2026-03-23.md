@@ -8,12 +8,12 @@ Add multithreaded Edict execution by combining imported pthread-backed helpers w
 
 - In progress: a first helper library now exists in `cartographer/tests/libagentthreads_poc.h` / `.cpp` with pthread-backed `agentc_thread_spawn_ltv(...)`, `agentc_thread_join_ltv(...)`, `agentc_thread_detach(...)`, `agentc_thread_destroy(...)`, plus mutex-protected `agentc_shared_create_ltv(...)`, `agentc_shared_read_ltv(...)`, and `agentc_shared_write_ltv(...)`.
 - In progress: callback execution now copies captured callback roots and preloads imported libraries from copied callback scope metadata before worker execution, which lets threaded callback VMs invoke imported helper functions reliably.
-- In progress: focused callback tests demonstrate three working slices when run individually:
+- Implemented: focused callback tests demonstrate three working slices:
   - direct `ltv` thread spawn/join result round-trip,
   - shared-cell snapshot isolation,
-  - threaded shared-cell update through a status-returning worker callback.
-- Latest progress: after correcting raw ABI `ltv` handle encode/decode in `libagentthreads_poc.cpp`, cleaning the threaded spawn-result test stack setup, and rebuilding both `agentthreads_poc` and `edict_tests` together, regression coverage passes, the full `CallbackTest.*` suite is green, and `ctest --output-on-failure` is back to `7/7` passing.
-- Remaining gap: document the landed first-slice threading model/limits clearly and decide whether the auxiliary status-returning thread-entry API should remain once the direct `ltv` path is stable.
+  - threaded shared-cell update through the same direct `ltv` worker path, with mutation confined to the protected shared cell.
+- Latest progress: after correcting raw ABI `ltv` handle encode/decode in `libagentthreads_poc.cpp`, cleaning the threaded spawn-result test stack setup, wiring helper target dependencies, and fixing atomic slab-handle retain, regression coverage passes, the full `CallbackTest.*` suite is green, standalone `./build/edict/edict_tests` passes, and `ctest --output-on-failure` is `7/7` passing.
+- Helper surface update: the auxiliary status-returning thread-entry API was removed because it no longer added unique first-slice capability beyond the direct `ltv` callback path.
 
 ## Current Baseline
 

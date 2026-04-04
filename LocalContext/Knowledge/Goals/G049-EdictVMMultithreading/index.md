@@ -61,6 +61,7 @@ Introduce multithreaded Edict execution through imported FFI callbacks and `pthr
 - 2026-04-03: Documented the landed first-slice threading model in `README.md` and `LocalContext/Knowledge/WorkProducts/edict_language_reference.md`: fresh VM per thread, copied `ltv` arguments/results, explicit protected shared-value cells for mutable cross-thread state, and no supported arbitrary live-graph sharing or shared-VM execution.
 - 2026-04-03: Evaluated G051 (`Cursor`-visited read-only marking) as a possible stronger concurrency boundary. Current recommendation is not to adopt it as the primary G049 model because mutation is not cursor-exclusive, visited scope is ambiguous, and overlapping cursor lifetimes would require lease bookkeeping anyway. Protected shared-value cells remain the recommended first-slice boundary.
 - 2026-04-03: Audited the helper/mutation surface and confirmed the supported cross-thread mutable path remains the mutex-protected shared-cell API. Direct thread spawn/join still snapshots `ltv` values at the boundary, while the auxiliary status-returning thread entry path was removed because it was only supporting one test and no longer adds unique first-slice capability.
+- 2026-04-03: Added a small misuse-detection hardening step in the pthread helper: iterator/cursor-valued `ltv` handles are now rejected at the thread/shared-cell transfer boundary rather than being copied across threads. Added `PoCTest.ThreadHelperRejectsIteratorValTransfers`, and full `cartographer_tests` / `ctest` remain green.
 
 ## Current Validation Readout
 
@@ -68,6 +69,7 @@ Introduce multithreaded Edict execution through imported FFI callbacks and `pthr
 - `agentc_thread_join_ltv(...)` returns a fresh snapshot of the worker result rather than exposing a live mutable value.
 - `agentc_shared_create_ltv(...)`, `agentc_shared_read_ltv(...)`, and `agentc_shared_write_ltv(...)` remain the only supported mutable cross-thread coordination surface in the helper library.
 - The prior `agentc_thread_spawn_status(...)` / `agentc_thread_join_status(...)` path is now removed; the shared-cell update coverage uses the ordinary `ltv` callback path instead.
+- Iterator/cursor-valued `ltv` handles are now explicitly treated as unsafe for thread/shared-cell transfer; the helper snapshots them as null instead of attempting to move a live cursor-backed object across threads.
 - Validation after the trim is green: focused thread-runtime callback tests pass, `./build/edict/edict_tests` passes (`86/86`), and `ctest --test-dir build --output-on-failure` passes (`7/7`).
 
 ## Scope
