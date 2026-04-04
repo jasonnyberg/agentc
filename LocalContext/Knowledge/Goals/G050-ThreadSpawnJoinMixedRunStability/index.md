@@ -34,10 +34,11 @@ Capture and resolve the remaining mixed-run instability around `CallbackTest.Imp
   - wrong joined value such as an 8-byte pointer-like string instead of `threaded-result`
   - earlier historical failures included invalid callback-pointer crashes and `null` joined results before the current focused fixes landed
 - Current status:
-  - targeted reproductions were recovered with suppressed-output repeat loops, including `-11` crashes and null joined values
-  - `agentthreads_poc` is now wired as a build dependency of `edict_tests`
-  - repeated focused thread-runtime runs are now green (`10/10` for `CallbackTest.ImportResolvedThreadRuntime*` after the fixes)
-  - standalone full `edict_tests` still has not been run to completion in this session, so the broader trust signal remains partial rather than final
+- targeted reproductions were recovered with suppressed-output repeat loops, including `-11` crashes and null joined values
+- `agentthreads_poc` is now wired as a build dependency of `edict_tests`
+- repeated focused thread-runtime runs are now green (`10/10` for `CallbackTest.ImportResolvedThreadRuntime*` after the fixes)
+  - chunked suite runs now suggest the remaining blocker for a completed full `edict_tests` pass is not the thread-runtime path itself but `CallbackTest.EdictCliImportResolvedDemoPrintsExpectedResult`, which hangs when isolated while the rest of the callback suite and all other suites complete quickly
+  - standalone full `edict_tests` therefore remains incomplete in this session, but the unfinished portion now appears narrower and likely separate from the original G050 thread-runtime defect
 
 ## Evidence Snapshot
 
@@ -65,6 +66,8 @@ Capture and resolve the remaining mixed-run instability around `CallbackTest.Imp
 - `CallbackTest.ImportResolvedThreadRuntimeUpdatesSharedCellFromThread` is green in the focused callback suite.
 - `./build/edict/edict_tests --gtest_filter='CallbackTest.ImportResolvedThreadRuntime*'` is green in repeated runs (`10/10`) after the current fixes.
 - `gdb -batch --args ./build/edict/edict_tests --gtest_filter='CallbackTest.ImportResolvedThreadRuntime*'` now runs those three tests cleanly.
+- `./build/edict/edict_tests --gtest_filter='CallbackTest.*-CallbackTest.EdictCliImportResolvedDemoPrintsExpectedResult'` is green.
+- Every non-callback suite completes quickly when run as an isolated chunk; the only observed isolated hang in this pass is `CallbackTest.EdictCliImportResolvedDemoPrintsExpectedResult`.
 
 ## Known-Risky Areas
 
@@ -112,10 +115,10 @@ Capture and resolve the remaining mixed-run instability around `CallbackTest.Imp
 
 ## Recommended Next Investigation Steps
 
-1. Re-establish a completed standalone full `./build/edict/edict_tests` run once the long-running regression/noise issue is handled or bounded.
-2. Re-run `ctest --output-on-failure` to completion in the same post-fix build once a longer verification window is available.
-3. If mixed-run failures reappear, inspect any remaining raw-pointer access paths that still rely on `getPtr(...)` after releasing allocator locks.
-4. Decide whether the auxiliary status-returning helper path should stay once the direct `ltv` spawn/join path is trusted under broader validation.
+1. Investigate `CallbackTest.EdictCliImportResolvedDemoPrintsExpectedResult` and the underlying `edict -e ...` hang, since it is now the main obstacle to a completed standalone full `edict_tests` pass.
+2. Re-establish a completed standalone full `./build/edict/edict_tests` run once that CLI hang is handled or bounded.
+3. Re-run `ctest --output-on-failure` to completion in the same post-fix build.
+4. If mixed-run thread failures reappear, inspect any remaining raw-pointer access paths that still rely on `getPtr(...)` after releasing allocator locks.
 
 ## Work Product
 

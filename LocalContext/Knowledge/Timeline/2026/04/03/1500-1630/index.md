@@ -18,7 +18,8 @@ Pursued G050 from fresh HRM bootstrap through repro, root-cause isolation, parti
 - `cmake --build build --target agentthreads_poc edict_tests`
 - `gdb -batch -ex run -ex bt --args ./build/edict/edict_tests --gtest_filter='CallbackTest.ImportResolvedThreadRuntime*'`
 - repeated `./build/edict/edict_tests --gtest_filter='CallbackTest.ImportResolvedThreadRuntime*'` (`10/10` green, suppressed output)
-- Attempted broader validation, but standalone full `./build/edict/edict_tests` and `ctest --test-dir build --output-on-failure` did not complete inside the available timeout because the current full run remains long-running/noisy.
+- Broke `edict_tests` into isolated suites and callback-test chunks; every suite completed quickly except `CallbackTest.EdictCliImportResolvedDemoPrintsExpectedResult`, which hangs in isolation.
+- Directly running the underlying `edict -e ...` command also hangs with no output, which now appears to be the main blocker to a completed standalone full `edict_tests` pass rather than the original thread-runtime subset.
 
 ## Outcome
 
