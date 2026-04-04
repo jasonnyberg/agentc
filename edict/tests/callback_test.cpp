@@ -266,26 +266,11 @@ static void normalize_thread_runtime_defs(CPtr<agentc::ListreeValue> defs) {
     set_type_field(arg, "type", "ltv");
     replace_children_in_order(spawn, {{"entry", entry}, {"arg", arg}});
 
-    auto spawnStatus = require_function_def(defs, "agentc_thread_spawn_status");
-    set_type_field(spawnStatus, "return_type", "pointer");
-    auto spawnStatusChildren = require_children(spawnStatus);
-    auto statusEntry = require_child(spawnStatusChildren, "entry");
-    auto statusArg = require_child(spawnStatusChildren, "arg");
-    set_type_field(statusEntry, "type", "pointer");
-    set_type_field(statusArg, "type", "pointer");
-    replace_children_in_order(spawnStatus, {{"entry", statusEntry}, {"arg", statusArg}});
-
     auto join = require_function_def(defs, "agentc_thread_join_ltv");
     set_type_field(join, "return_type", "ltv");
     auto joinHandle = require_child(require_children(join), "handle");
     set_type_field(joinHandle, "type", "pointer");
     replace_children_in_order(join, {{"handle", joinHandle}});
-
-    auto joinStatus = require_function_def(defs, "agentc_thread_join_status");
-    set_type_field(joinStatus, "return_type", "int");
-    auto joinStatusHandle = require_child(require_children(joinStatus), "handle");
-    set_type_field(joinStatusHandle, "type", "pointer");
-    replace_children_in_order(joinStatus, {{"handle", joinStatusHandle}});
 
     auto detach = require_function_def(defs, "agentc_thread_detach");
     set_type_field(detach, "return_type", "void");
@@ -1172,10 +1157,10 @@ TEST(CallbackTest, ImportResolvedThreadRuntimeUpdatesSharedCellFromThread) {
     normalize_thread_runtime_defs(defs);
     const std::string source =
         "{\"status\": \"initial\"} threadffi.agentc_shared_create_ltv ! @cell pop "
-        "{\"return_type\": \"int\", \"children\": {\"p0\": {\"kind\": \"Parameter\", \"type\": \"pointer\"}}} "
-        "[ARG0 {\"status\": \"threaded\"} threadffi.agentc_shared_write_ltv ! pop '1] ffi_closure ! @worker pop "
-        "worker cell threadffi.agentc_thread_spawn_status ! @handle pop "
-        "handle threadffi.agentc_thread_join_status ! pop "
+        "{\"return_type\": \"ltv\", \"children\": {\"p0\": {\"kind\": \"Parameter\", \"type\": \"ltv\"}}} "
+        "[cell {\"status\": \"threaded\"} threadffi.agentc_shared_write_ltv ! pop 'updated] ffi_closure ! @worker pop "
+        "worker 'seed threadffi.agentc_thread_spawn_ltv ! @handle pop "
+        "handle threadffi.agentc_thread_join_ltv ! pop "
         "cell threadffi.agentc_shared_read_ltv ! @stored pop "
         "handle threadffi.agentc_thread_destroy ! "
         "cell threadffi.agentc_shared_destroy ! "

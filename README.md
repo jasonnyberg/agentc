@@ -102,6 +102,17 @@ like any other word:
 Rewrite rules, transactions, cursor navigation, FFI closures, and the full opcode set are
 documented in the language reference (see Documentation).
 
+**Threaded callback helpers.** The current multithreading slice is intentionally conservative.
+Imported pthread-backed helpers can launch an Edict closure in a new native thread, but the
+worker always runs inside a **fresh `EdictVM`**. Cross-thread mutable state must flow through
+explicit protected shared-value cells (`agentc_shared_create_ltv`, `agentc_shared_read_ltv`,
+`agentc_shared_write_ltv`) rather than arbitrary live `ListreeValue` graph sharing.
+
+- Safe first-slice model: fresh VM per thread, copied `ltv` arguments/results, explicit
+  shared-cell handles for coordinated mutation
+- Explicitly out of scope: concurrent execution against one live `EdictVM`, or unsynchronized
+  in-place mutation of arbitrary live Listree subtrees across threads
+
 ### 3. Cartographer
 
 The Cartographer uses **`libclang`** to parse C/C++ headers and **`libffi`** to construct
@@ -189,6 +200,8 @@ The core runtime is complete and stable:
 - Each component (`listree`, `reflect`, `kanren`, `cartographer`, `edict`) builds its own shared library; no source file is compiled more than once
 - Cursor-based Listree traversal with glob, iterator, and tail-deref modes
 - All namespaces under `agentc::` (`agentc::edict`, `agentc::cartographer`, `agentc::kanren`)
+- First-slice Edict multithreading via imported pthread-backed callback helpers, with fresh-VM
+  worker execution and mutex-protected shared-value cells
 
 Next: **LMDB persistent arena** (Goals G040–G042) — structured save/restore of full VM root
 state, enabling resumable agent sessions.

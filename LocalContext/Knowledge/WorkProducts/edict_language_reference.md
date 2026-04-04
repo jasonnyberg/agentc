@@ -1070,6 +1070,16 @@ Inside the edict function invoked by the native caller:
 - Return value is bound as `RETURN`
 - A fresh `EdictVM` is spawned per call
 
+This same closure path is now the basis of the first multithreading slice. Imported
+pthread-backed helpers can accept an `ffi_closure` callback, start a native thread, and run the
+worker thunk in a fresh VM. The supported cross-thread data model is intentionally narrow:
+
+- copied `ltv` arguments/results may cross the thread boundary directly
+- explicit shared-value cells (`agentc_shared_create_ltv`, `agentc_shared_read_ltv`,
+  `agentc_shared_write_ltv`) provide the only supported mutable shared-state path
+- direct concurrent mutation of arbitrary live `ListreeValue` graphs or reuse of one live
+  `EdictVM` across threads is not part of the supported model
+
 ### Example: wrap a computation
 
 ```edict

@@ -9,11 +9,8 @@
 struct agentc_thread_handle {
     pthread_t thread{};
     LtvUnaryOp entry = nullptr;
-    PointerUnaryStatusOp status_entry = nullptr;
     ltv arg = 0;
-    void* status_arg = nullptr;
     ltv result = 0;
-    int status = 0;
     std::mutex mutex;
     bool finished = false;
     bool joined = false;
@@ -74,23 +71,16 @@ void* thread_main(void* user_data) {
 
     ltv arg = 0;
     LtvUnaryOp entry = nullptr;
-    PointerUnaryStatusOp status_entry = nullptr;
-    void* status_arg = nullptr;
     {
         std::lock_guard<std::mutex> lock(handle->mutex);
         arg = handle->arg;
         handle->arg = 0;
         entry = handle->entry;
-        status_entry = handle->status_entry;
-        status_arg = handle->status_arg;
     }
 
     ltv raw_result = 0;
-    int status = 0;
     if (entry) {
         raw_result = entry(arg);
-    } else if (status_entry) {
-        status = status_entry(status_arg);
     } else if (arg != 0) {
         ltv_unref(decode_ltv_handle(arg));
     }
@@ -105,7 +95,6 @@ void* thread_main(void* user_data) {
     {
         std::lock_guard<std::mutex> lock(handle->mutex);
         handle->result = result_snapshot;
-        handle->status = status;
         handle->finished = true;
         self_delete = handle->detached;
     }
@@ -137,23 +126,6 @@ agentc_thread_handle* agentc_thread_spawn_ltv(LtvUnaryOp entry, ltv arg) {
     return handle;
 }
 
-agentc_thread_handle* agentc_thread_spawn_status(PointerUnaryStatusOp entry, void* arg) {
-    if (!entry) {
-        return nullptr;
-    }
-
-    auto* handle = new agentc_thread_handle();
-    handle->status_entry = entry;
-    handle->status_arg = arg;
-
-    if (pthread_create(&handle->thread, nullptr, thread_main, handle) != 0) {
-        cleanup_thread_handle(handle);
-        return nullptr;
-    }
-
-    return handle;
-}
-
 ltv agentc_thread_join_ltv(agentc_thread_handle* handle) {
     if (!handle) {
         return 0;
@@ -176,29 +148,6 @@ ltv agentc_thread_join_ltv(agentc_thread_handle* handle) {
     std::lock_guard<std::mutex> lock(handle->mutex);
     ltv joined = snapshot_ltv(handle->result);
     return joined;
-}
-
-int agentc_thread_join_status(agentc_thread_handle* handle) {
-    if (!handle) {
-        return 0;
-    }
-
-    {
-        std::lock_guard<std::mutex> lock(handle->mutex);
-        if (handle->detached) {
-            return 0;
-        }
-    }
-
-    if (!handle->joined) {
-        if (pthread_join(handle->thread, nullptr) != 0) {
-            return 0;
-        }
-        handle->joined = true;
-    }
-
-    std::lock_guard<std::mutex> lock(handle->mutex);
-    return handle->status;
 }
 
 void agentc_thread_detach(agentc_thread_handle* handle) {
