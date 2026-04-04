@@ -1,6 +1,6 @@
 # G050 - Thread Spawn/Join Mixed-Run Stability
 
-## Status: IN PROGRESS
+## Status: COMPLETE
 
 ## Parent Context
 
@@ -24,7 +24,7 @@ Capture and resolve the remaining mixed-run instability around `CallbackTest.Imp
 - Two concrete contributors are now evidenced:
   - helper/test binary drift because `edict_tests` did not depend on `agentthreads_poc`, so rebuilding only the test binary could leave the pthread helper stale
   - non-atomic slab ref acquisition when constructing shared `CPtr` handles from raw `SlabId` values across threads
-- Focused repeated validation is now green after fixing both issues, but standalone full `./build/edict/edict_tests` still has not been re-established as a finished end-to-end proof because the full binary remains long-running/noisy under current regression instrumentation.
+- Focused repeated validation is green after fixing both issues, and the broader standalone/full-suite verification has now been re-established.
 
 ## Failure To Stabilize
 
@@ -37,8 +37,8 @@ Capture and resolve the remaining mixed-run instability around `CallbackTest.Imp
 - targeted reproductions were recovered with suppressed-output repeat loops, including `-11` crashes and null joined values
 - `agentthreads_poc` is now wired as a build dependency of `edict_tests`
 - repeated focused thread-runtime runs are now green (`10/10` for `CallbackTest.ImportResolvedThreadRuntime*` after the fixes)
-  - chunked suite runs now suggest the remaining blocker for a completed full `edict_tests` pass is not the thread-runtime path itself but `CallbackTest.EdictCliImportResolvedDemoPrintsExpectedResult`, which hangs when isolated while the rest of the callback suite and all other suites complete quickly
-  - standalone full `edict_tests` therefore remains incomplete in this session, but the unfinished portion now appears narrower and likely separate from the original G050 thread-runtime defect
+- the apparent later `edict -e` / `ctest` stalls were build-state issues during partial rebuilds, not active runtime failures in the current code
+- after a full rebuild, standalone `./build/edict/edict_tests` and `ctest --test-dir build --output-on-failure` both complete successfully
 
 ## Evidence Snapshot
 
@@ -56,8 +56,9 @@ Capture and resolve the remaining mixed-run instability around `CallbackTest.Imp
 - Primary: `Allocator<T>::tryRetain(...)` now performs ref acquisition under a single allocator lock, and the affected call sites now use it.
 - Primary: `edict/CMakeLists.txt` now makes `edict_tests` depend on both `agentmath_poc` and `agentthreads_poc`, preventing helper/test drift during normal targeted rebuilds.
 - Primary: after those changes, the thread-runtime callback subset passed `10/10` repeated suppressed-output runs.
+- Primary: after a full `cmake --build build`, `./build/edict/edict_tests` passes all 86 tests and `ctest --test-dir build --output-on-failure` passes all 7 registered tests.
 
-**Confidence**: 90%
+**Confidence**: 97%
 
 ## Known-Good Facts
 
@@ -68,6 +69,9 @@ Capture and resolve the remaining mixed-run instability around `CallbackTest.Imp
 - `gdb -batch --args ./build/edict/edict_tests --gtest_filter='CallbackTest.ImportResolvedThreadRuntime*'` now runs those three tests cleanly.
 - `./build/edict/edict_tests --gtest_filter='CallbackTest.*-CallbackTest.EdictCliImportResolvedDemoPrintsExpectedResult'` is green.
 - Every non-callback suite completes quickly when run as an isolated chunk; the only observed isolated hang in this pass is `CallbackTest.EdictCliImportResolvedDemoPrintsExpectedResult`.
+- `./build/edict/edict_tests` now passes in full (`86/86`).
+- `ctest --test-dir build --output-on-failure` now passes in full (`7/7`).
+- `ListreeTests` now passes again after a full rebuild; the earlier `ctest` stop at test #1 was due to stale build state, not a newly confirmed Listree runtime regression.
 
 ## Known-Risky Areas
 
@@ -115,10 +119,8 @@ Capture and resolve the remaining mixed-run instability around `CallbackTest.Imp
 
 ## Recommended Next Investigation Steps
 
-1. Investigate `CallbackTest.EdictCliImportResolvedDemoPrintsExpectedResult` and the underlying `edict -e ...` hang, since it is now the main obstacle to a completed standalone full `edict_tests` pass.
-2. Re-establish a completed standalone full `./build/edict/edict_tests` run once that CLI hang is handled or bounded.
-3. Re-run `ctest --output-on-failure` to completion in the same post-fix build.
-4. If mixed-run thread failures reappear, inspect any remaining raw-pointer access paths that still rely on `getPtr(...)` after releasing allocator locks.
+1. If the thread-runtime flake reappears, first confirm build freshness with `cmake --build build` before treating new hangs as runtime regressions.
+2. If mixed-run thread failures reappear, inspect any remaining raw-pointer access paths that still rely on `getPtr(...)` after releasing allocator locks.
 
 ## Work Product
 
@@ -126,7 +128,7 @@ Capture and resolve the remaining mixed-run instability around `CallbackTest.Imp
 
 ## Success Criteria
 
-- `CallbackTest.ImportResolvedThreadRuntimeSpawnsThunkAndJoinsResult` remains green under repeated focused mixed-run-style validation, and ideally also in a clean standalone full `./build/edict/edict_tests` run.
+- `CallbackTest.ImportResolvedThreadRuntimeSpawnsThunkAndJoinsResult` remains green under repeated focused mixed-run-style validation and in a clean standalone full `./build/edict/edict_tests` run.
 - No pointer-like garbage strings or `Pointer not found in any slab` exceptions appear in the spawn/join path.
 - The direct `ltv` callback-return path is trustworthy enough that the helper surface can be simplified confidently.
 

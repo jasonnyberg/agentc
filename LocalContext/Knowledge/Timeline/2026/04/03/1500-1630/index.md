@@ -23,7 +23,7 @@ Pursued G050 from fresh HRM bootstrap through repro, root-cause isolation, parti
 
 ## Outcome
 
-G050 moved from open-ended repro into a concrete partial fix state: the thread-runtime flake is no longer reproducible in repeated focused runs after landing both the helper dependency fix and atomic slab-handle retain fix. Broader end-to-end completion-level validation still remains before the goal can be marked done.
+G050 is now complete: the thread-runtime flake is no longer reproducible in repeated focused runs after landing the helper dependency fix and atomic slab-handle retain fix, and broader validation is green after a full rebuild (`./build/edict/edict_tests` passed `86/86`, `ctest` passed `7/7`). The apparent later `ctest` stall at `ListreeTests` was stale build state rather than a new runtime regression.
 
 ## Links
 
