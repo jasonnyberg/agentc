@@ -1179,6 +1179,41 @@ TEST(CallbackTest, ImportResolvedThreadRuntimeUpdatesSharedCellFromThread) {
     EXPECT_EQ(std::string(static_cast<const char*>(value->getData()), value->getLength()), "threaded");
 }
 
+TEST(CallbackTest, ImportResolvedThreadRuntimeDirectCapturedMutationDoesNotLeakAcrossThreads) {
+    EdictVM vm;
+    EdictCompiler compiler;
+
+    const std::filesystem::path buildDir(TEST_BUILD_DIR);
+    const std::filesystem::path sourceDir(TEST_SOURCE_DIR);
+    const std::filesystem::path libPath = buildDir / "libagentthreads_poc.so";
+    const std::filesystem::path headerPath = sourceDir / "libagentthreads_poc.h";
+    const std::filesystem::path resolvedPath = buildDir / "edict_import_agentthreads_direct_mutation.json";
+
+    writeResolvedApi(libPath, headerPath, resolvedPath);
+
+    int state = vm.execute(compiler.compile(
+        "[" + resolvedPath.string() + "] resolver.import_resolved ! @threadffi threadffi"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+
+    auto defs = vm.popData();
+    normalize_thread_runtime_defs(defs);
+    const std::string source =
+        "[] @session pop "
+        "{\"return_type\": \"ltv\", \"children\": {\"p0\": {\"kind\": \"Parameter\", \"type\": \"ltv\"}}} "
+        "[session 'threaded @mode pop 'done] ffi_closure ! @worker pop "
+        "worker 'seed threadffi.agentc_thread_spawn_ltv ! @handle pop "
+        "handle threadffi.agentc_thread_join_ltv ! pop "
+        "handle threadffi.agentc_thread_destroy ! "
+        "session mode";
+
+    state = vm.execute(compiler.compile(source));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+
+    auto mode = vm.popData();
+    ASSERT_TRUE((bool)mode);
+    EXPECT_EQ(std::string(static_cast<const char*>(mode->getData()), mode->getLength()), "mode");
+}
+
 TEST(CallbackTest, EdictCliImportResolvedDemoPrintsExpectedResult) {
     const std::filesystem::path edictBinDir(TEST_EDICT_BIN_DIR);
     const std::filesystem::path buildDir(TEST_BUILD_DIR);

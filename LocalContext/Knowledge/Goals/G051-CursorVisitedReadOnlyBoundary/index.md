@@ -1,6 +1,6 @@
 # G051 - Cursor-Visited Read-Only Boundary
 
-## Status: PROPOSED
+## Status: RETIRED (REJECTED DIRECTION)
 
 ## Parent Context
 
@@ -80,3 +80,7 @@ Evaluate whether marking Listree items or values visited by a `Cursor` as read-o
 
 - Read this as an exploratory child of G049, not as a replacement architecture.
 - Preserve the distinction between `Cursor` as a navigation API and the deeper mutation/lifetime machinery in Listree, containers, and allocator/refcount paths.
+
+## Retirement Note
+
+- 2026-04-04: Retired into 🔗[`G052-RuntimeBoundaryHardening`](../G052-RuntimeBoundaryHardening/index.md) as a rejected primary direction. Keep it only as rationale for why the project chose explicit protected shared-value boundaries instead.

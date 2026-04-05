@@ -1,6 +1,6 @@
 # G046 - Continuation-Based Speculation
 
-## Status: IN PROGRESS
+## Status: COMPLETE
 
 ## Parent Context
 
@@ -54,6 +54,10 @@ Replace the current separate-VM implementation of `speculate [ ... ]` with an in
 - The execute loop has been factored through `runCodeLoop(...)` plus `executeNested(...)`, which exposes the existing code-frame stack as the reusable continuation substrate for nested evaluation.
 - Transaction checkpoints now support a `restoreCodeResource` mode so rollback can preserve the currently running code stack when speculation is invoked from inside execution.
 - Validation now includes rewrite-rule isolation, closure-driven mutation isolation, and nested-speculation isolation tests, plus a full `ctest` pass (`7/7`).
+
+## Retirement Note
+
+- 2026-04-04: Retired from the active goal list in favor of 🔗[`G052-RuntimeBoundaryHardening`](../G052-RuntimeBoundaryHardening/index.md). No open implementation items remain; only general runtime-boundary preservation carries forward.
 
 ## Scope
 

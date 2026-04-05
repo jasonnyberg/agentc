@@ -1,6 +1,6 @@
 # G049 - Edict VM Multithreading
 
-## Status: IN PROGRESS
+## Status: COMPLETE (RETIRED INTO G052)
 
 ## Parent Context
 
@@ -46,7 +46,7 @@ Introduce multithreaded Edict execution through imported FFI callbacks and `pthr
 - [x] Design the protected shared-value mechanism for cross-thread Listree access.
 - [x] Define a small pthread-backed helper ABI that uses callback signatures rather than VM-owned thread opcodes.
 - [x] Add imported Edict-side coverage for spawn, join, and protected shared-value operations.
-- [ ] Validate that concurrent mutation only occurs through the protected-value path.
+- [x] Validate that concurrent mutation only occurs through the protected-value path.
 - [x] Document the threading model and its limitations.
 - [x] Trim the first-slice helper surface to the direct `ltv` thread entry/join path plus protected shared-value cells.
 
@@ -62,6 +62,7 @@ Introduce multithreaded Edict execution through imported FFI callbacks and `pthr
 - 2026-04-03: Evaluated G051 (`Cursor`-visited read-only marking) as a possible stronger concurrency boundary. Current recommendation is not to adopt it as the primary G049 model because mutation is not cursor-exclusive, visited scope is ambiguous, and overlapping cursor lifetimes would require lease bookkeeping anyway. Protected shared-value cells remain the recommended first-slice boundary.
 - 2026-04-03: Audited the helper/mutation surface and confirmed the supported cross-thread mutable path remains the mutex-protected shared-cell API. Direct thread spawn/join still snapshots `ltv` values at the boundary, while the auxiliary status-returning thread entry path was removed because it was only supporting one test and no longer adds unique first-slice capability.
 - 2026-04-03: Added a small misuse-detection hardening step in the pthread helper: iterator/cursor-valued `ltv` handles are now rejected at the thread/shared-cell transfer boundary rather than being copied across threads. Added `PoCTest.ThreadHelperRejectsIteratorValTransfers`, and full `cartographer_tests` / `ctest` remain green.
+- 2026-04-04: Closed the remaining protected-value validation item. `CallbackTest.ImportResolvedThreadRuntimeDirectCapturedMutationDoesNotLeakAcrossThreads` proves that direct mutation of captured root state inside a worker thread does not leak back to the caller VM, while the shared-cell tests remain the only positive mutable coordination path.
 
 ## Current Validation Readout
 
@@ -70,6 +71,7 @@ Introduce multithreaded Edict execution through imported FFI callbacks and `pthr
 - `agentc_shared_create_ltv(...)`, `agentc_shared_read_ltv(...)`, and `agentc_shared_write_ltv(...)` remain the only supported mutable cross-thread coordination surface in the helper library.
 - The prior `agentc_thread_spawn_status(...)` / `agentc_thread_join_status(...)` path is now removed; the shared-cell update coverage uses the ordinary `ltv` callback path instead.
 - Iterator/cursor-valued `ltv` handles are now explicitly treated as unsafe for thread/shared-cell transfer; the helper snapshots them as null instead of attempting to move a live cursor-backed object across threads.
+- `CallbackTest.ImportResolvedThreadRuntimeDirectCapturedMutationDoesNotLeakAcrossThreads` proves that mutating captured root state inside the worker does not act as a shared mutable channel; positive mutable coordination still requires `agentc_shared_*` APIs.
 - Validation after the trim is green: focused thread-runtime callback tests pass, `./build/edict/edict_tests` passes (`86/86`), and `ctest --test-dir build --output-on-failure` passes (`7/7`).
 
 ## Scope
@@ -114,3 +116,7 @@ Introduce multithreaded Edict execution through imported FFI callbacks and `pthr
 - Re-read `edict/edict_vm.cpp` around `closure_thunk(...)` and `buildClosureValue(...)` before implementation.
 - Treat FFI callback reuse as the enabling mechanism and shared-data protection as the real design decision.
 - Keep the first slice conservative: explicit protected cells beat pretending the current VM/Listree substrate is already thread-safe.
+
+## Retirement Note
+
+- 2026-04-04: Retired as a standalone active goal in favor of 🔗[`G052-RuntimeBoundaryHardening`](../G052-RuntimeBoundaryHardening/index.md). The first-slice threading model is implemented and validated; remaining work is boundary hardening and cleanup rather than new multithreading feature design.
