@@ -1,6 +1,6 @@
 # G052 - Runtime Boundary Hardening
 
-## Status: IN PROGRESS
+## Status: COMPLETE
 
 ## Parent Context
 
@@ -44,9 +44,9 @@ Consolidate the remaining runtime follow-through work into one hardening goal: k
 
 - [x] Audit for any additional concrete non-transferable live-object cases worth rejecting at the helper boundary.
 - [x] Decide whether G049's remaining unchecked validation item can now be closed under the consolidated boundary model.
-- [ ] Align dashboard/recent-goal summaries so the active runtime story points at this goal rather than the retired subgoals.
-- [ ] Keep full-suite verification green while boundary hardening changes land.
-- [ ] Keep G052 scoped to hardening the current conservative threading model rather than informally expanding toward G053.
+- [x] Align dashboard/recent-goal summaries so the active runtime story points at this goal rather than the retired subgoals.
+- [x] Keep full-suite verification green while boundary hardening changes land.
+- [x] Keep G052 scoped to hardening the current conservative threading model rather than informally expanding toward G053.
 
 ## Current Audit Readout
 
@@ -65,3 +65,7 @@ Consolidate the remaining runtime follow-through work into one hardening goal: k
 
 - Treat G049 as feature-complete first-slice threading with residual hardening work only.
 - Treat G051 as a retired exploration whose main output is "do not use cursor-visited read-only marking as the primary model."
+
+## Completion Note
+
+- 2026-04-04: Completed after consolidating the residual G049/G051 carryover, trimming the helper surface, adding misuse-detection for iterator/cursor transfers, closing the remaining protected-value validation item, and keeping full-suite verification green. Future concurrency expansion now belongs to 🔗[`G053-SharedRootFineGrainedMultithreading`](../G053-SharedRootFineGrainedMultithreading/index.md).

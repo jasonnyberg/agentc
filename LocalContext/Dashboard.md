@@ -6,11 +6,11 @@
 
 ## Current Focus
 
-**Active Goals**: G052 (runtime boundary hardening), G053 (shared-root fine-grained multithreading design)
+**Active Goals**: G053 (shared-root fine-grained multithreading design)
 **Status**: G044 (JSON module cache) complete. G045 (language enhancement review) complete and refined so both the literal-model note and the remaining proposals explicitly preserve Edict's intentional unified literal model. G046 is now complete and retired from the active list: `op_SPECULATE()` runs nested speculative code in the current VM via checkpoint + nested code-frame execution, with rollback/isolation coverage and docs aligned to the in-VM reversible model. G047 is now complete: the active logic authoring story is canonical object/Listree specs plus imported evaluation, with higher-level sugar expected to live in ordinary Edict wrappers rather than compiler or VM special cases. G048 is complete: the Listree-spec-to-kanren bridge lives in `kanren/logic_evaluator.cpp`, `kanren/runtime_ffi.cpp` exposes both the generalized runtime-handle ABI and direct imported `agentc_logic_eval_ltv(...)`, Edict-side imported-capability coverage exercises that boundary through the normal Cartographer resolve/import path, pure Edict wrapper thunks prove canonical logic specs can be built with ordinary `f(x)` forms and evaluated through imported `libkanren.so`, `VMOP_LOGIC_RUN` has been removed entirely, `libedict` no longer links directly against `kanren`, the main README/demo/reference/fact artifacts now describe the imported-capability model instead of `logic { ... }`, `logic_run !`, or compiler-native `logic(...)`, and older work products/plans now carry explicit historical-status notes where they still discuss superseded logic forms. G049 is now fully complete and retired: its first threading slice is implemented and validated with fresh-VM-per-thread execution through imported pthread-backed callback helpers, explicit protected shared-value cells instead of arbitrary concurrent mutation, simplified helper surface, iterator/cursor transfer rejection at the helper boundary, and a negative test proving direct captured-root mutation does not leak across threads. G050 is now complete: helper/test drift is mitigated by target dependencies, cross-thread slab-handle retains are atomic via `Allocator<T>::tryRetain(...)`, repeated focused thread-runtime runs are green, standalone `./build/edict/edict_tests` passes (`86/86`), and `ctest --test-dir build --output-on-failure` passes (`7/7`) after a full rebuild.
 **Last Updated**: 2026-04-04
 
-**Active Task**: Pursue G052 while opening G053 as a separate architecture/design track. G052 keeps the current conservative threading boundary narrow and well-tested; the latest audit suggests iterator/cursor values are the only current flag-level live-object transfer case requiring explicit rejection. G053 investigates a future shared-root, fine-grained Listree/VM concurrency model without widening today's supported surface prematurely.
+**Active Task**: Begin G053 as the next active runtime track. The conservative threading model is now hardened and complete; the open work is future-facing design investigation into shared-root, fine-grained Listree/VM multithreading without yet broadening the currently supported surface.
 
 **Previous Active Task**: G020 — Early Type Binding (`bindTypes()`) — **COMPLETE** (2026-03-21). `bindTypes()` pass added to `Mapper::materialize()`; resolves `"struct X"` field types into `type_def` CPtr children. `ns` param fully removed from `box()`/`unbox()`/`packStruct()`/`unpackStruct()`, C ABI, edict bootstrap, unit tests, and demo/test scripts. New `BindTypesCreatesTypeDef` test in `mapper_tests.cpp`; `Rect` struct added to `test_input.h`.
 
@@ -57,13 +57,13 @@
 ---
 
 ### Active Goals
-- G052 — Runtime Boundary Hardening — **In Progress**
-- G046 — Continuation-Based Speculation — **Complete / Retired**
-- G049 — Edict VM Multithreading — **Retired into G052**
-- G050 — Thread Spawn/Join Mixed-Run Stability — **Complete**
-- G051 — Cursor-Visited Read-Only Boundary — **Retired (Rejected Direction)**
+- G053 — Shared-Root Fine-Grained Multithreading — **Proposed / Next Active Investigation**
 
 ### Completed Goals (recent)
+- ✅ G052 — Runtime Boundary Hardening — **COMPLETE** (2026-04-04). Consolidated the residual G049/G051 carryover, kept the helper surface narrow, added misuse detection for iterator/cursor-valued transfers, closed the protected-value validation item, and kept full-suite verification green.
+- ✅ G050 — Thread Spawn/Join Mixed-Run Stability — **COMPLETE** (2026-04-03). Mixed-run instability was resolved by wiring helper/test target dependencies and making slab-handle retains atomic; repeated focused runs, standalone `edict_tests`, and full `ctest` all passed.
+- ✅ G049 — Edict VM Multithreading — **COMPLETE / RETIRED INTO G052** (2026-04-04). The first-slice threading model is now fully implemented and validated: fresh VM per thread, protected shared-value cells as the only supported mutable coordination path, simplified helper surface, iterator/cursor transfer rejection, and a negative test proving direct captured-root mutation does not leak across threads.
+- ✅ G046 — Continuation-Based Speculation — **COMPLETE** (2026-03-23, retired 2026-04-04). `op_SPECULATE()` now runs in-VM through nested execution plus rollback, with focused rollback/isolation coverage and full-suite validation.
 - ✅ G048 — Library-Backed Logic Capability — **COMPLETE** (2026-03-23). Detached kanren from VM ownership: evaluator lives in `kanren/`, runtime/import ABIs landed, Edict-side imported-capability coverage is green, pure Edict wrappers prove canonical spec construction, compiler-native logic lowering and `logic { ... }` compiler sugar were removed, `VMOP_LOGIC_RUN` was retired, and the main README/demo/reference docs now reflect the imported-capability model.
 - ✅ G047 — Native Relational Syntax — **COMPLETE** (2026-03-23). The remaining follow-up converged on canonical object/Listree specs plus imported evaluation and ordinary Edict wrappers, with final docs aligned to that post-detachment story.
 - ✅ G045 — Language Enhancement Review — **COMPLETE** (2026-03-22). Reviewed docs/code/tests to infer AgentC's intended role as a human+agent language; produced `LocalContext/Knowledge/WorkProducts/AgentCLanguageEnhancements-2026-03-22.md` with 14 forward-looking language/runtime/tooling proposals.
@@ -76,9 +76,9 @@
 - 🔗[G018 — FFI LTV Passthrough](./Knowledge/Goals/G018-FfiLtvPassthrough/index.md) — All phases A–D + E complete
 
 ### Recommended Next Steps
-1. **Close Residual G049 Validation**: Decide whether the remaining unchecked protected-value validation item is now satisfied under the consolidated boundary model.
-2. **Keep G052 Narrow**: Add more helper-boundary rejection rules only when a concrete live-object misuse case is identified beyond iterator/cursor values.
-3. **Define G053 Carefully**: Investigate shared-root / fine-grained Listree multithreading as a future architecture goal without broadening today's supported threading model.
+1. **Begin G053 Investigation**: Inventory the runtime structures that currently assume single-threaded root ownership and identify the smallest plausible shared-root slice worth pursuing.
+2. **Compare Concurrency Models**: Evaluate at least two candidate fine-grained sharing models against Listree item history, cursor traversal, allocator behavior, and transaction/speculation semantics.
+3. **Preserve the Current Boundary**: Keep the landed conservative threading model unchanged unless and until a real G053 design is accepted.
 
 ### Completed Goals
 - ✅ G017 — Edict Stdin/File Script Mode (2026-03-20) — `runScript(istream&)`; `edict -` stdin and `edict FILE` CLI modes; `#` comments; 74/74 tests pass

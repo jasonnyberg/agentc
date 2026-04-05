@@ -11,3 +11,11 @@
 ## Session 1000-1030
 
 🔗[Session Notes](./1000-1030/index.md) — Marked G049 fully closed, added a negative callback test proving direct captured-root mutation does not leak across threads, and re-verified `ctest`.
+
+## Session 1030-1045
+
+🔗[Session Notes](./1030-1045/index.md) — Closed the remaining completed runtime goals out of the active dashboard list and moved their summaries into recent completed-goal history.
+
+## Session 1045-1100
+
+🔗[Session Notes](./1045-1100/index.md) — Completed G052 after confirming its remaining checklist items were satisfied, moved it into completed-goal history, and shifted the dashboard's forward-looking runtime focus to G053.
