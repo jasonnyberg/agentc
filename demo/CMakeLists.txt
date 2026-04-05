@@ -4,6 +4,9 @@ project(AgentCDemos)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+option(AGENTC_WITH_SDL_DEMO "Build the optional SDL3-backed AgentC demo" OFF)
+set(AGENTC_SDL3_ROOT "" CACHE PATH "Path to an SDL3 install prefix")
+
 include_directories(${CMAKE_SOURCE_DIR})
 
 add_executable(demo_capabilities demo_capabilities.cpp)
@@ -32,3 +35,24 @@ target_link_libraries(demo_arena_metadata_persistence reflect pthread)
 
 add_executable(demo_ffi_libc demo_ffi_libc.cpp)
 target_link_libraries(demo_ffi_libc listree reflect cartographer pthread)
+
+if(AGENTC_WITH_SDL_DEMO)
+  if(NOT AGENTC_SDL3_ROOT AND EXISTS "/home/jwnyberg/SDL3/SDL3-3.4.4/install")
+    set(AGENTC_SDL3_ROOT "/home/jwnyberg/SDL3/SDL3-3.4.4/install")
+  endif()
+
+  if(AGENTC_SDL3_ROOT)
+    list(PREPEND CMAKE_PREFIX_PATH "${AGENTC_SDL3_ROOT}")
+  endif()
+
+  find_package(SDL3 CONFIG REQUIRED)
+
+  add_library(agentc_sdl_triangle_demo SHARED demo_sdl_triangle_bridge.cpp)
+  target_link_libraries(agentc_sdl_triangle_demo PRIVATE SDL3::SDL3)
+
+  if(AGENTC_SDL3_ROOT)
+    set_target_properties(agentc_sdl_triangle_demo PROPERTIES
+      BUILD_RPATH "${AGENTC_SDL3_ROOT}/lib64;${AGENTC_SDL3_ROOT}/lib"
+      INSTALL_RPATH "${AGENTC_SDL3_ROOT}/lib64;${AGENTC_SDL3_ROOT}/lib")
+  endif()
+endif()

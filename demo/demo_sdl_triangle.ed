@@ -1,0 +1,12 @@
+unsafe_extensions_allow ! pop
+
+[./build/demo/libagentc_sdl_triangle_demo.so] [./demo/demo_sdl_triangle_bridge.h] resolver.import ! @sdl
+
+'640 '480 sdl.agentc_sdl_demo_open ! /
+'244 '240 '232 sdl.agentc_sdl_demo_set_clear_color ! /
+'24 '92 '148 sdl.agentc_sdl_demo_set_draw_color ! /
+sdl.agentc_sdl_demo_clear ! /
+'320 '96 '144 '408 '544 '408 sdl.agentc_sdl_demo_draw_triangle ! /
+sdl.agentc_sdl_demo_present ! /
+'1800 sdl.agentc_sdl_demo_delay ! /
+sdl.agentc_sdl_demo_close ! /

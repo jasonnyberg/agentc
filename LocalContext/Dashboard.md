@@ -2,15 +2,17 @@
 
 **Project**: AgentC / J3 (transitional name — also called AgentLang)  
 **Primary Goal**: G001 — Codebase Review: Optimization and Redundancy/Inconsistency Analysis  
-**Last Updated**: 2026-04-04
+**Last Updated**: 2026-04-05
 
 ## Current Focus
 
 **Active Goals**: G053 (shared-root fine-grained multithreading design)
 **Status**: G044 (JSON module cache) complete. G045 (language enhancement review) complete and refined so both the literal-model note and the remaining proposals explicitly preserve Edict's intentional unified literal model. G046 is now complete and retired from the active list: `op_SPECULATE()` runs nested speculative code in the current VM via checkpoint + nested code-frame execution, with rollback/isolation coverage and docs aligned to the in-VM reversible model. G047 is now complete: the active logic authoring story is canonical object/Listree specs plus imported evaluation, with higher-level sugar expected to live in ordinary Edict wrappers rather than compiler or VM special cases. G048 is complete: the Listree-spec-to-kanren bridge lives in `kanren/logic_evaluator.cpp`, `kanren/runtime_ffi.cpp` exposes both the generalized runtime-handle ABI and direct imported `agentc_logic_eval_ltv(...)`, Edict-side imported-capability coverage exercises that boundary through the normal Cartographer resolve/import path, pure Edict wrapper thunks prove canonical logic specs can be built with ordinary `f(x)` forms and evaluated through imported `libkanren.so`, `VMOP_LOGIC_RUN` has been removed entirely, `libedict` no longer links directly against `kanren`, the main README/demo/reference/fact artifacts now describe the imported-capability model instead of `logic { ... }`, `logic_run !`, or compiler-native `logic(...)`, and older work products/plans now carry explicit historical-status notes where they still discuss superseded logic forms. G049 is now fully complete and retired: its first threading slice is implemented and validated with fresh-VM-per-thread execution through imported pthread-backed callback helpers, explicit protected shared-value cells instead of arbitrary concurrent mutation, simplified helper surface, iterator/cursor transfer rejection at the helper boundary, and a negative test proving direct captured-root mutation does not leak across threads. G050 is now complete: helper/test drift is mitigated by target dependencies, cross-thread slab-handle retains are atomic via `Allocator<T>::tryRetain(...)`, repeated focused thread-runtime runs are green, standalone `./build/edict/edict_tests` passes (`86/86`), and `ctest --test-dir build --output-on-failure` passes (`7/7`) after a full rebuild.
-**Last Updated**: 2026-04-04
+**Last Updated**: 2026-04-05
 
 **Active Task**: Begin G053 as the next active runtime track. The conservative threading model is now hardened and complete; the open work is future-facing design investigation into shared-root, fine-grained Listree/VM multithreading without yet broadening the currently supported surface.
+
+**Recently Completed Task**: G054 — SDL Import Demo — **COMPLETE** (2026-04-05). Reviewed AgentC's current semantics/import architecture, concluded that a thin Cartographer-friendly capability layer is the right first graphics story for SDL, built SDL3 locally from `/home/jwnyberg/SDL3/SDL3-3.4.4`, migrated the bridge/demo to SDL3, and kept the demo optional behind `AGENTC_WITH_SDL_DEMO=ON` plus `AGENTC_SDL3_ROOT`.
 
 **Previous Active Task**: G020 — Early Type Binding (`bindTypes()`) — **COMPLETE** (2026-03-21). `bindTypes()` pass added to `Mapper::materialize()`; resolves `"struct X"` field types into `type_def` CPtr children. `ns` param fully removed from `box()`/`unbox()`/`packStruct()`/`unpackStruct()`, C ABI, edict bootstrap, unit tests, and demo/test scripts. New `BindTypesCreatesTypeDef` test in `mapper_tests.cpp`; `Rect` struct added to `test_input.h`.
 
@@ -60,6 +62,7 @@
 - G053 — Shared-Root Fine-Grained Multithreading — **Proposed / Next Active Investigation**
 
 ### Completed Goals (recent)
+- ✅ G054 — SDL Import Demo — **COMPLETE** (2026-04-05). Reviewed Edict/Cartographer semantics around imported native capabilities, added `demo/demo_sdl_triangle_bridge.*` plus `demo/demo_sdl_triangle.ed` / `demo/demo_sdl_triangle.sh`, built and targeted a local SDL3 install from `/home/jwnyberg/SDL3/SDL3-3.4.4`, made the demo opt-in via `AGENTC_WITH_SDL_DEMO=ON` + `AGENTC_SDL3_ROOT`, and documented the bridge-first rationale in `README.md`.
 - ✅ G052 — Runtime Boundary Hardening — **COMPLETE** (2026-04-04). Consolidated the residual G049/G051 carryover, kept the helper surface narrow, added misuse detection for iterator/cursor-valued transfers, closed the protected-value validation item, and kept full-suite verification green.
 - ✅ G050 — Thread Spawn/Join Mixed-Run Stability — **COMPLETE** (2026-04-03). Mixed-run instability was resolved by wiring helper/test target dependencies and making slab-handle retains atomic; repeated focused runs, standalone `edict_tests`, and full `ctest` all passed.
 - ✅ G049 — Edict VM Multithreading — **COMPLETE / RETIRED INTO G052** (2026-04-04). The first-slice threading model is now fully implemented and validated: fresh VM per thread, protected shared-value cells as the only supported mutable coordination path, simplified helper surface, iterator/cursor transfer rejection, and a negative test proving direct captured-root mutation does not leak across threads.
@@ -133,11 +136,12 @@ Complete index of LOCAL knowledge. Load items relevant to your current task.
         - G021 — Remove Module Name from Resolver Import API — **Complete** 🔗[index](./Knowledge/Goals/G021-RemoveModuleName/index.md)
         - G019 — SlabId LTV Type Unification — **Complete** 🔗[index](./Knowledge/Goals/G019-SlabIdLtvUnification/index.md)
         - G045 — Language Enhancement Review — **Complete** 🔗[index](./Knowledge/Goals/G045-LanguageEnhancementReview/index.md)
-        - G046 — Continuation-Based Speculation — **In Progress** 🔗[index](./Knowledge/Goals/G046-ContinuationBasedSpeculation/index.md)
+        - G046 — Continuation-Based Speculation — **Complete** 🔗[index](./Knowledge/Goals/G046-ContinuationBasedSpeculation/index.md)
         - G047 — Native Relational Syntax — **Complete** 🔗[index](./Knowledge/Goals/G047-NativeRelationalSyntax/index.md)
         - G048 — Library-Backed Logic Capability — **Complete** 🔗[index](./Knowledge/Goals/G048-LibraryBackedLogicCapability/index.md)
-        - G049 — Edict VM Multithreading — **In Progress** 🔗[index](./Knowledge/Goals/G049-EdictVMMultithreading/index.md)
-        - G050 — Thread Spawn/Join Mixed-Run Stability — **In Progress** 🔗[index](./Knowledge/Goals/G050-ThreadSpawnJoinMixedRunStability/index.md)
+        - G049 — Edict VM Multithreading — **Complete** 🔗[index](./Knowledge/Goals/G049-EdictVMMultithreading/index.md)
+        - G050 — Thread Spawn/Join Mixed-Run Stability — **Complete** 🔗[index](./Knowledge/Goals/G050-ThreadSpawnJoinMixedRunStability/index.md)
+        - G054 — SDL Import Demo — **Complete** 🔗[index](./Knowledge/Goals/G054-SdlImportDemo/index.md)
 
 ### Facts
 (none yet)
@@ -163,6 +167,8 @@ Complete index of LOCAL knowledge. Load items relevant to your current task.
 ## Timeline Highlights
 
 ### Recent Events (Last 7 Days)
+- 🔗[2026-04-05: Session 1352-1352](./Knowledge/Timeline/2026/04/05/1352-1352/index.md) — Reviewed the imported-capability architecture, added an optional SDL-backed triangle demo bridge plus Edict script, and kept the default build green without SDL2
+- 🔗[2026-04-05: Session 1428-1428](./Knowledge/Timeline/2026/04/05/1428-1428/index.md) — Built SDL3 from the local source checkout, migrated the demo/build wiring to SDL3, and verified the Edict-driven triangle demo runs against the local install
 - 🔗[2026-04-03: Session 1500-1630](./Knowledge/Timeline/2026/04/03/1500-1630/index.md) — Pursued G050 by reproducing the thread-runtime flake, fixing helper/test dependency drift plus atomic slab-handle retain, and restoring repeated focused thread-runtime stability
 - 🔗[2026-03-23: Session 2045-2100](./Knowledge/Timeline/2026/03/23/2045-2100/index.md) — Captured the remaining mixed-run `ImportResolvedThreadRuntimeSpawnsThunkAndJoinsResult` instability into focused goal G050 so the defect can be debugged without losing context
 - 🔗[2026-03-23: Session 1835-1850](./Knowledge/Timeline/2026/03/23/1835-1850/index.md) — Stabilized G049 enough that regression coverage, the full callback suite, and `ctest` are green after raw ABI handle fixes and cleaner callback stack setup
@@ -199,7 +205,7 @@ Complete index of LOCAL knowledge. Load items relevant to your current task.
 - 🔗[2026-03-16: Phase 1 and 2 Complete](./Knowledge/Timeline/2026/03/16/2200-2300/index.md) — Final build fix (`demo_capabilities.cpp`) and project wrap-up; all goals completed or deferred.
 
 ### Current Phase
-Phase 3: Active — G016, G017, G019, G020, G044, G045, G047, and G048 complete. G046 remains in implementation: speculation runs in-VM via nested code-frame execution and checkpoint rollback with deeper rewrite/closure/nested-probe isolation coverage. Active kanren ownership is fully detached from the VM: evaluator ownership lives in `kanren/`, imported capability boundaries exist via both `agentc_runtime_ctx*` / `agentc_value` / `agentc_logic_eval(...)` and direct `agentc_logic_eval_ltv(...)`, Edict-side imported-capability coverage proves those boundaries work through ordinary Cartographer resolve/import, pure Edict wrappers prove canonical logic specs can be built and evaluated through imported `libkanren.so`, compiler-native native-logic lowering and `logic { ... }` compiler sugar have been removed from `EdictCompiler`, `VMOP_LOGIC_RUN` has been retired entirely, the primary README/demo/reference docs now describe the imported-capability model, and older planning, work-product, and timeline artifacts now explicitly frame superseded logic forms as historical. G049 is now in active implementation: imported pthread-backed thread launch, copied-root worker VMs, protected shared-value cells, and corrected raw ABI `ltv` handle handling are green in regression coverage, the full callback suite, and `ctest`, while G050 now tracks the remaining mixed-run stability work around `CallbackTest.ImportResolvedThreadRuntimeSpawnsThunkAndJoinsResult` in a clean standalone full `./build/edict/edict_tests` run. Cartographer CLI pipeline + `agentc.sh` wrappers complete. LMDB persistence goals (G040–G042) ready to proceed.
+Phase 3: Active — the conservative runtime/threading baseline is complete through G052, the current forward-looking runtime investigation is G053, and the imported-capability story is now illustrated by both detached logic (`G048`) and a new optional SDL graphics bridge (`G054`). Cartographer remains the key extension mechanism: libraries are imported into the live runtime as callable words, while capability-oriented bridge layers remain the preferred way to expose complex foreign APIs without adding compiler or VM special cases. LMDB persistence goals (G040–G042) remain ready when runtime focus returns there.
 
 ---
 

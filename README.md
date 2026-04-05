@@ -187,6 +187,21 @@ ctest --test-dir build
 
 All 90 tests across 7 suites pass in under 3 seconds.
 
+**Optional SDL3 demo:**
+
+If SDL3 is installed locally, you can build an Edict-driven graphics demo that imports a thin
+SDL-backed bridge library through the normal Cartographer path:
+
+```bash
+cmake -B build -DAGENTC_WITH_SDL_DEMO=ON -DAGENTC_SDL3_ROOT=/path/to/SDL3/install
+cmake --build build
+./demo/demo_sdl_triangle.sh
+```
+
+The demo intentionally imports a small Cartographer-friendly bridge instead of the entire raw
+SDL API surface, which keeps the first graphics example focused on AgentC's runtime import model
+rather than SDL3 macro and opaque-type complexity.
+
 ---
 
 ## Status
