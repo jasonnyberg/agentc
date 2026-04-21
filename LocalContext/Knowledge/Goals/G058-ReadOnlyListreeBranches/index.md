@@ -1,6 +1,6 @@
 # G058 — Read-Only Listree Branches for Cross-VM Sharing
 
-## Status: SLICES A+B IMPLEMENTED; SLICE C DEFERRED
+## Status: SLICES A+B+C IMPLEMENTED; D+E+F REMAINING
 
 ## Parent Context
 
@@ -187,3 +187,34 @@ Total: modest, self-contained, reversible if the approach turns out to have unfo
 2. Update `normalize_thread_runtime_defs` (or add a post-normalization freeze step) in the threading tests.
 3. Re-enable Slice D (spawn/thunk O(1) share) once Slice C has a safe activation point.
 4. Add Slice E tests and Slice F documentation.
+
+## Slice C Implementation Notes (2026-04-20)
+
+### Approach: Explicit `freeze !` Word
+
+Instead of auto-freezing inside `pushFrozenDefinitions` (which breaks post-import normalization), Slice C adds an explicit `freeze !` Edict word. The correct workflow is:
+
+```
+resolver.import_resolved ! @defs  ; import
+defs normalize_my_fields !        ; normalize (user code, optional)  
+defs freeze !                     ; explicitly freeze before sharing
+```
+
+### What Was Added
+
+1. **`VMOP_FREEZE` opcode** in `edict_types.h` — pops top of data stack, calls `setReadOnly(true)` (recursive), pushes it back.
+2. **`op_FREEZE()` implementation** in `edict_vm.cpp` — idempotent (no-op if already frozen).
+3. **`freeze` builtin word** registered in the global core builtins and the bootstrap import capsule — available everywhere without imports.
+4. **`normalize_thread_runtime_defs` updated** to call `defs->setReadOnly(true)` at the end — demonstrates the correct normalize-then-freeze pattern and makes all threading tests freeze their library defs before threading.
+5. **8 listree-level unit tests** in `listree/listree_tests.cpp` covering: mutation guards (find/remove/addNamedItem), recursive freeze, binary node exemption, copy O(1) shortcut, mutable copy allocates new, one-way flag invariant.
+6. **4 Edict-level tests** in `edict/tests/vm_execution_test.cpp` covering: freeze makes value read-only, frozen value is still readable, idempotency, copy returns same slab.
+
+### Why Not Auto-Freeze in `pushFrozenDefinitions`
+
+The previous attempt auto-froze at push time. This broke `normalize_thread_runtime_defs` (and any user code that modifies defs after import). The `LtvUnaryOp` type normalization failed silently, leaving stale type metadata. The cartographer then used the 4-byte `ltv` boxing path instead of the correct 8-byte `pointer` path, storing a slab ID in `handle->entry`, causing a segfault when the thread called that slab ID as a function pointer.
+
+### Remaining Work (Slices D, E, F)
+
+- **Slice D**: Thread spawn / closure thunk optimization — when the captured root scope IS read-only (e.g. the user explicitly froze it before spawning), skip `root->copy()` and use the shared CPtr directly.
+- **Slice E**: Additional cross-VM sharing tests — verify two VMs share the same frozen slab node.
+- **Slice F**: Documentation update in `README.md`.

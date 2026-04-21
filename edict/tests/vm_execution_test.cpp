@@ -100,3 +100,64 @@ TEST(EdictVM, NestedEvalUsesCodeStack) {
     auto top = vm.getStackTop();
     EXPECT_EQ(valueToString(top), "hello");
 }
+
+// ======================================================================
+// G058 — freeze builtin tests
+// ======================================================================
+
+TEST(FreezeBuiltin, FreezeMakesValueReadOnly) {
+    EdictVM vm;
+    EdictCompiler compiler;
+    // Push a dict, then freeze it.  The frozen value is still on the stack.
+    int state = vm.execute(compiler.compile("{\"a\": \"1\"} freeze !"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+
+    auto top = vm.getStackTop();
+    ASSERT_TRUE(bool(top));
+    EXPECT_TRUE(top->isReadOnly());
+}
+
+TEST(FreezeBuiltin, FrozenValueCanStillBeRead) {
+    EdictVM vm;
+    EdictCompiler compiler;
+    int state = vm.execute(compiler.compile("{\"a\": \"hello\"} freeze ! @frozen pop frozen"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+
+    auto top = vm.getStackTop();
+    ASSERT_TRUE(bool(top));
+    EXPECT_TRUE(top->isReadOnly());
+    auto item = top->find("a");
+    ASSERT_TRUE(bool(item));
+    auto val = item->getValue(false, false);
+    ASSERT_TRUE(bool(val));
+    EXPECT_EQ(std::string(static_cast<char*>(val->getData()), val->getLength()), "hello");
+}
+
+TEST(FreezeBuiltin, FreezeIsIdempotentOnAlreadyFrozen) {
+    EdictVM vm;
+    EdictCompiler compiler;
+    // Double-freeze should not crash or produce errors.
+    int state = vm.execute(compiler.compile("{} freeze ! freeze ! @x pop x"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+
+    auto top = vm.getStackTop();
+    ASSERT_TRUE(bool(top));
+    EXPECT_TRUE(top->isReadOnly());
+}
+
+TEST(FreezeBuiltin, CopyOfFrozenValueReturnsSameSlab) {
+    EdictVM vm;
+    EdictCompiler compiler;
+    // After freezing, the value is on the stack.  Pop it, check that
+    // copy() returns the same node (O(1) share path).
+    int state = vm.execute(compiler.compile("{\"k\": \"v\"} freeze !"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+
+    auto frozen = vm.popData();
+    ASSERT_TRUE(bool(frozen));
+    ASSERT_TRUE(frozen->isReadOnly());
+
+    SlabId original = frozen.getSlabId();
+    CPtr<agentc::ListreeValue> copied = frozen->copy();
+    EXPECT_EQ(copied.getSlabId(), original);
+}

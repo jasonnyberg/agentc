@@ -310,6 +310,10 @@ static void normalize_thread_runtime_defs(CPtr<agentc::ListreeValue> defs) {
     set_type_field(sharedWriteCell, "type", "pointer");
     set_type_field(sharedWriteReplacement, "type", "ltv");
     replace_children_in_order(sharedWrite, {{"cell", sharedWriteCell}, {"replacement", sharedWriteReplacement}});
+
+    // Freeze the defs tree so all threads can share it without copies.
+    // This must be called AFTER all normalization is complete.
+    if (defs && !defs->isReadOnly()) defs->setReadOnly(true);
 }
 
 static CPtr<agentc::ListreeValue> make_apply_op_definition() {

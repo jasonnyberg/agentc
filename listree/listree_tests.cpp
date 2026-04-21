@@ -146,3 +146,121 @@ int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }
+
+// ======================================================================
+// G058 — ReadOnly branch tests
+// ======================================================================
+
+TEST(ReadOnlyTest, MutationGuardsFindInsert) {
+    CPtr<ListreeValue> root = createNullValue();
+    addNamedItem(root, "a", createStringValue("1"));
+    root->setReadOnly(false);           // non-recursive freeze
+
+    // Reads still work
+    EXPECT_TRUE(bool(root->find("a")));
+
+    // Structural insert is refused
+    CPtr<ListreeItem> item = root->find("b", true);
+    EXPECT_FALSE(bool(item));
+
+    // Existing content unchanged
+    auto existing = root->find("a");
+    ASSERT_TRUE(bool(existing));
+    auto val = existing->getValue(false, false);
+    ASSERT_TRUE(bool(val));
+    EXPECT_EQ(std::string(static_cast<char*>(val->getData()), val->getLength()), "1");
+}
+
+TEST(ReadOnlyTest, MutationGuardsRemove) {
+    CPtr<ListreeValue> root = createNullValue();
+    addNamedItem(root, "a", createStringValue("1"));
+    root->setReadOnly(false);
+
+    // Remove is refused
+    CPtr<ListreeItem> removed = root->remove("a");
+    EXPECT_FALSE(bool(removed));
+
+    // Item still present
+    EXPECT_TRUE(bool(root->find("a")));
+}
+
+TEST(ReadOnlyTest, MutationGuardsAddNamedItem) {
+    CPtr<ListreeValue> root = createNullValue();
+    root->setReadOnly(false);
+
+    addNamedItem(root, "x", createStringValue("v"));
+    // addNamedItem should silently refuse; "x" should not appear
+    EXPECT_FALSE(bool(root->find("x")));
+}
+
+TEST(ReadOnlyTest, RecursiveFreezeMarksDescendants) {
+    CPtr<ListreeValue> parent = createNullValue();
+    CPtr<ListreeValue> child  = createNullValue();
+    CPtr<ListreeValue> grandchild = createNullValue();
+
+    addNamedItem(grandchild, "g", createStringValue("deep"));
+    addNamedItem(child, "child", grandchild);
+    addNamedItem(parent, "parent", child);
+
+    parent->setReadOnly(true);      // recursive
+
+    EXPECT_TRUE(parent->isReadOnly());
+    EXPECT_TRUE(child->isReadOnly());
+    EXPECT_TRUE(grandchild->isReadOnly());
+}
+
+TEST(ReadOnlyTest, RecursiveFreezeSKipsBinaryNodes) {
+    // Binary nodes (bytecode/thunk frames) must NOT be frozen — the VM
+    // writes .ip into them.
+    const char data[] = {0x01, 0x02, 0x03};
+    CPtr<ListreeValue> bin = createBinaryValue(data, sizeof(data));
+
+    CPtr<ListreeValue> parent = createNullValue();
+    addNamedItem(parent, "code", bin);
+
+    parent->setReadOnly(true);      // recursive
+
+    EXPECT_TRUE(parent->isReadOnly());
+    // Binary child must remain mutable
+    EXPECT_FALSE(bin->isReadOnly());
+}
+
+TEST(ReadOnlyTest, CopyOfReadOnlyNodeReturnsSameSlabId) {
+    CPtr<ListreeValue> node = createNullValue();
+    addNamedItem(node, "k", createStringValue("v"));
+    node->setReadOnly(false);       // freeze just the root node
+
+    SlabId original = node.getSlabId();
+    CPtr<ListreeValue> copied = node->copy();
+
+    // O(1) short-circuit: same slab slot returned
+    EXPECT_EQ(copied.getSlabId(), original);
+}
+
+TEST(ReadOnlyTest, CopyOfMutableNodeAllocatesNew) {
+    CPtr<ListreeValue> node = createNullValue();
+    addNamedItem(node, "k", createStringValue("v"));
+    // NOT frozen
+
+    SlabId original = node.getSlabId();
+    CPtr<ListreeValue> copied = node->copy();
+
+    // Deep copy: different slab slot
+    EXPECT_NE(copied.getSlabId(), original);
+    // But content is the same
+    auto item = copied->find("k");
+    ASSERT_TRUE(bool(item));
+    auto val = item->getValue(false, false);
+    ASSERT_TRUE(bool(val));
+    EXPECT_EQ(std::string(static_cast<char*>(val->getData()), val->getLength()), "v");
+}
+
+TEST(ReadOnlyTest, ReadOnlyFlagIsOneWay) {
+    CPtr<ListreeValue> node = createNullValue();
+    node->setReadOnly(false);
+    EXPECT_TRUE(node->isReadOnly());
+
+    // clearFlags must not clear ReadOnly
+    node->clearFlags(LtvFlags::ReadOnly);
+    EXPECT_TRUE(node->isReadOnly());
+}

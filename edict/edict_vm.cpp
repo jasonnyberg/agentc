@@ -2281,6 +2281,16 @@ void EdictVM::op_PRINT() {
     if (v) std::cout << formatValueForDisplay(v) << std::endl;
 }
 
+void EdictVM::op_FREEZE() {
+    // Pop top of data stack, freeze it (read-only, recursive), push it back.
+    // After freeze the node and all non-Binary descendants are permanently immutable
+    // and safe to share across VMs/threads without synchronisation.
+    // Binary nodes (bytecode/thunk frames) are intentionally skipped by setReadOnly.
+    auto v = popData();
+    if (v && !v->isReadOnly()) v->setReadOnly(true);
+    pushData(v);
+}
+
 void EdictVM::op_HEAP_UTILIZATION() {
     using agentc::ListreeValue;
     using agentc::ListreeItem;
@@ -2378,6 +2388,7 @@ int EdictVM::runCodeLoop(size_t stopCodeDepth, bool markCompleteOnDrain) {
         &&op_UNSAFE_EXTENSIONS_STATUS, &&op_PRINT, &&op_HEAP_UTILIZATION,
         &&op_CURSOR_DOWN, &&op_CURSOR_UP, &&op_CURSOR_NEXT,
         &&op_CURSOR_PREV, &&op_CURSOR_GET, &&op_CURSOR_SET,
+        &&op_FREEZE,
     };
     // Verify dispatch table has exactly one entry per opcode. If this fires,
     // an opcode was added to VMOpcode without a corresponding dispatch entry.
@@ -2550,6 +2561,7 @@ op_CURSOR_NEXT: op_CURSOR_NEXT(); goto op_epilogue;
 op_CURSOR_PREV: op_CURSOR_PREV(); goto op_epilogue;
 op_CURSOR_GET: op_CURSOR_GET(); goto op_epilogue;
 op_CURSOR_SET: op_CURSOR_SET(); goto op_epilogue;
+op_FREEZE: op_FREEZE(); goto op_epilogue;
 op_INVALID: setError("Op " + std::to_string(op)); goto op_epilogue;
 op_epilogue:
         if (allow_rewrite_epilogue && !(state & (VM_ERROR | VM_YIELD | VM_SCANNING))) applyRewriteLoop();
@@ -2793,6 +2805,7 @@ int EdictVM::executeNested(const BytecodeBuffer& code) {
         addBuiltinThunk(dictVal, "unsafe_extensions_block", VMOP_UNSAFE_EXTENSIONS_BLOCK);
         addBuiltinThunk(dictVal, "unsafe_extensions_status", VMOP_UNSAFE_EXTENSIONS_STATUS);
         addBuiltinThunk(dictVal, "HeapUtilization", VMOP_HEAP_UTILIZATION);
+        addBuiltinThunk(dictVal, "freeze", VMOP_FREEZE);
     }
 
     void EdictVM::installBootstrapImportCapsule() {
@@ -2815,6 +2828,7 @@ int EdictVM::executeNested(const BytecodeBuffer& code) {
         addBuiltinThunk(capsule, "resolve_json", VMOP_RESOLVE_JSON);
         addBuiltinThunk(capsule, "import_resolved_json", VMOP_IMPORT_RESOLVED_JSON);
         addBuiltinThunk(capsule, "request_id", VMOP_REQUEST_ID);
+        addBuiltinThunk(capsule, "freeze", VMOP_FREEZE);
         agentc::addNamedItem(dictVal, "__bootstrap_import", capsule);
     }
 

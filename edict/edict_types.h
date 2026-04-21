@@ -118,6 +118,7 @@ enum VMOpcode {
     VMOP_CURSOR_PREV,  // Move cursor to previous sibling
     VMOP_CURSOR_GET,   // Push current cursor node value onto stack
     VMOP_CURSOR_SET,   // Pop stack top and set as current cursor node value
+    VMOP_FREEZE,        // Pop data stack top, mark it read-only (recursive), push it back
     
     // Number of opcodes (must be last)
     VMOP_COUNT
