@@ -112,6 +112,31 @@ std::ostream& operator<<(std::ostream& os, const ListreeItem& lti) { os << "LTI(
 // ListreeValue Implementation
 //////////////////////////////////////////////////
 
+void ListreeValue::setReadOnly(bool recursive) {
+    // Never freeze bytecode/thunk nodes.  The VM stores the instruction pointer
+    // directly inside these nodes via find(".ip", insert=true) (writeFrameIp).
+    // Freezing them would refuse that write and break all compiled thunk dispatch.
+    if ((flags & LtvFlags::Binary) != LtvFlags::None) return;
+    flags = flags | LtvFlags::ReadOnly;
+    if (!recursive) return;
+    // Walk all reachable ListreeValue descendants breadth-first and mark each
+    // read-only, skipping Binary (thunk/bytecode) nodes for the same reason.
+    try {
+        SlabId sid = Allocator<ListreeValue>::getAllocator().getSlabId(this);
+        CPtr<ListreeValue> self(sid);
+        TraversalOptions opts;
+        opts.from = self;
+        opts.order = TraversalOrder::BreadthFirst;
+        traverse([](CPtr<ListreeValue> node) {
+            if (node && (node->getFlags() & LtvFlags::Binary) == LtvFlags::None)
+                node->flags = node->flags | LtvFlags::ReadOnly;
+        }, opts, std::make_shared<TraversalContext>());
+    } catch (...) {
+        // If getSlabId fails the flag on this node is already set above;
+        // child marking is best-effort.
+    }
+}
+
 void ListreeValue::initContainer() {
     if (isListMode()) {
         if (!list) {
@@ -177,6 +202,11 @@ ListreeValue::~ListreeValue() {
 }
 CPtr<ListreeItem> ListreeValue::find(const std::string& name, bool insert) {
     if (isListMode()) return nullptr;
+    // Read-only nodes refuse structural insertions.
+    if (insert && isReadOnly()) {
+        LISTREE_DEBUG_WARNING() << "find: write refused on read-only ListreeValue";
+        return nullptr;
+    }
     if (!tree) {
         if (insert) {
             SlabId sid = Allocator<AATree<ListreeItem>>::getAllocator().allocate();
@@ -196,6 +226,10 @@ CPtr<ListreeItem> ListreeValue::find(const std::string& name, bool insert) {
 }
 CPtr<ListreeItem> ListreeValue::remove(const std::string& name) {
     if (isListMode() || !tree) return nullptr;
+    if (isReadOnly()) {
+        LISTREE_DEBUG_WARNING() << "remove: write refused on read-only ListreeValue";
+        return nullptr;
+    }
     CPtr<AATree<ListreeItem>> node = tree->find(name);
     if (node) {
         CPtr<ListreeItem> item = node->data;
@@ -213,6 +247,10 @@ CPtr<ListreeItem> ListreeValue::remove(const std::string& name) {
 CPtr<ListreeValueRef> ListreeValue::put(CPtr<ListreeValue> value, bool atEnd) {
     initContainer();
     if (!isListMode() || !list) return nullptr;
+    if (isReadOnly()) {
+        LISTREE_DEBUG_WARNING() << "put: write refused on read-only ListreeValue";
+        return nullptr;
+    }
     CPtr<ListreeValueRef> ref;
     { SlabId refSid = Allocator<ListreeValueRef>::getAllocator().allocate(value); ref = CPtr<ListreeValueRef>(refSid); }
     CPtr<CLL<ListreeValueRef>> node;
@@ -223,6 +261,11 @@ CPtr<ListreeValueRef> ListreeValue::put(CPtr<ListreeValue> value, bool atEnd) {
 }
 CPtr<ListreeValue> ListreeValue::get(bool pop, bool fromEnd) {
     if (!isListMode() || !list) return nullptr;
+    if (pop && isReadOnly()) {
+        // Degrade to a non-destructive peek rather than corrupting a shared branch.
+        LISTREE_DEBUG_WARNING() << "get(pop=true): degraded to peek on read-only ListreeValue";
+        pop = false;
+    }
     CPtr<CLL<ListreeValueRef>> current = &list->get(fromEnd);
     if (!current || !current->data) return nullptr;
     CPtr<ListreeValue> value = current->data->getValue();
@@ -231,6 +274,18 @@ CPtr<ListreeValue> ListreeValue::get(bool pop, bool fromEnd) {
 }
 CPtr<ListreeValue> ListreeValue::duplicate() const { return copy(-1); }
 CPtr<ListreeValue> ListreeValue::copy(int maxDepth) const {
+    // Short-circuit: a read-only node is permanently immutable and safe to
+    // share between VMs/threads.  Return a CPtr retain (O(1)) rather than
+    // allocating a deep copy of the subtree.
+    if (isReadOnly()) {
+        try {
+            SlabId sid = Allocator<ListreeValue>::getAllocator().getSlabId(this);
+            return CPtr<ListreeValue>(sid);
+        } catch (...) {
+            // Slab ID lookup failed (e.g. node not slab-resident); fall through
+            // to normal copy.
+        }
+    }
     CPtr<ListreeValue> res;
     {
         // Normalize flags for copy: strip SlabBlob/Immediate/Free and use Duplicate
@@ -350,7 +405,7 @@ void resetTransientListreeValue(ListreeValue& value) {
     value.tree = nullptr;
     value.payload.ext.ptr = nullptr;
     value.payload.ext.length = 0;
-    value.pinnedCount = 0;
+    value.pinnedCount.store(0, std::memory_order_relaxed);
     value.flags = LtvFlags::Null;
 }
 
@@ -373,12 +428,20 @@ CPtr<ListreeValue> createCursorValue(Cursor* cursor) {
 
 void addNamedItem(CPtr<ListreeValue>& ltv, const std::string& name, CPtr<ListreeValue> value) {
     if (!ltv || ltv->isListMode()) return;
+    if (ltv->isReadOnly()) {
+        LISTREE_DEBUG_WARNING() << "addNamedItem: write refused on read-only ListreeValue";
+        return;
+    }
     CPtr<ListreeItem> item = ltv->find(name, true);
     if (item) item->addValue(value, false);
 }
 
 void addListItem(CPtr<ListreeValue>& ltv, CPtr<ListreeValue> value) {
     if (!ltv || !ltv->isListMode()) return;
+    if (ltv->isReadOnly()) {
+        LISTREE_DEBUG_WARNING() << "addListItem: write refused on read-only ListreeValue";
+        return;
+    }
     ltv->put(value);
 }
 

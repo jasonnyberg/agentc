@@ -156,6 +156,7 @@ satisfying a set of constraints.
 core/          Arena allocator, Cursor, CPtr, container types (CLL, AATree)
 edict/         Edict VM, compiler, REPL, tests
 cartographer/  Header parser, FFI mapper, resolver, pipeline CLI utilities
+extensions/    Importable helper libraries / early stdlib modules
 kanren/        Mini-Kanren engine
 listree/       Listree node types and tests
 tests/         Unit tests for core/ components
@@ -201,6 +202,15 @@ cmake --build build
 The demo intentionally imports a small Cartographer-friendly bridge instead of the entire raw
 SDL API surface, which keeps the first graphics example focused on AgentC's runtime import model
 rather than SDL3 macro and opaque-type complexity.
+
+There is also a more direct proof-of-concept path in `demo/demo_sdl_triangle_native.sh` that
+imports real SDL3 symbols through a tiny handwritten header. That script now also loads the
+generic `extensions/libagentc_extensions.so` helper library, which demonstrates the intended
+multi-library model: use small reusable stdlib-like helpers for strings, memory, and binary
+packing, then call the foreign API directly whenever the raw surface is otherwise workable. The
+current helper set now covers scalar packing, array/struct-style writes, pointer slicing, and
+typed binary views, which is enough to build `SDL_RenderGeometryRaw(...)` inputs without any
+SDL-specific bridge code.
 
 ---
 

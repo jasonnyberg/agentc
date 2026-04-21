@@ -713,6 +713,17 @@ void EdictVM::resetRuntime() {
     instruction_ptr = saved_ip;
 }
 
+// Push a library-definition tree onto the data stack.
+// NOTE (G058): Automatic read-only freeze is intentionally disabled here —
+// callers commonly mutate the defs immediately after import
+// (e.g. normalize_thread_runtime_defs in tests).  When the caller is done
+// mutating, they may call defs->setReadOnly(true) themselves before sharing
+// the tree across threads.
+static void pushFrozenDefinitions(agentc::edict::EdictVM* vm,
+                                   CPtr<agentc::ListreeValue> defs) {
+    vm->pushData(defs);
+}
+
 void EdictVM::op_MAP() {
     auto v = popData();
     std::string path;
@@ -792,7 +803,7 @@ void EdictVM::op_IMPORT() {
     if (cacheValid) {
         auto result = cartographer->importResolverJson(cachedJson, cachePath.string());
         if (result.ok) {
-            pushData(result.definitions);
+            pushFrozenDefinitions(this, result.definitions);
             return;
         }
         // If import fails for some reason (e.g. format mismatch), fall through to regenerate
@@ -833,7 +844,7 @@ void EdictVM::op_IMPORT() {
         return;
     }
 
-    pushData(result.definitions);
+    pushFrozenDefinitions(this, result.definitions);
 }
 
 void EdictVM::op_IMPORT_RESOLVED() {
@@ -852,7 +863,7 @@ void EdictVM::op_IMPORT_RESOLVED() {
         return;
     }
 
-    pushData(result.definitions);
+    pushFrozenDefinitions(this, result.definitions);
 }
 
 void EdictVM::op_IMPORT_DEFERRED() {
@@ -877,7 +888,7 @@ void EdictVM::op_IMPORT_DEFERRED() {
         return;
     }
 
-    pushData(result.definitions);
+    pushFrozenDefinitions(this, result.definitions);
 }
 
 void EdictVM::op_IMPORT_COLLECT() {
@@ -894,7 +905,7 @@ void EdictVM::op_IMPORT_COLLECT() {
         return;
     }
 
-    pushData(result.definitions);
+    pushFrozenDefinitions(this, result.definitions);
 }
 
 void EdictVM::op_IMPORT_STATUS() {
@@ -911,7 +922,7 @@ void EdictVM::op_IMPORT_STATUS() {
         return;
     }
 
-    pushData(result.definitions);
+    pushFrozenDefinitions(this, result.definitions);
 }
 
 void EdictVM::op_PARSE_JSON() {
@@ -993,7 +1004,7 @@ void EdictVM::op_IMPORT_RESOLVED_JSON() {
         return;
     }
 
-    pushData(result.definitions);
+    pushFrozenDefinitions(this, result.definitions);
 }
 
 void EdictVM::op_READ_TEXT() {

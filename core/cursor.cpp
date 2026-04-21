@@ -391,7 +391,14 @@ std::string Cursor::getPath() const {
 bool Cursor::isValid() const { return bool(current); }
 bool Cursor::isListMode() const { return current && current->isListMode(); }
 bool Cursor::assign(CPtr<ListreeValue> value) { 
-    if (!current || !currentItem) return false; 
+    if (!current || !currentItem) return false;
+    // Refuse writes to read-only branches.  Because setReadOnly(recursive=true)
+    // marks all descendants, current->isReadOnly() is true for any value inside
+    // a frozen tree.
+    if (current->isReadOnly()) {
+        LOG_CURSOR("assign: write refused on read-only node");
+        return false;
+    }
     
     // Check if the current head value is an empty placeholder (Null flag and no data/children)
     // This happens when resolve(..., true) creates intermediate nodes.

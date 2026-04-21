@@ -72,9 +72,11 @@ add_subdirectory(demo)
 # Add Cartographer (Header Mapping)
 add_subdirectory(cartographer)
 
+# Add importable helper libraries / early stdlib extensions
+add_subdirectory(extensions)
+
 # Add Edict interpreter
 add_subdirectory(edict)
 
 # Add Mini-Kanren
 add_subdirectory(kanren)
-

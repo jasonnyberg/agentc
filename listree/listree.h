@@ -23,6 +23,7 @@
 #include "../core/container.h"
 #include "debug_helpers.h"
 
+#include <atomic>
 #include <memory>
 #include <unordered_set>
 
@@ -111,6 +112,15 @@ enum class LtvFlags {
     // list rather than the AA-tree.  isListMode() tests this flag.
     List       = 0x00080000,
 
+    // ReadOnly: the node (and, when set via setReadOnly(recursive=true), all
+    // reachable descendants) is permanently immutable.  Mutation attempts via
+    // find(insert=true), put(), remove(), and get(pop=true) are silently
+    // refused.  Once set, this flag cannot be cleared.  Read access from
+    // multiple threads is safe after the flag is set — no locks are needed
+    // because no writer can run concurrently.  The flag is stripped during
+    // arena persistence (restored nodes start mutable).
+    ReadOnly   = 0x00200000,
+
     // Free: convenience alias for (Duplicate | Own).  A node carrying Free
     // owns its data buffer and the destructor must free it.  Used as a
     // quick test: "does this node own its memory?"
@@ -188,7 +198,7 @@ private:
         ExtPayload ext;
         SsoPayload sso;
     } payload;
-    int pinnedCount;
+    std::atomic<int> pinnedCount;
     void initContainer();
 public:
     ListreeValue();
@@ -225,9 +235,13 @@ public:
     ListreeValue(void* data, size_t length, LtvFlags flags);
     ListreeValue(const std::string& str, LtvFlags flags = LtvFlags::Duplicate);
     ~ListreeValue();
-    void pin() { pinnedCount++; }
-    void unpin() { if (pinnedCount > 0) pinnedCount--; }
-    int getPinnedCount() const { return pinnedCount; }
+    void pin() { pinnedCount.fetch_add(1, std::memory_order_relaxed); }
+    void unpin() { if (pinnedCount.load(std::memory_order_relaxed) > 0) pinnedCount.fetch_sub(1, std::memory_order_relaxed); }
+    int getPinnedCount() const { return pinnedCount.load(std::memory_order_relaxed); }
+    bool isReadOnly() const { return (flags & LtvFlags::ReadOnly) != LtvFlags::None; }
+    // Mark this node (and optionally all descendants) permanently immutable.
+    // After this call no writer may mutate the branch; the flag cannot be cleared.
+    void setReadOnly(bool recursive = false);
     bool isListMode() const { return (flags & LtvFlags::List) != LtvFlags::None; }
     bool isEmpty() const { return (flags & LtvFlags::Null) != LtvFlags::None || getLength() == 0; }
     CPtr<ListreeItem> find(const std::string& name, bool insert = false);
@@ -253,7 +267,11 @@ public:
     }
     LtvFlags getFlags() const { return flags; }
     void setFlags(LtvFlags f) { flags = flags | f; }
-    void clearFlags(LtvFlags f) { flags = static_cast<LtvFlags>(static_cast<int>(flags) & ~static_cast<int>(f)); }
+    // ReadOnly is a one-way flag; it cannot be cleared once set.
+    void clearFlags(LtvFlags f) {
+        f = f & ~LtvFlags::ReadOnly;
+        flags = static_cast<LtvFlags>(static_cast<int>(flags) & ~static_cast<int>(f));
+    }
     CPtr<ListreeValue> duplicate() const;
     CPtr<ListreeValue> copy(int maxDepth = -1) const;
     void forEachList(const std::function<void(CPtr<ListreeValueRef>&)>& callback, bool forward = true);
@@ -367,15 +385,19 @@ struct ArenaPersistenceTraits<agentc::ListreeValue, void> {
         arena_persistence_detail::appendSlabId(payload, value.tree.getSlabId());
         // Normalize flags for serialization: strip transient storage flags; the restore
         // path will re-route through the normal constructor (SSO/BlobAllocator) using Duplicate.
+        // ReadOnly is also stripped — restored nodes start mutable; the caller re-freezes if needed.
         auto exportFlags = static_cast<uint32_t>(value.flags) &
             ~(static_cast<uint32_t>(agentc::LtvFlags::SlabBlob) |
               static_cast<uint32_t>(agentc::LtvFlags::Immediate) |
-              static_cast<uint32_t>(agentc::LtvFlags::Free));
+              static_cast<uint32_t>(agentc::LtvFlags::Free) |
+              static_cast<uint32_t>(agentc::LtvFlags::ReadOnly));
         exportFlags |= static_cast<uint32_t>(agentc::LtvFlags::Duplicate);
         arena_persistence_detail::appendPod(payload, exportFlags);
         size_t dlen = value.getLength();
         arena_persistence_detail::appendPod(payload, dlen);
-        arena_persistence_detail::appendPod(payload, value.pinnedCount);
+        // pinnedCount is std::atomic<int>; extract the raw value before serializing.
+        int pc = value.pinnedCount.load(std::memory_order_relaxed);
+        arena_persistence_detail::appendPod(payload, pc);
         arena_persistence_detail::appendBytes(payload, value.getData(), dlen);
         return true;
     }
