@@ -361,3 +361,153 @@ TEST(CartographerServiceTest, ImportResolvedFileRejectsStaleArtifactFingerprint)
     EXPECT_EQ(result.status, "import_failed");
     EXPECT_EQ(result.error, "Resolved schema is stale for library: " + libraryPath.string());
 }
+
+TEST(CartographerProtocolTest, RequestRoundTripsPathsWithSpacesAndSpecialChars) {
+    ImportRequest request;
+    request.libraryPath = "/tmp/my lib with spaces/lib\"quoted\".so";
+    request.headerPath = "/tmp/my lib with spaces/header with\\backslash.h";
+    request.executionMode = ImportExecutionMode::Sync;
+    request.requestId = "id-with-\"quotes\"-and-\\slashes";
+
+    const std::string encoded = protocol::encodeImportRequest(request);
+    ImportRequest decoded;
+    std::string error;
+    ASSERT_TRUE(protocol::decodeImportRequest(encoded, decoded, error)) << error;
+    EXPECT_EQ(decoded.libraryPath, request.libraryPath);
+    EXPECT_EQ(decoded.headerPath, request.headerPath);
+    EXPECT_EQ(decoded.requestId, request.requestId);
+    EXPECT_EQ(decoded.executionMode, ImportExecutionMode::Sync);
+}
+
+TEST(CartographerProtocolTest, StatusRoundTripsEmptyErrorAndSchemaFields) {
+    ImportRequest request;
+    request.libraryPath = "/lib/libfoo.so";
+    request.headerPath = "/include/foo.h";
+    request.executionMode = ImportExecutionMode::Sync;
+    request.requestId = "req-empty-error";
+
+    ImportResult result;
+    result.executionMode = ImportExecutionMode::Sync;
+    result.requestId = request.requestId;
+    result.status = "ready";
+    result.symbolCount = 0;
+    result.error = "";  // empty error
+
+    const std::string encoded = protocol::encodeImportStatus(request, result, nullptr);
+    ImportRequest decodedRequest;
+    ImportResult decodedResult;
+    Mapper::ParseDescription decodedDescription;
+    std::string error;
+    ASSERT_TRUE(protocol::decodeImportStatus(encoded, decodedRequest, decodedResult, &decodedDescription, error)) << error;
+    EXPECT_EQ(decodedResult.error, "");
+    EXPECT_EQ(decodedResult.symbolCount, 0u);
+    EXPECT_EQ(decodedResult.status, "ready");
+    EXPECT_EQ(decodedDescription.symbolCount(), 0u);
+}
+
+TEST(CartographerProtocolTest, ParseDescriptionRoundTripsFullSymbolTree) {
+    Mapper::ParseDescription description;
+
+    // A struct with two fields
+    Mapper::NodeDescription structNode;
+    structNode.key = "Point";
+    structNode.kind = "Struct";
+    structNode.name = "Point";
+    structNode.size = 8;
+    structNode.offset = std::nullopt;
+
+    Mapper::NodeDescription fieldX;
+    fieldX.key = "x";
+    fieldX.kind = "Field";
+    fieldX.type = "int";
+    fieldX.size = 4;
+    fieldX.offset = 0;
+    structNode.appendChild(fieldX);
+
+    Mapper::NodeDescription fieldY;
+    fieldY.key = "y";
+    fieldY.kind = "Field";
+    fieldY.type = "int";
+    fieldY.size = 4;
+    fieldY.offset = 4;
+    structNode.appendChild(fieldY);
+
+    // A function with a pointer param and a return type
+    Mapper::NodeDescription funcNode;
+    funcNode.key = "make_point";
+    funcNode.kind = "Function";
+    funcNode.name = "make_point";
+    funcNode.returnType = "Point*";
+
+    Mapper::NodeDescription param;
+    param.key = "p0";
+    param.kind = "Parameter";
+    param.type = "int";
+    param.name = "x_coord";
+    funcNode.appendChild(param);
+
+    description.appendSymbol(structNode);
+    description.appendSymbol(funcNode);
+
+    const std::string json = protocol::encodeParseDescription(description);
+    Mapper::ParseDescription decoded;
+    std::string error;
+    ASSERT_TRUE(protocol::decodeParseDescription(json, decoded, error)) << error;
+
+    ASSERT_EQ(decoded.symbolCount(), 2u);
+
+    // First symbol: struct
+    CPtr<Mapper::NodeDescription> decodedStruct = decoded.firstSymbol();
+    ASSERT_TRUE(decodedStruct);
+    EXPECT_EQ(decodedStruct->key, "Point");
+    EXPECT_EQ(decodedStruct->kind, "Struct");
+    ASSERT_TRUE(decodedStruct->size.has_value());
+    EXPECT_EQ(*decodedStruct->size, 8);
+    EXPECT_FALSE(decodedStruct->offset.has_value());
+    ASSERT_EQ(decodedStruct->childCount(), 2u);
+
+    CPtr<Mapper::NodeDescription> decodedX = decodedStruct->firstChild();
+    ASSERT_TRUE(decodedX);
+    EXPECT_EQ(decodedX->key, "x");
+    EXPECT_EQ(decodedX->type, "int");
+    ASSERT_TRUE(decodedX->offset.has_value());
+    EXPECT_EQ(*decodedX->offset, 0);
+
+    // Re-encode and verify stability
+    const std::string reEncoded = protocol::encodeParseDescription(decoded);
+    EXPECT_EQ(reEncoded, json);
+}
+
+TEST(CartographerProtocolTest, ParseDescriptionRoundTripsSpecialCharactersInNames) {
+    Mapper::ParseDescription description;
+
+    Mapper::NodeDescription node;
+    node.key = "fn_with\"quote\"and\\slash";
+    node.kind = "Function";
+    node.name = "fn\nwith\tnewlines";
+    node.returnType = "void*";
+    description.appendSymbol(node);
+
+    const std::string json = protocol::encodeParseDescription(description);
+    Mapper::ParseDescription decoded;
+    std::string error;
+    ASSERT_TRUE(protocol::decodeParseDescription(json, decoded, error)) << error;
+    ASSERT_EQ(decoded.symbolCount(), 1u);
+
+    CPtr<Mapper::NodeDescription> sym = decoded.firstSymbol();
+    ASSERT_TRUE(sym);
+    EXPECT_EQ(sym->key, node.key);
+    EXPECT_EQ(sym->name, node.name);
+    EXPECT_EQ(sym->returnType, "void*");
+}
+
+TEST(CartographerProtocolTest, ParseDescriptionRoundTripsEmptyDescription) {
+    Mapper::ParseDescription empty;
+    const std::string json = protocol::encodeParseDescription(empty);
+    EXPECT_EQ(json, "{\"symbols\":[]}");
+
+    Mapper::ParseDescription decoded;
+    std::string error;
+    ASSERT_TRUE(protocol::decodeParseDescription(json, decoded, error)) << error;
+    EXPECT_EQ(decoded.symbolCount(), 0u);
+}

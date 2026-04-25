@@ -16,6 +16,8 @@
 #include "listree.h"
 #include "../core/cursor.h"
 #include <cstring>
+#include <unordered_set>
+#include <cstdio>
 
 namespace agentc {
 
@@ -188,7 +190,15 @@ ListreeValue::ListreeValue(const std::string& str, LtvFlags flags)
         memcpy(&this->payload.ext.ptr, &blobId, sizeof(SlabId));
         this->flags = static_cast<LtvFlags>(static_cast<int>(this->flags) & ~(static_cast<int>(LtvFlags::Duplicate) | static_cast<int>(LtvFlags::Free))) | LtvFlags::SlabBlob;
         this->payload.ext.length = len;
-    } else { this->payload.ext.ptr = nullptr; this->payload.ext.length = 0; this->flags = this->flags | LtvFlags::Null; }
+    } else {
+        // Empty string: use SSO with length 0. Do NOT set LtvFlags::Null —
+        // an empty string is a distinct value from null.
+        this->flags = static_cast<LtvFlags>(
+            (static_cast<int>(this->flags) & ~(static_cast<int>(LtvFlags::Duplicate) | static_cast<int>(LtvFlags::Free)))
+            | static_cast<int>(LtvFlags::Immediate));
+        this->payload.sso.bytes[0] = 0;
+        this->payload.sso.length = 0;
+    }
     initContainer();
 }
 ListreeValue::~ListreeValue() { 
@@ -443,6 +453,330 @@ void addListItem(CPtr<ListreeValue>& ltv, CPtr<ListreeValue> value) {
         return;
     }
     ltv->put(value);
+}
+
+// ---------------------------------------------------------------------------
+// JSON serialization
+// ---------------------------------------------------------------------------
+
+namespace {
+
+void jsonEscapeString(const char* data, size_t len, std::string& out) {
+    out += '"';
+    for (size_t i = 0; i < len; ++i) {
+        unsigned char c = static_cast<unsigned char>(data[i]);
+        switch (c) {
+            case '"':  out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\n': out += "\\n";  break;
+            case '\r': out += "\\r";  break;
+            case '\t': out += "\\t";  break;
+            case '\b': out += "\\b";  break;
+            case '\f': out += "\\f";  break;
+            default:
+                if (c < 0x20) {
+                    char buf[8];
+                    std::snprintf(buf, sizeof(buf), "\\u%04x", c);
+                    out += buf;
+                } else {
+                    out += static_cast<char>(c);
+                }
+        }
+    }
+    out += '"';
+}
+
+void ltvToJsonHelper(CPtr<ListreeValue> v, std::string& out,
+                     std::unordered_set<uint64_t>& visited, int depth) {
+    // Null pointer or depth guard
+    if (!v || depth > 256) { out += "null"; return; }
+
+    // Cycle detection via slab identity
+    SlabId sid = v.getSlabId();
+    uint64_t key = (static_cast<uint64_t>(sid.first) << 16) | sid.second;
+    if (!visited.insert(key).second) {
+        // Already on the current recursion path — cycle; emit null
+        out += "null";
+        return;
+    }
+
+    const LtvFlags flags = v->getFlags();
+
+    // Binary nodes are skipped (FFI pointers, bytecode, etc.)
+    if ((flags & LtvFlags::Binary) != LtvFlags::None) {
+        visited.erase(key);
+        out += "null";
+        return;
+    }
+
+    // List mode → JSON array (iterate in insertion order via backward links)
+    if (v->isListMode()) {
+        out += '[';
+        bool first = true;
+        v->forEachList([&](CPtr<ListreeValueRef>& ref) {
+            if (!ref) return;
+            CPtr<ListreeValue> child = ref->getValue();
+            if (!child) return;
+            if (!first) out += ',';
+            first = false;
+            ltvToJsonHelper(child, out, visited, depth + 1);
+        }, false);  // false = backward direction = insertion order
+        out += ']';
+        visited.erase(key);
+        return;
+    }
+
+    // Tree mode with named children → JSON object
+    bool hasChildren = false;
+    v->forEachTree([&](const std::string&, CPtr<ListreeItem>& item) {
+        if (item) hasChildren = true;
+    });
+
+    if (hasChildren) {
+        out += '{';
+        bool first = true;
+        v->forEachTree([&](const std::string& name, CPtr<ListreeItem>& item) {
+            if (!item) return;
+            CPtr<ListreeValue> child = item->getValue(false, false);
+            if (!child) return;
+            if (!first) out += ',';
+            first = false;
+            jsonEscapeString(name.data(), name.size(), out);
+            out += ':';
+            ltvToJsonHelper(child, out, visited, depth + 1);
+        });
+        out += '}';
+        visited.erase(key);
+        return;
+    }
+
+    // Leaf: explicit null flag → JSON null
+    if ((flags & LtvFlags::Null) != LtvFlags::None) {
+        out += "null";
+        visited.erase(key);
+        return;
+    }
+
+    // Leaf: string data.
+    // If we have an explicit Null flag, serialize as "null".
+    // Empty strings are allowed as valid string values ("").
+    // SSO nodes (Immediate) cannot be null.
+    const char* data = static_cast<const char*>(v->getData());
+    size_t len = v->getLength();
+    if ((flags & LtvFlags::Null) != LtvFlags::None && (flags & LtvFlags::Immediate) == LtvFlags::None) {
+        out += "null";
+    } else {
+        jsonEscapeString(data ? data : "", len, out);
+    }
+    visited.erase(key);
+}
+
+} // anonymous namespace
+
+std::string toJson(CPtr<ListreeValue> value) {
+    if (!value) return "null";
+    std::string out;
+    std::unordered_set<uint64_t> visited;
+    ltvToJsonHelper(value, out, visited, 0);
+    return out;
+}
+
+// ---------------------------------------------------------------------------
+// JSON parser  (runtime from_json)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+struct JsonParser {
+    const char* pos;
+    const char* end;
+
+    explicit JsonParser(const std::string& s)
+        : pos(s.data()), end(s.data() + s.size()) {}
+
+    void skip_ws() {
+        while (pos < end && static_cast<unsigned char>(*pos) <= ' ') ++pos;
+    }
+    bool at_end() const { return pos >= end; }
+
+    static int hex_val(char c) {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        return -1;
+    }
+
+    void encode_utf8(uint32_t cp, std::string& out) {
+        if (cp <= 0x7F) {
+            out += static_cast<char>(cp);
+        } else if (cp <= 0x7FF) {
+            out += static_cast<char>(0xC0 | (cp >> 6));
+            out += static_cast<char>(0x80 | (cp & 0x3F));
+        } else if (cp <= 0xFFFF) {
+            out += static_cast<char>(0xE0 | (cp >> 12));
+            out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+            out += static_cast<char>(0x80 | (cp & 0x3F));
+        } else {
+            out += static_cast<char>(0xF0 | (cp >> 18));
+            out += static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
+            out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+            out += static_cast<char>(0x80 | (cp & 0x3F));
+        }
+    }
+
+    // Read a JSON string from pos (which must point at the opening \")
+    // and decode escape sequences into out.  Returns false on malformed input.
+    bool parse_raw_string(std::string& out) {
+        if (at_end() || *pos != '"') return false;
+        ++pos;
+        out.clear();
+        while (pos < end && *pos != '"') {
+            if (*pos != '\\') { out += *pos++; continue; }
+            ++pos;  // consume backslash
+            if (at_end()) return false;
+            switch (*pos) {
+                case '"': out += '"'; break;
+                case '\\': out += '\\'; break;
+                case '/':  out += '/';  break;
+                case 'n':  out += '\n'; break;
+                case 'r':  out += '\r'; break;
+                case 't':  out += '\t'; break;
+                case 'b':  out += '\b'; break;
+                case 'f':  out += '\f'; break;
+                case 'u': {
+                    if (end - pos < 5) return false;
+                    int h0=hex_val(pos[1]),h1=hex_val(pos[2]),
+                        h2=hex_val(pos[3]),h3=hex_val(pos[4]);
+                    if (h0<0||h1<0||h2<0||h3<0) return false;
+                    uint32_t cp = (uint32_t(h0)<<12)|(uint32_t(h1)<<8)|
+                                  (uint32_t(h2)<<4)|uint32_t(h3);
+                    pos += 4;
+                    // Handle UTF-16 surrogate pairs
+                    if (cp >= 0xD800 && cp <= 0xDBFF &&
+                            end - pos >= 7 && pos[1]=='\\' && pos[2]=='u') {
+                        int l0=hex_val(pos[3]),l1=hex_val(pos[4]),
+                            l2=hex_val(pos[5]),l3=hex_val(pos[6]);
+                        if (l0>=0&&l1>=0&&l2>=0&&l3>=0) {
+                            uint32_t lo = (uint32_t(l0)<<12)|(uint32_t(l1)<<8)|
+                                          (uint32_t(l2)<<4)|uint32_t(l3);
+                            if (lo >= 0xDC00 && lo <= 0xDFFF) {
+                                cp = 0x10000 + ((cp-0xD800)<<10) + (lo-0xDC00);
+                                pos += 6;
+                            }
+                        }
+                    }
+                    encode_utf8(cp, out);
+                    break;
+                }
+                default: return false;
+            }
+            ++pos;
+        }
+        if (at_end() || *pos != '"') return false;
+        ++pos;  // consume closing quote
+        return true;
+    }
+
+    // Parse any JSON value; returns nullptr on error.
+    CPtr<ListreeValue> parse_value() {
+        skip_ws();
+        if (at_end()) return nullptr;
+        switch (*pos) {
+            case '"': {
+                std::string s;
+                if (!parse_raw_string(s)) return nullptr;
+                // createStringValue works correctly for empty strings
+                return createStringValue(s);
+            }
+            case '{': return parse_object();
+            case '[': return parse_array();
+            case 'n':
+                if (end-pos>=4 && std::memcmp(pos,"null",4)==0) { pos+=4; return createNullValue(); }
+                return nullptr;
+            case 't':
+                if (end-pos>=4 && std::memcmp(pos,"true",4)==0) { pos+=4; return createStringValue("true"); }
+                return nullptr;
+            case 'f':
+                if (end-pos>=5 && std::memcmp(pos,"false",5)==0) { pos+=5; return createStringValue("false"); }
+                return nullptr;
+            default:
+                if (*pos=='-' || (*pos>='0' && *pos<='9')) return parse_number();
+                return nullptr;
+        }
+    }
+
+    CPtr<ListreeValue> parse_object() {
+        if (at_end() || *pos != '{') return nullptr;
+        ++pos;
+        auto obj = createNullValue();
+        skip_ws();
+        if (!at_end() && *pos == '}') { ++pos; return obj; }  // empty object
+        while (!at_end()) {
+            skip_ws();
+            if (at_end() || *pos != '"') return nullptr;
+            std::string key;
+            if (!parse_raw_string(key)) return nullptr;
+            skip_ws();
+            if (at_end() || *pos != ':') return nullptr;
+            ++pos;
+            auto val = parse_value();
+            if (!val) return nullptr;
+            addNamedItem(obj, key, val);
+            skip_ws();
+            if (at_end()) return nullptr;
+            if (*pos == ',') { ++pos; continue; }
+            if (*pos == '}') { ++pos; return obj; }
+            return nullptr;
+        }
+        return nullptr;  // unterminated
+    }
+
+    CPtr<ListreeValue> parse_array() {
+        if (at_end() || *pos != '[') return nullptr;
+        ++pos;
+        auto arr = createListValue();
+        skip_ws();
+        if (!at_end() && *pos == ']') { ++pos; return arr; }  // empty array
+        while (!at_end()) {
+            auto val = parse_value();
+            if (!val) return nullptr;
+            addListItem(arr, val);
+            skip_ws();
+            if (at_end()) return nullptr;
+            if (*pos == ',') { ++pos; continue; }
+            if (*pos == ']') { ++pos; return arr; }
+            return nullptr;
+        }
+        return nullptr;  // unterminated
+    }
+
+    CPtr<ListreeValue> parse_number() {
+        const char* start = pos;
+        if (pos < end && *pos == '-') ++pos;
+        while (pos < end && *pos >= '0' && *pos <= '9') ++pos;
+        if (pos < end && *pos == '.') {
+            ++pos;
+            while (pos < end && *pos >= '0' && *pos <= '9') ++pos;
+        }
+        if (pos < end && (*pos == 'e' || *pos == 'E')) {
+            ++pos;
+            if (pos < end && (*pos == '+' || *pos == '-')) ++pos;
+            while (pos < end && *pos >= '0' && *pos <= '9') ++pos;
+        }
+        if (pos == start) return nullptr;
+        return createStringValue(std::string(start, pos - start));
+    }
+};
+
+} // anonymous namespace
+
+CPtr<ListreeValue> fromJson(const std::string& json) {
+    if (json.empty()) return nullptr;
+    JsonParser p(json);
+    auto result = p.parse_value();
+    p.skip_ws();
+    // Require all input consumed (no trailing garbage)
+    return (result && p.at_end()) ? result : nullptr;
 }
 
 } // namespace agentc

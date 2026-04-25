@@ -2291,6 +2291,26 @@ void EdictVM::op_FREEZE() {
     pushData(v);
 }
 
+void EdictVM::op_TO_JSON() {
+    auto v = popData();
+    pushData(agentc::createStringValue(agentc::toJson(v)));
+}
+
+void EdictVM::op_FROM_JSON() {
+    auto v = popData();
+    std::string json;
+    if (!valueToString(v, json)) {
+        setError("from_json expects a JSON string");
+        return;
+    }
+    auto result = agentc::fromJson(json);
+    if (!result) {
+        setError("from_json: invalid JSON");
+        return;
+    }
+    pushData(result);
+}
+
 void EdictVM::op_HEAP_UTILIZATION() {
     using agentc::ListreeValue;
     using agentc::ListreeItem;
@@ -2389,6 +2409,8 @@ int EdictVM::runCodeLoop(size_t stopCodeDepth, bool markCompleteOnDrain) {
         &&op_CURSOR_DOWN, &&op_CURSOR_UP, &&op_CURSOR_NEXT,
         &&op_CURSOR_PREV, &&op_CURSOR_GET, &&op_CURSOR_SET,
         &&op_FREEZE,
+        &&op_TO_JSON,
+        &&op_FROM_JSON,
     };
     // Verify dispatch table has exactly one entry per opcode. If this fires,
     // an opcode was added to VMOpcode without a corresponding dispatch entry.
@@ -2562,6 +2584,8 @@ op_CURSOR_PREV: op_CURSOR_PREV(); goto op_epilogue;
 op_CURSOR_GET: op_CURSOR_GET(); goto op_epilogue;
 op_CURSOR_SET: op_CURSOR_SET(); goto op_epilogue;
 op_FREEZE: op_FREEZE(); goto op_epilogue;
+op_TO_JSON: op_TO_JSON(); goto op_epilogue;
+op_FROM_JSON: op_FROM_JSON(); goto op_epilogue;
 op_INVALID: setError("Op " + std::to_string(op)); goto op_epilogue;
 op_epilogue:
         if (allow_rewrite_epilogue && !(state & (VM_ERROR | VM_YIELD | VM_SCANNING))) applyRewriteLoop();
@@ -2806,6 +2830,8 @@ int EdictVM::executeNested(const BytecodeBuffer& code) {
         addBuiltinThunk(dictVal, "unsafe_extensions_status", VMOP_UNSAFE_EXTENSIONS_STATUS);
         addBuiltinThunk(dictVal, "HeapUtilization", VMOP_HEAP_UTILIZATION);
         addBuiltinThunk(dictVal, "freeze", VMOP_FREEZE);
+        addBuiltinThunk(dictVal, "to_json", VMOP_TO_JSON);
+        addBuiltinThunk(dictVal, "from_json", VMOP_FROM_JSON);
     }
 
     void EdictVM::installBootstrapImportCapsule() {
@@ -2829,6 +2855,8 @@ int EdictVM::executeNested(const BytecodeBuffer& code) {
         addBuiltinThunk(capsule, "import_resolved_json", VMOP_IMPORT_RESOLVED_JSON);
         addBuiltinThunk(capsule, "request_id", VMOP_REQUEST_ID);
         addBuiltinThunk(capsule, "freeze", VMOP_FREEZE);
+        addBuiltinThunk(capsule, "to_json", VMOP_TO_JSON);
+        addBuiltinThunk(capsule, "from_json", VMOP_FROM_JSON);
         agentc::addNamedItem(dictVal, "__bootstrap_import", capsule);
     }
 

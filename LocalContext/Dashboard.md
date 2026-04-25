@@ -66,6 +66,7 @@
 - G053 — Shared-Root Fine-Grained Multithreading — **Proposed / Longer-Horizon Design Investigation**
 - G057 — Pi + AgentC IPC Bridge — **Proposed / Synthesizing Outer Agent Loop**
 - G058 — Read-Only Listree Branches for Cross-VM Sharing — **Slices A+B+C done; D+E+F remaining**
+- G059 — Listree-to-JSON Round-Trip Hardening — **COMPLETE** 🔗[index](./Knowledge/Goals/G059-ListreeToJsonRoundTrip/index.md)
 
 ### Completed Goals (recent)
 - ✅ G056 — Extensions Stdlib — **COMPLETE** (2026-04-05). Added `extensions/agentc_stdlib.*` plus build/docs wiring, established `extensions/` as the first reusable stdlib layer outside the VM core, and updated the native SDL POC to use those helpers for buffer/string work while keeping rendering calls direct through SDL3.

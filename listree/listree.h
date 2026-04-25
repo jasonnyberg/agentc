@@ -290,6 +290,28 @@ class Cursor;
 CPtr<ListreeValue> createCursorValue(Cursor* cursor);
 void addNamedItem(CPtr<ListreeValue>& ltv, const std::string& name, CPtr<ListreeValue> value);
 void addListItem(CPtr<ListreeValue>& ltv, CPtr<ListreeValue> value);
+
+/// Serialize a Listree value to a JSON string.
+/// - Tree nodes become JSON objects.
+/// - List nodes become JSON arrays.
+/// - String/scalar leaves become JSON strings (properly escaped).
+/// - Null/empty nodes become JSON null.
+/// - Binary nodes (FFI pointers, bytecode) are rendered as JSON null.
+/// Cycles are detected and rendered as null rather than looping.
+std::string toJson(CPtr<ListreeValue> value);
+
+/// Parse a JSON string into a Listree value.
+/// - JSON objects become tree-mode dict nodes.
+/// - JSON arrays become list-mode nodes.
+/// - JSON strings become string leaf nodes (escape sequences decoded).
+/// - JSON null becomes a null Listree node (LtvFlags::Null).
+/// - JSON true/false become the string leaves "true"/"false".
+/// - JSON numbers become string leaves preserving the raw text (e.g. "42").
+/// Returns nullptr if the input is not valid JSON.
+/// Note: fromJson(toJson(v)) == v for all Listree values that contain only
+/// strings, nulls, dicts, and lists (binary nodes and stacked values are
+/// lossy through to_json and cannot be recovered).
+CPtr<ListreeValue> fromJson(const std::string& json);
 void resetTransientListreeValue(ListreeValue& value);
 
 } // namespace agentc

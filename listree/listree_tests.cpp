@@ -264,3 +264,397 @@ TEST(ReadOnlyTest, ReadOnlyFlagIsOneWay) {
     node->clearFlags(LtvFlags::ReadOnly);
     EXPECT_TRUE(node->isReadOnly());
 }
+
+// ======================================================================
+// toJson serialization tests
+// ======================================================================
+
+TEST(ToJsonTest, NullValueIsJsonNull) {
+    auto v = createNullValue();
+    EXPECT_EQ(toJson(v), "null");
+}
+
+TEST(ToJsonTest, NullptrIsJsonNull) {
+    EXPECT_EQ(toJson(nullptr), "null");
+}
+
+TEST(ToJsonTest, StringLeafIsJsonString) {
+    auto v = createStringValue("hello");
+    EXPECT_EQ(toJson(v), "\"hello\"");
+}
+
+TEST(ToJsonTest, StringEscapesQuote) {
+    auto v = createStringValue("say \"hi\"");
+    EXPECT_EQ(toJson(v), "\"say \\\"hi\\\"\"");
+}
+
+TEST(ToJsonTest, StringEscapesBackslash) {
+    auto v = createStringValue("a\\b");
+    EXPECT_EQ(toJson(v), "\"a\\\\b\"");
+}
+
+TEST(ToJsonTest, StringEscapesNewline) {
+    auto v = createStringValue("a\nb");
+    EXPECT_EQ(toJson(v), "\"a\\nb\"");
+}
+
+TEST(ToJsonTest, StringEscapesControlChar) {
+    auto v = createStringValue(std::string("a\x01 b"));
+    EXPECT_EQ(toJson(v), "\"a\\u0001 b\"");
+}
+
+TEST(ToJsonTest, FlatDict) {
+    auto v = createNullValue();
+    addNamedItem(v, "name", createStringValue("alice"));
+    addNamedItem(v, "age",  createStringValue("30"));
+    // forEachTree visits in alphabetical order: age, name
+    EXPECT_EQ(toJson(v), "{\"age\":\"30\",\"name\":\"alice\"}");
+}
+
+TEST(ToJsonTest, NestedDict) {
+    auto inner = createNullValue();
+    addNamedItem(inner, "role", createStringValue("admin"));
+
+    auto outer = createNullValue();
+    addNamedItem(outer, "meta", inner);
+    addNamedItem(outer, "name", createStringValue("bob"));
+
+    EXPECT_EQ(toJson(outer), "{\"meta\":{\"role\":\"admin\"},\"name\":\"bob\"}");
+}
+
+TEST(ToJsonTest, EmptyListIsJsonArray) {
+    auto v = createListValue();
+    EXPECT_EQ(toJson(v), "[]");
+}
+
+TEST(ToJsonTest, ListOfStrings) {
+    auto v = createListValue();
+    addListItem(v, createStringValue("x"));
+    addListItem(v, createStringValue("y"));
+    addListItem(v, createStringValue("z"));
+    EXPECT_EQ(toJson(v), "[\"x\",\"y\",\"z\"]");
+}
+
+TEST(ToJsonTest, DictWithEmptyArrayValue) {
+    auto tags = createListValue();
+    auto v = createNullValue();
+    addNamedItem(v, "tags", tags);
+    EXPECT_EQ(toJson(v), "{\"tags\":[]}");
+}
+
+TEST(ToJsonTest, DictWithArrayValue) {
+    auto arr = createListValue();
+    addListItem(arr, createStringValue("a"));
+    addListItem(arr, createStringValue("b"));
+
+    auto v = createNullValue();
+    addNamedItem(v, "items", arr);
+    addNamedItem(v, "name",  createStringValue("test"));
+
+    EXPECT_EQ(toJson(v), "{\"items\":[\"a\",\"b\"],\"name\":\"test\"}");
+}
+
+TEST(ToJsonTest, BinaryNodeIsJsonNull) {
+    const char data[] = {0x01, 0x02, 0x03};
+    auto bin = createBinaryValue(data, sizeof(data));
+    EXPECT_EQ(toJson(bin), "null");
+}
+
+TEST(ToJsonTest, BinaryNodeSkippedInsideDict) {
+    const char data[] = {0x01};
+    auto bin = createBinaryValue(data, sizeof(data));
+    auto v = createNullValue();
+    addNamedItem(v, "code", bin);
+    addNamedItem(v, "name", createStringValue("x"));
+    // "code" maps to null (binary), "name" maps to "x"
+    EXPECT_EQ(toJson(v), "{\"code\":null,\"name\":\"x\"}");
+}
+
+TEST(ToJsonTest, ReadOnlyNodeSerializesNormally) {
+    auto v = createNullValue();
+    addNamedItem(v, "k", createStringValue("v"));
+    v->setReadOnly(true);
+    EXPECT_EQ(toJson(v), "{\"k\":\"v\"}");
+}
+
+TEST(ToJsonTest, MultiValueItemUsesTopValue) {
+    // ListreeItem can stack multiple values; to_json sees only the top
+    auto v = createNullValue();
+    addNamedItem(v, "k", createStringValue("first"));
+    addNamedItem(v, "k", createStringValue("second"));  // second becomes top
+    EXPECT_EQ(toJson(v), "{\"k\":\"second\"}");
+}
+
+TEST(ToJsonTest, EmptyStringLeafSerializesAsEmptyJsonString) {
+    auto v = createStringValue("");
+    EXPECT_EQ(toJson(v), "\"\"");
+}
+
+TEST(ToJsonTest, CheckEmptyStringFlags) {
+    auto v = createStringValue("");
+    EXPECT_EQ((v->getFlags() & LtvFlags::Null), LtvFlags::None);
+    EXPECT_EQ(v->getLength(), 0);
+}
+
+// ---------------------------------------------------------------------------
+// fromJson parsing tests
+// ---------------------------------------------------------------------------
+
+TEST(FromJsonTest, NullLiteralCreatesNullNode) {
+    auto v = fromJson("null");
+    ASSERT_TRUE(bool(v));
+    EXPECT_TRUE((v->getFlags() & LtvFlags::Null) != LtvFlags::None);
+}
+
+TEST(FromJsonTest, EmptyStringCreatesNonNullStringNode) {
+    // "" should produce a string node with no data, NOT a null node.
+    auto v = fromJson("\"\"");
+    ASSERT_TRUE(bool(v));
+    EXPECT_TRUE((v->getFlags() & LtvFlags::Null) == LtvFlags::None);
+    EXPECT_EQ(v->getLength(), 0u);
+    EXPECT_EQ(toJson(v), "\"\"");
+}
+
+TEST(FromJsonTest, StringLiteralCreatesStringNode) {
+    auto v = fromJson("\"hello\"");
+    ASSERT_TRUE(bool(v));
+    EXPECT_EQ(v->getLength(), 5u);
+    std::string data(static_cast<const char*>(v->getData()), v->getLength());
+    EXPECT_EQ(data, "hello");
+}
+
+TEST(FromJsonTest, StringWithEscapeSequences) {
+    // JSON: "a\nb" (backslash-n escape)
+    auto v = fromJson("\"a\\nb\"");
+    ASSERT_TRUE(bool(v));
+    std::string data(static_cast<const char*>(v->getData()), v->getLength());
+    EXPECT_EQ(data, "a\nb");
+}
+
+TEST(FromJsonTest, StringWithQuoteEscape) {
+    // JSON: "say \"hi\"" → say "hi"
+    auto v = fromJson("\"say \\\"hi\\\"\"");
+    ASSERT_TRUE(bool(v));
+    std::string data(static_cast<const char*>(v->getData()), v->getLength());
+    EXPECT_EQ(data, "say \"hi\"");
+}
+
+TEST(FromJsonTest, StringWithBackslashEscape) {
+    // JSON: "a\\b" → a\b
+    auto v = fromJson("\"a\\\\b\"");
+    ASSERT_TRUE(bool(v));
+    std::string data(static_cast<const char*>(v->getData()), v->getLength());
+    EXPECT_EQ(data, "a\\b");
+}
+
+TEST(FromJsonTest, StringWithUnicodeEscape) {
+    // JSON: "\u0041" → "A"
+    auto v = fromJson("\"\\u0041\"");
+    ASSERT_TRUE(bool(v));
+    std::string data(static_cast<const char*>(v->getData()), v->getLength());
+    EXPECT_EQ(data, "A");
+}
+
+TEST(FromJsonTest, BooleanTrueCreatesStringTrue) {
+    auto v = fromJson("true");
+    ASSERT_TRUE(bool(v));
+    std::string data(static_cast<const char*>(v->getData()), v->getLength());
+    EXPECT_EQ(data, "true");
+}
+
+TEST(FromJsonTest, BooleanFalseCreatesStringFalse) {
+    auto v = fromJson("false");
+    ASSERT_TRUE(bool(v));
+    std::string data(static_cast<const char*>(v->getData()), v->getLength());
+    EXPECT_EQ(data, "false");
+}
+
+TEST(FromJsonTest, NumberLiteralCreatesStringRepresentation) {
+    auto v = fromJson("42");
+    ASSERT_TRUE(bool(v));
+    std::string data(static_cast<const char*>(v->getData()), v->getLength());
+    EXPECT_EQ(data, "42");
+}
+
+TEST(FromJsonTest, FloatLiteralCreatesStringRepresentation) {
+    auto v = fromJson("3.14");
+    ASSERT_TRUE(bool(v));
+    std::string data(static_cast<const char*>(v->getData()), v->getLength());
+    EXPECT_EQ(data, "3.14");
+}
+
+TEST(FromJsonTest, ObjectCreatesNamedChildren) {
+    auto v = fromJson("{\"k\":\"v\"}");
+    ASSERT_TRUE(bool(v));
+    auto child = v->find("k");
+    ASSERT_TRUE(bool(child));
+    auto val = child->getValue(false, false);
+    ASSERT_TRUE(bool(val));
+    std::string data(static_cast<const char*>(val->getData()), val->getLength());
+    EXPECT_EQ(data, "v");
+}
+
+TEST(FromJsonTest, ArrayCreatesListNode) {
+    auto v = fromJson("[\"x\",\"y\"]");
+    ASSERT_TRUE(bool(v));
+    EXPECT_TRUE(v->isListMode());
+    size_t count = 0;
+    v->forEachList([&](CPtr<ListreeValueRef>& ref) {
+        if (ref) ++count;
+    }, false);
+    EXPECT_EQ(count, 2u);
+}
+
+TEST(FromJsonTest, EmptyArrayCreatesEmptyListNode) {
+    auto v = fromJson("[]");
+    ASSERT_TRUE(bool(v));
+    EXPECT_TRUE(v->isListMode());
+}
+
+TEST(FromJsonTest, EmptyInputReturnsNullptr) {
+    auto v = fromJson("");
+    EXPECT_FALSE(bool(v));
+}
+
+TEST(FromJsonTest, TrailingGarbageReturnsNullptr) {
+    auto v = fromJson("\"hello\" trailing");
+    EXPECT_FALSE(bool(v));
+}
+
+TEST(FromJsonTest, MalformedObjectReturnsNullptr) {
+    EXPECT_FALSE(bool(fromJson("{\"k\"}"))); // missing colon + value
+    EXPECT_FALSE(bool(fromJson("{\"k\":}"))); // missing value
+}
+
+TEST(FromJsonTest, UnclosedStringReturnsNullptr) {
+    auto v = fromJson("\"unterminated");
+    EXPECT_FALSE(bool(v));
+}
+
+// ---------------------------------------------------------------------------
+// JSON round-trip tests (toJson → fromJson → toJson)
+// ---------------------------------------------------------------------------
+
+TEST(RoundTripTest, NullNodeRoundTrips) {
+    auto v = createNullValue();
+    const std::string json = toJson(v);
+    EXPECT_EQ(json, "null");
+    auto decoded = fromJson(json);
+    ASSERT_TRUE(bool(decoded));
+    EXPECT_EQ(toJson(decoded), json);
+}
+
+TEST(RoundTripTest, EmptyStringNodeRoundTrips) {
+    auto v = createStringValue("");
+    const std::string json = toJson(v);
+    EXPECT_EQ(json, "\"\"");
+    auto decoded = fromJson(json);
+    ASSERT_TRUE(bool(decoded));
+    // Decoded should also be an empty string, not null.
+    EXPECT_TRUE((decoded->getFlags() & LtvFlags::Null) == LtvFlags::None);
+    EXPECT_EQ(decoded->getLength(), 0u);
+    EXPECT_EQ(toJson(decoded), json);
+}
+
+TEST(RoundTripTest, StringNodeRoundTrips) {
+    auto v = createStringValue("hello world");
+    const std::string json = toJson(v);
+    EXPECT_EQ(json, "\"hello world\"");
+    auto decoded = fromJson(json);
+    ASSERT_TRUE(bool(decoded));
+    EXPECT_EQ(toJson(decoded), json);
+}
+
+TEST(RoundTripTest, StringWithSpecialCharsRoundTrips) {
+    const std::string original = "say \"hi\" and c:\\path\nnewline\ttab";
+    auto v = createStringValue(original);
+    const std::string json = toJson(v);
+    auto decoded = fromJson(json);
+    ASSERT_TRUE(bool(decoded));
+    std::string recovered(static_cast<const char*>(decoded->getData()), decoded->getLength());
+    EXPECT_EQ(recovered, original);
+}
+
+TEST(RoundTripTest, StringWithControlCharRoundTrips) {
+    const std::string original = std::string("a") + '\x01' + " b";
+    auto v = createStringValue(original);
+    const std::string json = toJson(v);
+    // Control char should be \u00XX-escaped
+    EXPECT_NE(json.find("\\u0001"), std::string::npos);
+    auto decoded = fromJson(json);
+    ASSERT_TRUE(bool(decoded));
+    std::string recovered(static_cast<const char*>(decoded->getData()), decoded->getLength());
+    EXPECT_EQ(recovered, original);
+}
+
+TEST(RoundTripTest, FlatObjectRoundTrips) {
+    auto v = createNullValue();
+    addNamedItem(v, "age", createStringValue("30"));
+    addNamedItem(v, "name", createStringValue("alice"));
+    const std::string json = toJson(v);
+    EXPECT_EQ(json, "{\"age\":\"30\",\"name\":\"alice\"}");
+    auto decoded = fromJson(json);
+    ASSERT_TRUE(bool(decoded));
+    EXPECT_EQ(toJson(decoded), json);
+}
+
+TEST(RoundTripTest, NestedObjectRoundTrips) {
+    auto inner = createNullValue();
+    addNamedItem(inner, "role", createStringValue("admin"));
+    auto outer = createNullValue();
+    addNamedItem(outer, "meta", inner);
+    addNamedItem(outer, "name", createStringValue("bob"));
+    const std::string json = toJson(outer);
+    EXPECT_EQ(json, "{\"meta\":{\"role\":\"admin\"},\"name\":\"bob\"}");
+    auto decoded = fromJson(json);
+    ASSERT_TRUE(bool(decoded));
+    EXPECT_EQ(toJson(decoded), json);
+}
+
+TEST(RoundTripTest, ArrayRoundTrips) {
+    auto v = createListValue();
+    addListItem(v, createStringValue("x"));
+    addListItem(v, createStringValue("y"));
+    addListItem(v, createStringValue("z"));
+    const std::string json = toJson(v);
+    EXPECT_EQ(json, "[\"x\",\"y\",\"z\"]");
+    auto decoded = fromJson(json);
+    ASSERT_TRUE(bool(decoded));
+    EXPECT_EQ(toJson(decoded), json);
+}
+
+TEST(RoundTripTest, MixedObjectWithArrayValueRoundTrips) {
+    auto tags = createListValue();
+    addListItem(tags, createStringValue("a"));
+    addListItem(tags, createStringValue("b"));
+    auto v = createNullValue();
+    addNamedItem(v, "name", createStringValue("test"));
+    addNamedItem(v, "items", tags);
+    const std::string json = toJson(v);
+    EXPECT_EQ(json, "{\"items\":[\"a\",\"b\"],\"name\":\"test\"}");
+    auto decoded = fromJson(json);
+    ASSERT_TRUE(bool(decoded));
+    EXPECT_EQ(toJson(decoded), json);
+}
+
+TEST(RoundTripTest, ObjectWithEmptyStringValueRoundTrips) {
+    auto v = createNullValue();
+    addNamedItem(v, "key", createStringValue(""));
+    addNamedItem(v, "other", createStringValue("val"));
+    const std::string json = toJson(v);
+    EXPECT_EQ(json, "{\"key\":\"\",\"other\":\"val\"}");
+    auto decoded = fromJson(json);
+    ASSERT_TRUE(bool(decoded));
+    EXPECT_EQ(toJson(decoded), json);
+}
+
+TEST(RoundTripTest, LongStringBeyondSSOThresholdRoundTrips) {
+    // SSO threshold is 15 bytes; use a string longer than that.
+    const std::string original = "this string is definitely longer than fifteen bytes";
+    auto v = createStringValue(original);
+    const std::string json = toJson(v);
+    auto decoded = fromJson(json);
+    ASSERT_TRUE(bool(decoded));
+    std::string recovered(static_cast<const char*>(decoded->getData()), decoded->getLength());
+    EXPECT_EQ(recovered, original);
+}

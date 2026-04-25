@@ -395,3 +395,149 @@ TEST(CartographerToolTest, StandaloneResolverProcessReportsUsageAndResolvedJsonS
     EXPECT_NE(resolveResult.stdoutText.find("\"api_schema_format\":\"parser_json_v1\""), std::string::npos);
     EXPECT_NE(resolveResult.stdoutText.find("\"resolution_status\":\"resolved\""), std::string::npos);
 }
+
+TEST(CartographerToolTest, ResolvedApiRoundTripsLibraryMetadataAndSymbols) {
+    const std::filesystem::path sourceDir(std::string(TEST_SOURCE_DIR));
+    const std::filesystem::path buildDir(std::string(TEST_BUILD_DIR));
+    const std::string headerPath = (sourceDir / "libagentmath_poc.h").string();
+    const std::string libraryPath = (buildDir / "libagentmath_poc.so").string();
+
+    Mapper::ParseDescription description;
+    std::string error;
+    ASSERT_TRUE(parser::parseHeaderToDescription(headerPath, description, error)) << error;
+
+    resolver::ResolvedApi original;
+    ASSERT_TRUE(resolver::resolveApiDescription(libraryPath, description, original, error)) << error;
+
+    // Encode then decode
+    const std::string json = resolver::encodeResolvedApi(original);
+    resolver::ResolvedApi decoded;
+    ASSERT_TRUE(resolver::decodeResolvedApi(json, decoded, error)) << error;
+
+    // Library metadata should round-trip exactly
+    EXPECT_EQ(decoded.libraryPath, original.libraryPath);
+    EXPECT_EQ(decoded.fileSize, original.fileSize);
+    EXPECT_EQ(decoded.modifiedTimeNs, original.modifiedTimeNs);
+    EXPECT_EQ(decoded.contentHash, original.contentHash);
+    EXPECT_EQ(decoded.addressBindingsProcessLocal, original.addressBindingsProcessLocal);
+
+    // Summary counts
+    EXPECT_EQ(decoded.symbolCount, original.symbolCount);
+    EXPECT_EQ(decoded.resolvedCount, original.resolvedCount);
+    EXPECT_EQ(decoded.unresolvedCount, original.unresolvedCount);
+
+    // Schema format fields
+    EXPECT_EQ(decoded.parserSchemaFormat, original.parserSchemaFormat);
+    EXPECT_FALSE(decoded.parserSchemaJson.empty());
+
+    // Symbols
+    ASSERT_TRUE(decoded.hasSymbols());
+    CPtr<resolver::ResolvedSymbol> sym = decoded.firstSymbol();
+    ASSERT_TRUE(sym);
+    EXPECT_EQ(sym->key, "add");
+    EXPECT_EQ(sym->resolutionStatus, "resolved");
+    // Address is process-local so just check it's non-empty after encode-decode
+    EXPECT_FALSE(sym->address.empty());
+
+    // Re-encode decoded and verify stability (second encode should equal first)
+    const std::string reEncoded = resolver::encodeResolvedApi(decoded);
+    EXPECT_EQ(reEncoded, json);
+}
+
+TEST(CartographerToolTest, ResolvedApiRoundTripsWithAddressesStripped) {
+    const std::filesystem::path sourceDir(std::string(TEST_SOURCE_DIR));
+    const std::filesystem::path buildDir(std::string(TEST_BUILD_DIR));
+    const std::string headerPath = (sourceDir / "libagentmath_poc.h").string();
+    const std::string libraryPath = (buildDir / "libagentmath_poc.so").string();
+
+    Mapper::ParseDescription description;
+    std::string error;
+    ASSERT_TRUE(parser::parseHeaderToDescription(headerPath, description, error)) << error;
+
+    resolver::ResolvedApi original;
+    ASSERT_TRUE(resolver::resolveApiDescription(libraryPath, description, original, error,
+                                                /*includeAddresses=*/false)) << error;
+
+    EXPECT_FALSE(original.addressBindingsProcessLocal);
+
+    const std::string json = resolver::encodeResolvedApi(original);
+    resolver::ResolvedApi decoded;
+    ASSERT_TRUE(resolver::decodeResolvedApi(json, decoded, error)) << error;
+
+    EXPECT_FALSE(decoded.addressBindingsProcessLocal);
+    ASSERT_TRUE(decoded.hasSymbols());
+    CPtr<resolver::ResolvedSymbol> sym = decoded.firstSymbol();
+    ASSERT_TRUE(sym);
+    EXPECT_EQ(sym->key, "add");
+    EXPECT_EQ(sym->resolutionStatus, "resolved");
+    // No address when stripped
+    EXPECT_TRUE(sym->address.empty());
+
+    // Stability check
+    EXPECT_EQ(resolver::encodeResolvedApi(decoded), json);
+}
+
+TEST(CartographerToolTest, ResolvedApiParserSchemaJsonEmbedRoundTrips) {
+    // Verify that the api_schema_json embedded inside the resolver JSON
+    // can itself be decoded back to the original ParseDescription.
+    const std::filesystem::path sourceDir(std::string(TEST_SOURCE_DIR));
+    const std::filesystem::path buildDir(std::string(TEST_BUILD_DIR));
+    const std::string headerPath = (sourceDir / "libagentmath_poc.h").string();
+    const std::string libraryPath = (buildDir / "libagentmath_poc.so").string();
+
+    Mapper::ParseDescription description;
+    std::string error;
+    ASSERT_TRUE(parser::parseHeaderToDescription(headerPath, description, error)) << error;
+
+    resolver::ResolvedApi resolved;
+    ASSERT_TRUE(resolver::resolveApiDescription(libraryPath, description, resolved, error)) << error;
+
+    const std::string json = resolver::encodeResolvedApi(resolved);
+    resolver::ResolvedApi decoded;
+    ASSERT_TRUE(resolver::decodeResolvedApi(json, decoded, error)) << error;
+
+    // The embedded api_schema_json should be valid parser JSON
+    Mapper::ParseDescription embeddedDescription;
+    ASSERT_TRUE(protocol::decodeParseDescription(decoded.parserSchemaJson, embeddedDescription, error)) << error;
+
+    ASSERT_TRUE(embeddedDescription.hasSymbols());
+    CPtr<Mapper::NodeDescription> firstSym = embeddedDescription.firstSymbol();
+    ASSERT_TRUE(firstSym);
+    EXPECT_EQ(firstSym->key, "add");
+}
+
+TEST(CartographerToolTest, ResolvedApiDecodeRejectsUnknownFormat) {
+    const std::string badJson =
+        "{\"format\":\"resolver_json_v99\","
+        "\"library\":{\"path\":\"/lib/libfoo.so\","
+        "\"file_size\":1234,\"modified_time_ns\":9999,"
+        "\"content_hash\":\"fnv1a64:0000000000000000\","
+        "\"address_bindings_process_local\":false},"
+        "\"summary\":{\"symbol_count\":0,\"resolved_count\":0,\"unresolved_count\":0},"
+        "\"api_schema_format\":\"parser_json_v1\","
+        "\"api_schema_json\":\"{\\\"symbols\\\":[]}\","
+        "\"symbols\":[]}";
+
+    resolver::ResolvedApi out;
+    std::string error;
+    EXPECT_FALSE(resolver::decodeResolvedApi(badJson, out, error));
+    EXPECT_FALSE(error.empty());
+}
+
+TEST(CartographerToolTest, ResolvedApiDecodeRejectsMissingApiSchemaJson) {
+    const std::string badJson =
+        "{\"format\":\"resolver_json_v1\","
+        "\"library\":{\"path\":\"/lib/libfoo.so\","
+        "\"file_size\":1234,\"modified_time_ns\":9999,"
+        "\"content_hash\":\"fnv1a64:0000000000000000\","
+        "\"address_bindings_process_local\":false},"
+        "\"summary\":{\"symbol_count\":0,\"resolved_count\":0,\"unresolved_count\":0},"
+        "\"api_schema_format\":\"parser_json_v1\","
+        "\"api_schema_json\":\"\","
+        "\"symbols\":[]}";
+
+    resolver::ResolvedApi out;
+    std::string error;
+    EXPECT_FALSE(resolver::decodeResolvedApi(badJson, out, error));
+    EXPECT_NE(error.find("missing api_schema_json"), std::string::npos);
+}
