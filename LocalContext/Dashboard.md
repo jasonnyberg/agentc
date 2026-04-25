@@ -34,7 +34,7 @@
 None currently
 
 ## Knowledge Inventory
-- G057 — Pi + AgentC IPC Bridge — **IN PROGRESS** 🔗[index](./Knowledge/Goals/G057-PiAgentcIpcBridge/index.md)
+- G057 — Pi + AgentC IPC Bridge — **COMPLETE** 🔗[index](./Knowledge/Goals/G057-PiAgentcIpcBridge/index.md)
 - G058 — Read-Only Listree Branches for Cross-VM Sharing — **Slices A+B+C done; D+E+F remaining** 🔗[index](./Knowledge/Goals/G058-ReadOnlyListreeBranches/index.md)
 - G059 — Listree-to-JSON Round-Trip Hardening — **COMPLETE** 🔗[index](./Knowledge/Goals/G059-ListreeToJsonRoundTrip/index.md)
 - Fact — Traversal Cycle Detection — **Verified** 🔗[index](./Knowledge/Facts/ListreeTraversalCycleDetection.md)
