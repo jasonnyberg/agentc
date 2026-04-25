@@ -161,3 +161,21 @@ TEST(FreezeBuiltin, CopyOfFrozenValueReturnsSameSlab) {
     CPtr<agentc::ListreeValue> copied = frozen->copy();
     EXPECT_EQ(copied.getSlabId(), original);
 }
+
+TEST(SharingTest, CrossVMSharedReadOnlyBranch) {
+    auto shared = agentc::createListValue();
+    shared->put(agentc::createStringValue("data"));
+    shared->setReadOnly(true);
+    
+    agentc::edict::EdictVM vm1(shared);
+    agentc::edict::EdictVM vm2(shared);
+    
+    auto val1 = vm1.getCursor().getValue()->get(false, false);
+    auto val2 = vm2.getCursor().getValue()->get(false, false);
+    
+    std::string s1((char*)val1->getData(), val1->getLength());
+    std::string s2((char*)val2->getData(), val2->getLength());
+    
+    EXPECT_EQ(s1, "data");
+    EXPECT_EQ(s2, "data");
+}

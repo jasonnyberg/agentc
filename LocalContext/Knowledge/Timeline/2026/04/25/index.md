@@ -4,3 +4,4 @@
 - [G057] Refactored EdictREPL for injected streams; implemented IPC mode in main.cpp.
 - [Fact] Verified cycle detection implementation in Listree traversal.
 - [G057] Completed IPC bridge implementation in edict VM.
+- [G058] Completed implementation of read-only listree branches and cross-VM sharing optimization.

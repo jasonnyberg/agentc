@@ -1,6 +1,6 @@
 # G058 — Read-Only Listree Branches for Cross-VM Sharing
 
-## Status: SLICES A+B+C IMPLEMENTED; D+E+F REMAINING
+## Status: COMPLETE
 
 ## Parent Context
 

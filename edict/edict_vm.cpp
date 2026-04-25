@@ -2778,7 +2778,13 @@ int EdictVM::executeNested(const BytecodeBuffer& code) {
         if (!signature || !agentFunction) return nullptr;
 
         CPtr<agentc::ListreeValue> rootScope = stack_deq(VMRES_DICT, false);
-        if (rootScope) rootScope = rootScope->copy();
+        if (rootScope) {
+            if (rootScope->isReadOnly()) {
+                // Shared read-only root: O(1) retain (already a CPtr)
+            } else {
+                rootScope = rootScope->copy();
+            }
+        }
         else rootScope = agentc::createNullValue();
 
         auto continuation = agentc::createNullValue();
