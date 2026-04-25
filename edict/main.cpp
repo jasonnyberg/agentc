@@ -28,6 +28,7 @@ static void printUsage(const char* name) {
     std::cout << "  " << name << " -e CODE   # evaluate CODE and print stack\n";
     std::cout << "  " << name << " FILE      # execute script file\n";
     std::cout << "  " << name << " -         # execute script from stdin\n";
+    std::cout << "  " << name << " --ipc <IN> <OUT> # start IPC mode\n";
 }
 
 static std::string joinArgs(int argc, char** argv, int start) {
@@ -99,8 +100,26 @@ int main(int argc, char** argv) {
             // Script from stdin: edict -
             if (mode == "-") {
                 currentDebugLevel = DEBUG_WARNING;
-                agentc::edict::EdictREPL repl(root);
+                agentc::edict::EdictREPL repl(root, std::cin, std::cout);
                 return repl.runScript(std::cin) ? 0 : 1;
+            }
+
+            // IPC Mode: edict --ipc <in> <out>
+            if (mode == "--ipc") {
+                if (argc < 4) {
+                    printUsage(argv[0]);
+                    return 2;
+                }
+                currentDebugLevel = DEBUG_WARNING;
+                std::ifstream input(argv[2]);
+                std::ofstream output(argv[3]);
+                if (!input.is_open() || !output.is_open()) {
+                    std::cerr << "Error: cannot open IPC files: " << argv[2] << ", " << argv[3] << std::endl;
+                    return 1;
+                }
+                agentc::edict::EdictREPL repl(root, input, output);
+                repl.run();
+                return 0;
             }
 
             // Script from file: edict FILE
@@ -111,7 +130,7 @@ int main(int argc, char** argv) {
                     std::cerr << "Error: cannot open file: " << mode << std::endl;
                     return 1;
                 }
-                agentc::edict::EdictREPL repl(root);
+                agentc::edict::EdictREPL repl(root, file, std::cout);
                 return repl.runScript(file) ? 0 : 1;
             }
 
@@ -120,7 +139,7 @@ int main(int argc, char** argv) {
         }
 
         // Create and run the REPL
-        agentc::edict::EdictREPL repl(root);
+        agentc::edict::EdictREPL repl(root, std::cin, std::cout);
         repl.run();
         return 0;
     } catch (const std::exception& e) {

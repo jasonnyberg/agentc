@@ -558,16 +558,9 @@ void ltvToJsonHelper(CPtr<ListreeValue> v, std::string& out,
     }
 
     // Leaf: string data.
-    // If we have an explicit Null flag, serialize as "null".
-    // Empty strings are allowed as valid string values ("").
-    // SSO nodes (Immediate) cannot be null.
     const char* data = static_cast<const char*>(v->getData());
     size_t len = v->getLength();
-    if ((flags & LtvFlags::Null) != LtvFlags::None && (flags & LtvFlags::Immediate) == LtvFlags::None) {
-        out += "null";
-    } else {
-        jsonEscapeString(data ? data : "", len, out);
-    }
+    jsonEscapeString(data ? data : "", len, out);
     visited.erase(key);
 }
 
