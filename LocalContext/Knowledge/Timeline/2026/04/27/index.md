@@ -1,1 +1,11 @@
 - 2026-04-27: Hardened IPC and IO; verified end-to-end Kanren logic query execution. Cancelled G062 as existing FFI mechanism is verified stable and preferred.
+### 2026-04-27
+- Identified and fixed root cause of socket-based FFI import failure: Edict `[...]` literals capture content verbatim including inner quotes — paths must be bare e.g. `[/path/to/lib.so]` not `['/path/to/lib.so']`.
+- Verified end-to-end Mini-Kanren logic query over Unix Domain Socket: `<list:3>` returned for tea/cake/jam conde query.
+- Wrote `demo/demo_cognitive_core_socket.sh` as hardened zsh reproduction script.
+- Fixed `AgentCSubstrate.queryLogic()` and `importFFI()` in `pi_integration/lib/agentc.ts`.
+- Restructured `skills/agentc/` → `pi_integration/` with clean separation: `extensions/`, `lib/`, `examples/`, `skills/`.
+- Created `pi_integration/package.json` Pi manifest and installed via `pi install`.
+- Pi v0.70.2 now loads `agentc` skill and `agentc_extension.ts` extension globally with zero errors.
+- Added `pi_install` target to `makefile` so every `make compile` keeps Pi package in sync.
+- Created K029 (Edict literal path gotcha) and K030 (Pi package integration pattern).
