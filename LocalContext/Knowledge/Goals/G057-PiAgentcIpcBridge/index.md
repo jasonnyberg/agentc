@@ -15,3 +15,6 @@ Create an IPC bridge (e.g., via named pipes or standard I/O) between the `pi` co
 **Promotion Candidate**: true
 **References Count**: 0
 **Last Updated**: 2026-04-25
+
+## Progress Notes
+- 2026-04-25: Finalized shutdown logic (natural via 'exit'/EOF, forced via SIGKILL fallback). Verified end-to-end logic query round-trip ('hello' ! + 'stack'). IPC bridge fully hardened and operational.

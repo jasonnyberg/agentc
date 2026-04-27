@@ -5,3 +5,5 @@
 - [Fact] Verified cycle detection implementation in Listree traversal.
 - [G057] Completed IPC bridge implementation in edict VM.
 - [G058] Completed implementation of read-only listree branches and cross-VM sharing optimization.
+- 2026-04-25: Refactored EdictREPL for IPC, resolved pipe-locking hang in test environment, added natural/forced shutdown handling, verified IPC communication via new GTest. G057 complete.
+- 2026-04-25: Hardened IPC bridge shutdown logic and verified logic evaluation round-trip with GTest. G057 concluded.

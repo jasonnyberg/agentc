@@ -2,51 +2,45 @@
 
 **Project**: AgentC / J3 (transitional name — also called AgentLang)  
 **Primary Goal**: G001 — Codebase Review: Optimization and Redundancy/Inconsistency Analysis  
-**Last Updated**: 2026-04-25
+**Last Updated**: 2026-04-26
 
 ## Current Focus
 
-**Active Goals**: G053 (shared-root fine-grained multithreading design), G057 (Pi + AgentC IPC bridge), G058 (read-only Listree branches for cross-VM sharing — new, proposed)
+**Active Goals**: G053 (shared-root fine-grained multithreading design), G060 (Pi Frontend Integration), G061 (AgentC Stability and Hardening)
 **Status**: 
-- G044 (JSON module cache) complete. 
-- G045 (language enhancement review) complete. 
-- G046 (continuation-based speculation) complete. 
-- G047 (native relational syntax) complete. 
-- G048 (library-backed logic capability) complete. 
-- G049/G050/G052 (threading/runtime stability) complete.
-- G054/G055/G056 (native SDL/stdlib extensions) complete.
-- G059 (Listree-to-JSON Round-Trip Hardening) complete.
+- G057 (Pi + AgentC IPC Bridge) - **COMPLETE**
+- G060 (Pi Frontend Integration) - **COMPLETE**
+- G061 (AgentC Stability and Hardening) - **IN PROGRESS**
 
-**Active Task**: G057 (Pi IPC bridge) refactoring: `EdictREPL` stream-based I/O refactor is complete.
+**Active Task**: G061 (AgentC Stability and Hardening) – Migrating from FIFOs to Unix Domain Sockets for robustness.
 
-**Recently Completed Task**: G059 — Listree-to-JSON Round-Trip Hardening — **COMPLETE** (2026-04-25). Formalized and hardened the Listree-to-JSON round-trip, fixed serialization bug for empty strings, and added comprehensive round-trip test coverage.
+**Recently Completed Task**: G060 — Implemented `--socket` mode in C++ backend, enabling robust full-duplex persistent interaction.
 
 **Handoff Note**
-**Project**: AgentC (J3) / Pi IPC Integration.
-**Current State**: The `EdictREPL` class has been successfully refactored to support stream-based input/output, enabling IPC-based interaction. The Listree-to-JSON round-trip logic has been hardened and verified with a new test suite.
-**Next Action**: Implement the IPC service loop in `main.cpp` or a dedicated service thread to read commands from a named pipe (or socket) and feed them into the `EdictREPL` stream.
-**Key Context**: 
-- `EdictREPL` constructor now takes `(CPtr root, istream& in, ostream& out)`.
-- `G057` goal is in progress.
-**Do NOT**: Do not attempt to use `std::cin`/`cout` directly for IPC; rely on the injected streams.
+**Project**: AgentC (J3) / Stability & Hardening.
+**Current State**: IPC bridge is now supported by both named pipes and Unix Domain Sockets. The VM is verified for persistent, non-blocking interaction.
+**Next Action**: Update \`skills/agentc/agentc.ts\` to use \`net.connect\` for socket-based communication, providing a cleaner frontend interface for Pi.
+**Key Context**: The \`--socket\` mode avoids the \`open()\` deadlock issues inherent in FIFOs; all future development should prefer this mode.
+**Do NOT**: Do not delete the pipe-based code path yet; it is preserved for backward compatibility and simple shell-based testing.
 
 ## Active Agents
 None currently
 
 ## Knowledge Inventory
-- G057 — Pi + AgentC IPC Bridge — **COMPLETE** 🔗[index](./Knowledge/Goals/G057-PiAgentcIpcBridge/index.md)
-- G058 — Read-Only Listree Branches for Cross-VM Sharing — **COMPLETE** 🔗[index](./Knowledge/Goals/G058-ReadOnlyListreeBranches/index.md)
-- G059 — Listree-to-JSON Round-Trip Hardening — **COMPLETE** 🔗[index](./Knowledge/Goals/G059-ListreeToJsonRoundTrip/index.md)
-- Fact — Traversal Cycle Detection — **Verified** 🔗[index](./Knowledge/Facts/ListreeTraversalCycleDetection.md)
+- G053 — Shared-Root Fine-Grained Multithreading — **IN PROGRESS** 🔗[index](./Knowledge/Goals/G053-SharedRootFineGrainedMultithreading/index.md)
+- G060 — Pi Frontend Integration — **COMPLETE** 🔗[index](./Knowledge/Goals/G060-PiFrontendIntegration/index.md)
+- G061 — AgentC Stability and Hardening — **IN PROGRESS** 🔗[index](./Knowledge/Goals/G061-AgentCStabilityAndHardening/index.md)
+- Fact — Socket vs Pipe IPC — **Verified** 🔗[index](./Knowledge/Procedures/AgentC_Socket_Ops.md)
+- Fact — IPC Bridge Operations — **Verified** 🔗[index](./Knowledge/Procedures/AgentC_IPC_Bridge_Ops.md)
 
 ## Project History
-- 🔗[2026-04-25: G059 completed](./Knowledge/Timeline/2026/04/25/index.md)
+- 🔗[2026-04-26: G060 completed](./Knowledge/Timeline/2026/04/26/index.md)
 
 ## Session Compliance
 1. Review Dashboard: Yes
 2. Update Goals: Yes
 3. Persist Knowledge: Yes
 4. Update Dashboard: Yes
-5. Timeline Entry: Pending (Add timeline entry now)
+5. Timeline Entry: Yes
 6. Handoff Note: Yes
 7. Context Window: Normal

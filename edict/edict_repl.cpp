@@ -52,13 +52,20 @@ void EdictREPL::run() {
     output << "Edict REPL v0.1" << std::endl;
     output << "Type 'exit' to quit, 'help' for commands" << std::endl;
     
+    // In IPC mode, we should not print the prompt if it's not a TTY
+    // But EdictREPL doesn't know if it's a TTY.
+    // For now, let's just make it not print "> " if it's not a REPL
+    
+    bool isREPL = (&input == &std::cin);
+    
     while (true) {
-        output << "> ";
+        if (isREPL) output << "> ";
         std::string line = readLine();
         
+        // Handle natural EOF exit first
         if (input.eof()) {
             output << std::endl;
-            break;
+            break; 
         }
 
         if (line == "exit" || line == "quit") {
@@ -101,6 +108,7 @@ void EdictREPL::processLine(const std::string& line) {
     } catch (const std::exception& e) {
         printError(e.what());
     }
+    output.flush();
 }
 
 void EdictREPL::printResult(const Value& result) {

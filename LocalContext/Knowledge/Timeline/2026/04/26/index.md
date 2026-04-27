@@ -1,0 +1,1 @@
+- 2026-04-26: Completed G060. Implemented --socket mode in Edict backend, verified persistence, and refactored I/O for unbuffered flushing.

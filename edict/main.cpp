@@ -16,6 +16,9 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
 #include "edict_repl.h"
 #include "edict_compiler.h"
 #include "edict_vm.h"
@@ -28,7 +31,8 @@ static void printUsage(const char* name) {
     std::cout << "  " << name << " -e CODE   # evaluate CODE and print stack\n";
     std::cout << "  " << name << " FILE      # execute script file\n";
     std::cout << "  " << name << " -         # execute script from stdin\n";
-    std::cout << "  " << name << " --ipc <IN> <OUT> # start IPC mode\n";
+    std::cout << "  " << name << " --ipc <IN> <OUT> # start IPC mode (named pipes)\n";
+    std::cout << "  " << name << " --socket <PATH> # start Socket mode (Unix Domain)\n";
 }
 
 static std::string joinArgs(int argc, char** argv, int start) {
@@ -113,12 +117,69 @@ int main(int argc, char** argv) {
                 currentDebugLevel = DEBUG_WARNING;
                 std::ifstream input(argv[2]);
                 std::ofstream output(argv[3]);
+                
                 if (!input.is_open() || !output.is_open()) {
                     std::cerr << "Error: cannot open IPC files: " << argv[2] << ", " << argv[3] << std::endl;
                     return 1;
                 }
+                
+                std::cerr << "IPC mode: input/output open" << std::endl;
+                output << std::unitbuf; // Force unbuffered output for live IPC
+                
                 agentc::edict::EdictREPL repl(root, input, output);
                 repl.run();
+                return 0;
+            }
+
+            // Socket Mode: edict --socket <path>
+            if (mode == "--socket") {
+                if (argc < 3) {
+                    printUsage(argv[0]);
+                    return 2;
+                }
+                currentDebugLevel = DEBUG_WARNING;
+                const char* socketPath = argv[2];
+                unlink(socketPath);
+                
+                int server_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+                if (server_fd == -1) {
+                    perror("socket");
+                    return 1;
+                }
+                
+                struct sockaddr_un addr;
+                memset(&addr, 0, sizeof(addr));
+                addr.sun_family = AF_UNIX;
+                strncpy(addr.sun_path, socketPath, sizeof(addr.sun_path) - 1);
+                
+                if (bind(server_fd, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
+                    perror("bind");
+                    return 1;
+                }
+                
+                if (listen(server_fd, 1) == -1) {
+                    perror("listen");
+                    return 1;
+                }
+                
+                std::cerr << "Socket mode: listening on " << socketPath << std::endl;
+                
+                int client_fd = accept(server_fd, nullptr, nullptr);
+                if (client_fd == -1) {
+                    perror("accept");
+                    return 1;
+                }
+                
+                // Redirect stdin/stdout to the socket
+                dup2(client_fd, STDIN_FILENO);
+                dup2(client_fd, STDOUT_FILENO);
+                
+                agentc::edict::EdictREPL repl(root, std::cin, std::cout);
+                repl.run();
+                
+                close(client_fd);
+                close(server_fd);
+                unlink(socketPath);
                 return 0;
             }
 
