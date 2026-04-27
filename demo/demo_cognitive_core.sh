@@ -13,6 +13,8 @@ KANREN_HDR=${KANREN_HDR:-$(dirname "$0")/../cartographer/tests/kanren_runtime_ff
 
 echo "=== Cognitive Core Source Examples Demo ==="
 echo "Using interpreter: $EDICT"
+echo "Using kanren library: $KANREN_LIB"
+echo "Using kanren header: $KANREN_HDR"
 echo
 
 # ---------------------------------------------------------------------------

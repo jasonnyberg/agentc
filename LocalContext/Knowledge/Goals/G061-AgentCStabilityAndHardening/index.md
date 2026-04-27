@@ -10,3 +10,6 @@ EOF
 ## Progress Notes
 - 2026-04-26: Implemented  mode in Edict VM to solve pipe synchronization deadlocks. Verified persistence and responsiveness with direct interaction tests.
 - 2026-04-26: Refined REPL output flushing with  to ensure live interaction.
+
+## Progress Notes
+- 2026-04-26: Resolved build warnings in listree/listree.cpp by marking unused parameters.

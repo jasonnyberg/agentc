@@ -72,7 +72,7 @@ void EdictREPL::run() {
             break;
         } else if (handleSpecialCommand(line)) {
             continue;
-        } else {
+        } else if (!line.empty()) {
             processLine(line);
         }
     }
@@ -100,9 +100,12 @@ void EdictREPL::processLine(const std::string& line) {
         } else if (vm.getStackSize() != 0) {
             auto stackTop = vm.getStackTop();
             if (stackTop) {
-                printResult(agentc::Cursor(stackTop).getName());
-            } else {
-                printResult("<null>");
+                // Use the data directly if name is empty
+                std::string data;
+                if (stackTop->getData() && stackTop->getLength() > 0) {
+                    data = std::string(static_cast<char*>(stackTop->getData()), stackTop->getLength());
+                }
+                printResult(data);
             }
         }
     } catch (const std::exception& e) {
@@ -184,3 +187,5 @@ bool EdictREPL::handleSpecialCommand(const std::string& line) {
 }
 
 } // namespace agentc::edict
+
+// Debug:

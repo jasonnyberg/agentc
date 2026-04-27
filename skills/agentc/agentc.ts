@@ -1,28 +1,23 @@
 import { ChildProcess, spawn } from 'child_process';
 import { EventEmitter } from 'events';
+import * as net from 'net';
 import * as fs from 'fs';
 import * as readline from 'readline';
-import * as path from 'path';
+import * as stream from 'stream';
 
 export class AgentCSubstrate extends EventEmitter {
-    private input: fs.WriteStream;
-    private output: fs.ReadStream;
+    private transport: stream.Duplex;
+    private process: ChildProcess | null = null;
     private rl: readline.Interface;
     private pendingResolve: ((value: string) => void) | null = null;
-    private process: ChildProcess;
 
-    constructor(inputPipe: string, outputPipe: string, edictPath: string) {
+    constructor(transport: stream.Duplex, process: ChildProcess | null = null) {
         super();
+        this.transport = transport;
+        this.process = process;
 
-        // Spawn Edict VM process
-        this.process = spawn(edictPath, ['--ipc', inputPipe, outputPipe]);
-
-        // Small wait or check for pipe existence
-        this.input = fs.createWriteStream(inputPipe);
-        this.output = fs.createReadStream(outputPipe);
-        
         this.rl = readline.createInterface({
-            input: this.output,
+            input: this.transport,
             terminal: false
         });
 
@@ -37,25 +32,44 @@ export class AgentCSubstrate extends EventEmitter {
         });
     }
 
+    static async createSocket(socketPath: string, edictPath: string): Promise<AgentCSubstrate> {
+        const proc = spawn(edictPath, ['--socket', socketPath]);
+        await new Promise(r => setTimeout(r, 500));
+        const client = net.connect({ path: socketPath });
+        return new AgentCSubstrate(client, proc);
+    }
+
+    static async createPipe(inputPipe: string, outputPipe: string, edictPath: string): Promise<AgentCSubstrate> {
+        const proc = spawn(edictPath, ['--ipc', inputPipe, outputPipe]);
+        await new Promise(r => setTimeout(r, 500));
+        const input = fs.createWriteStream(inputPipe);
+        const output = fs.createReadStream(outputPipe);
+        const duplex = stream.Duplex.from({ readable: output, writable: input });
+        return new AgentCSubstrate(duplex, proc);
+    }
+
     async eval(code: string): Promise<string> {
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
             this.pendingResolve = resolve;
-            this.input.write(code + '\n');
+            this.transport.write(code + '\n');
         });
     }
 
-    async speculate(code: string): Promise<string> {
-        const txCode = `beginTransaction ! ${code} commit !`;
-        try {
-            return await this.eval(txCode);
-        } catch (e) {
-            await this.eval("rollback !");
-            throw e;
-        }
+    /**
+     * Logic Query helper using the imported capability surface.
+     * Note: Expects the logic engine to be bound as 'logic' or similar in the VM.
+     */
+    async queryLogic(spec: object): Promise<string> {
+        // Stringify spec to send over the socket
+        const jsonSpec = JSON.stringify(spec);
+        // We push the literal string to Edict, then call the logic capability
+        // The Edict VM must have 'logic!' or '$logic' bound to the logic evaluator
+        const command = `['${jsonSpec}'] logic!`;
+        return await this.eval(command);
     }
 
     async dispose() {
-        this.input.write('exit\n');
-        this.process.kill();
+        this.transport.write('exit\n');
+        if (this.process) this.process.kill();
     }
 }

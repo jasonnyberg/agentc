@@ -170,11 +170,15 @@ int main(int argc, char** argv) {
                     return 1;
                 }
                 
+                // Force unbuffered I/O for the socket client
+                std::cout << std::unitbuf;
+                
                 // Redirect stdin/stdout to the socket
                 dup2(client_fd, STDIN_FILENO);
                 dup2(client_fd, STDOUT_FILENO);
                 
                 agentc::edict::EdictREPL repl(root, std::cin, std::cout);
+                std::cout << "VM-READY" << std::endl; // Marker for the client
                 repl.run();
                 
                 close(client_fd);

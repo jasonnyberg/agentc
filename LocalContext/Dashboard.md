@@ -1,40 +1,30 @@
 # Dashboard
 
-**Project**: AgentC / J3 (transitional name — also called AgentLang)  
+**Project**: AgentC / J3  
 **Primary Goal**: G001 — Codebase Review: Optimization and Redundancy/Inconsistency Analysis  
 **Last Updated**: 2026-04-26
 
 ## Current Focus
-
 **Active Goals**: G053 (shared-root fine-grained multithreading design), G060 (Pi Frontend Integration), G061 (AgentC Stability and Hardening)
+
 **Status**: 
 - G057 (Pi + AgentC IPC Bridge) - **COMPLETE**
-- G060 (Pi Frontend Integration) - **COMPLETE**
-- G061 (AgentC Stability and Hardening) - **IN PROGRESS**
+- G060 (Pi Frontend Integration) - **COMPLETE** (Verified E2E Logic Engine Socket IO)
+- G061 (AgentC Stability and Hardening) - **COMPLETE** (Resolved Warnings, Hardened IO)
 
-**Active Task**: G061 (AgentC Stability and Hardening) – Migrating from FIFOs to Unix Domain Sockets for robustness.
-
-**Recently Completed Task**: G060 — Implemented `--socket` mode in C++ backend, enabling robust full-duplex persistent interaction.
+**Recently Completed Task**: Verified full end-to-end socket-based Kanren logic query execution; resolved compiler warnings.
 
 **Handoff Note**
-**Project**: AgentC (J3) / Stability & Hardening.
-**Current State**: IPC bridge is now supported by both named pipes and Unix Domain Sockets. The VM is verified for persistent, non-blocking interaction.
-**Next Action**: Update \`skills/agentc/agentc.ts\` to use \`net.connect\` for socket-based communication, providing a cleaner frontend interface for Pi.
-**Key Context**: The \`--socket\` mode avoids the \`open()\` deadlock issues inherent in FIFOs; all future development should prefer this mode.
-**Do NOT**: Do not delete the pipe-based code path yet; it is preserved for backward compatibility and simple shell-based testing.
-
-## Active Agents
-None currently
+**Project**: AgentC (J3) / Pi Frontend Integration.
+**Current State**: The AgentC VM is now fully stable over Unix Domain Sockets with verified Logic Engine FFI capabilities and a new `.` output word.
+**Next Action**: Integrate the verified `AgentCSubstrate` methods into the Pi extension logic (`pi_extension.ts`) for production deployment.
+**Key Context**: The logic engine requires `resolver.import !` with absolute paths or pre-resolved JSON caches to work; avoid relative paths in production environments.
+**Do NOT**: Do not attempt further IPC refactoring; the transport layer is now stable and fully tested.
 
 ## Knowledge Inventory
-- G053 — Shared-Root Fine-Grained Multithreading — **IN PROGRESS** 🔗[index](./Knowledge/Goals/G053-SharedRootFineGrainedMultithreading/index.md)
-- G060 — Pi Frontend Integration — **COMPLETE** 🔗[index](./Knowledge/Goals/G060-PiFrontendIntegration/index.md)
-- G061 — AgentC Stability and Hardening — **IN PROGRESS** 🔗[index](./Knowledge/Goals/G061-AgentCStabilityAndHardening/index.md)
-- Fact — Socket vs Pipe IPC — **Verified** 🔗[index](./Knowledge/Procedures/AgentC_Socket_Ops.md)
-- Fact — IPC Bridge Operations — **Verified** 🔗[index](./Knowledge/Procedures/AgentC_IPC_Bridge_Ops.md)
-
-## Project History
-- 🔗[2026-04-26: G060 completed](./Knowledge/Timeline/2026/04/26/index.md)
+- G053 — Shared-Root Fine-Grained Multithreading — **IN PROGRESS**
+- Fact — Socket vs Pipe IPC — **Verified**
+- Fact — Logic Engine FFI Setup — **Verified**
 
 ## Session Compliance
 1. Review Dashboard: Yes
@@ -43,4 +33,4 @@ None currently
 4. Update Dashboard: Yes
 5. Timeline Entry: Yes
 6. Handoff Note: Yes
-7. Context Window: Normal
+7. Session Checklist: Yes

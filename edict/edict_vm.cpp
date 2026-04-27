@@ -2820,6 +2820,7 @@ int EdictVM::executeNested(const BytecodeBuffer& code) {
         addBuiltinThunk(dictVal, "assign", VMOP_ASSIGN);
         addBuiltinThunk(dictVal, "remove", VMOP_REMOVE);
         addBuiltinThunk(dictVal, "!", VMOP_EVAL);
+        addBuiltinThunk(dictVal, ".", VMOP_PRINT);
         addBuiltinThunk(dictVal, "print", VMOP_PRINT);
         addBuiltinThunk(dictVal, "fail", VMOP_FAIL);
         addBuiltinThunk(dictVal, "test", VMOP_TEST);

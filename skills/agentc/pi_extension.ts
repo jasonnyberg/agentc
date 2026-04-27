@@ -7,15 +7,24 @@ import * as path from 'path';
  * Registers the 'agentc_eval' tool which interfaces with the persistent
  * Edict VM backend via the AgentCSubstrate skill.
  */
-export function activate(ctx: ExtensionContext) {
+export async function activate(ctx: ExtensionContext) {
     // Configure paths
-    const pipeDir = process.env.AGENTC_PIPE_DIR || '/tmp';
-    const inputPipe = path.join(pipeDir, 'agentc_in.pipe');
-    const outputPipe = path.join(pipeDir, 'agentc_out.pipe');
     const edictPath = process.env.EDICT_PATH || path.join(__dirname, '../../build/edict/edict');
+    const socketPath = process.env.AGENTC_SOCKET_PATH || '/tmp/agentc.sock';
+    const useSocket = process.env.AGENTC_USE_SOCKET === 'true';
 
     // Initialize the Substrate
-    const substrate = new AgentCSubstrate(inputPipe, outputPipe, edictPath);
+    let substrate: AgentCSubstrate;
+    if (useSocket) {
+        substrate = await AgentCSubstrate.createSocket(socketPath, edictPath);
+    } else {
+        const pipeDir = process.env.AGENTC_PIPE_DIR || '/tmp';
+        substrate = await AgentCSubstrate.createPipe(
+            path.join(pipeDir, 'agentc_in.pipe'),
+            path.join(pipeDir, 'agentc_out.pipe'),
+            edictPath
+        );
+    }
 
     // Register tool
     ctx.api.registerTool({

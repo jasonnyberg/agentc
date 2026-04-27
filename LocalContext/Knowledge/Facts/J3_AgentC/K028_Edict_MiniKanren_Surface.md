@@ -136,7 +136,9 @@ Expected high-level answer:
 ## Demonstration Artifact
 - `demo/demo_kanren_edict.cpp` is the runnable end-to-end imported-capability demonstration of the current surface
 
-## Current Constraints
+## REPL vs. VM Commands
+- **Special Commands**: `stack`, `help`, `clear`, `exit` are intercepted by the `EdictREPL` loop.
+- **Language Words**: Everything else is executed by the VM.
 - The canonical runtime contract is still the structured query spec, not a larger dedicated logic sublanguage.
 - More ergonomic logic notation should now live in ordinary Edict wrappers or later rewrite-hosted DSL layers rather than compiler special cases.
 - Search now uses pull-driven lazy streams with fair branch interleaving for the implemented combinators, but this is still a compact runtime rather than a full canonical miniKanren surface.

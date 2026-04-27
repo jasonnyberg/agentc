@@ -67,7 +67,7 @@ void TraversalContext::clear() { absolute_visited.clear(); recursive_visited.cle
 ListreeValueRef::ListreeValueRef() : value(nullptr) {}
 ListreeValueRef::ListreeValueRef(CPtr<ListreeValue> value) : value(value) {}
 ListreeValueRef::~ListreeValueRef() {}
-bool ListreeValueRef::unwind(SlabId sid) { return true; }
+bool ListreeValueRef::unwind(SlabId /*sid*/) { return true; }
 std::ostream& operator<<(std::ostream& os, const ListreeValueRef& ltvr) { os << "LTVR(" << ltvr.value << ")"; return os; }
 
 //////////////////////////////////////////////////
@@ -107,7 +107,7 @@ void ListreeItem::forEachValue(const std::function<void(CPtr<ListreeValue>&)>& c
 void ListreeItem::forEachRef(const std::function<void(CPtr<ListreeValueRef>&)>& callback, bool forward) {
     if (values) values->forEach(callback, forward);
 }
-bool ListreeItem::unwind(SlabId sid) { return true; }
+bool ListreeItem::unwind(SlabId /*sid*/) { return true; }
 std::ostream& operator<<(std::ostream& os, const ListreeItem& lti) { os << "LTI(name=\"" << lti.name << "\")"; return os; }
 
 //////////////////////////////////////////////////
@@ -395,7 +395,7 @@ void ListreeValue::toDot(std::ostream& os, const std::string& label) const {
     os << "}\n";
 }
 
-bool ListreeValue::unwind(SlabId sid) { return true; }
+bool ListreeValue::unwind(SlabId /*sid*/) { return true; }
 std::ostream& operator<<(std::ostream& os, const ListreeValue& ltv) {
     os << "LTV("; if (ltv.isEmpty()) os << "null"; else if ((ltv.getFlags() & LtvFlags::Binary) != LtvFlags::None) os << "binary[" << ltv.getLength() << "]"; else if (ltv.getData() && ltv.getLength() > 0) os << '"' << std::string((char*)ltv.getData(), ltv.getLength()) << '"'; else os << "empty";
     os << ", " << (ltv.isListMode() ? "list" : "tree") << ")"; return os;
