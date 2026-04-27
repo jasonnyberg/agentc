@@ -15,6 +15,12 @@ async function verifyKanrenSocket() {
     const substrate = await AgentCSubstrate.createSocket(socketPath, edictPath);
 
     try {
+        console.log("--- Importing Logic FFI ---");
+        const libPath = path.resolve(__dirname, '../../build/kanren/libkanren.so');
+        const hdrPath = path.resolve(__dirname, '../../cartographer/tests/kanren_runtime_ffi_poc.h');
+        
+        await substrate.importFFI(libPath, hdrPath, "logicffi", { "agentc_logic_eval_ltv": "logic" });
+
         console.log("--- Sending Kanren Query ---");
         // Canonical Spec as defined in K028
         const query = {

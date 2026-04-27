@@ -1,0 +1,1 @@
+- 2026-04-27: Hardened IPC and IO; verified end-to-end Kanren logic query execution. Cancelled G062 as existing FFI mechanism is verified stable and preferred.

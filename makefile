@@ -7,9 +7,14 @@ all: compile
 
 build:; mkdir -p build
 cmake: build; cd build && cmake ..
-compile: cmake; make -C build
+compile: cmake; make -C build && make pi_install
 clean:; [ -d build ] && make -C build clean || true
 distclean: ; rm -rf build
+
+# Pi integration
+pi_install:
+	@echo "Installing/Updating Pi Package..."
+	pi install $(PWD)/pi_integration
 
 # Test targets
 test: compile; cd build && ctest --output-on-failure

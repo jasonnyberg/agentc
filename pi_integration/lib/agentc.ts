@@ -56,15 +56,28 @@ export class AgentCSubstrate extends EventEmitter {
     }
 
     /**
+     * Imports a C/C++ shared library into the Edict VM via Cartographer FFI.
+     * Automatically enables unsafe extensions and maps the specified bindings.
+     */
+    async importFFI(libraryPath: string, headerPath: string, moduleAlias: string, bindings: Record<string, string> = {}): Promise<string> {
+        let cmd = `unsafe_extensions_allow ! pop\n`;
+        // Important: paths must be pushed in brackets to avoid quote parsing issues inside Edict
+        cmd += `[${libraryPath}] [${headerPath}] resolver.import ! @${moduleAlias}\n`;
+        for (const [ffiName, edictName] of Object.entries(bindings)) {
+            cmd += `${moduleAlias}.${ffiName} @${edictName}\n`;
+        }
+        return await this.eval(cmd);
+    }
+
+    /**
      * Logic Query helper using the imported capability surface.
-     * Note: Expects the logic engine to be bound as 'logic' or similar in the VM.
+     * Note: Expects the logic engine to be bound as 'logic' in the VM.
      */
     async queryLogic(spec: object): Promise<string> {
-        // Stringify spec to send over the socket
+        // Stringify spec to a raw JSON map, which Edict natively parses as a dictionary
         const jsonSpec = JSON.stringify(spec);
-        // We push the literal string to Edict, then call the logic capability
-        // The Edict VM must have 'logic!' or '$logic' bound to the logic evaluator
-        const command = `['${jsonSpec}'] logic!`;
+        // Push the dictionary, push the logic evaluator, then execute (!)
+        const command = `${jsonSpec} logic !`;
         return await this.eval(command);
     }
 

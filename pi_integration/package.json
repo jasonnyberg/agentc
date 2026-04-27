@@ -1,0 +1,16 @@
+{
+  "name": "agentc-pi-tools",
+  "version": "1.0.0",
+  "description": "AgentC Cognitive Substrate integration for Pi",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./extensions"],
+    "skills": ["./skills"]
+  },
+  "dependencies": {
+    "typebox": "*"
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*"
+  }
+}
