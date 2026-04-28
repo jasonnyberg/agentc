@@ -30,6 +30,8 @@ find_package(CURL REQUIRED)
 add_executable(cpp-agent-tests
     tests/agent_loop_test.cpp
     tests/provider_registration_test.cpp
+    tests/multi_provider_test.cpp
+    tests/provider_integration_demo.cpp
     agent_loop.cpp
     api_registry.cpp
     sse_parser.cpp
