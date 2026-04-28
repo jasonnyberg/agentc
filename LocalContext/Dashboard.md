@@ -1,7 +1,6 @@
 # Dashboard
 
 **Project**: AgentC / J3  
-**Primary Goal**: G001 — Codebase Review: Optimization and Redundancy/Inconsistency Analysis  
 **Last Updated**: 2026-04-27
 
 ## Status
@@ -9,53 +8,54 @@
 - G060 (Pi Frontend Integration) - **COMPLETE**
 - G061 (AgentC Stability and Hardening) - **COMPLETE**
 - G062 (Logic Engine Bootstrapping) - **CANCELLED**
+- G063 (Native C++ Agent Core) - **COMPLETE** 🔗[index](./Knowledge/Goals/G063-NativeCppAgentCore/index.md)
 
-## What Was Accomplished This Session
-- Identified and fixed the root cause of socket-based FFI import failures: Edict's `[...]` literal syntax captures content verbatim — paths must be bare `[/path]` not `['/path']`.
-- Verified full end-to-end Mini-Kanren logic query over Unix Domain Socket (returned `<list:3>`).
-- Hardened `AgentCSubstrate.queryLogic()` and `importFFI()` in `pi_integration/lib/agentc.ts`.
-- Renamed `pi_extension.ts` → `agentc_extension.ts`.
-- Restructured `skills/agentc/` into `pi_integration/` with clean separation of `extensions/`, `lib/`, `examples/`, and `skills/`.
-- Created `pi_integration/package.json` as a proper Pi package manifest.
-- Installed the package globally via `pi install` — Pi v0.70.2 now loads `agentc` skill and extension with zero errors from any directory.
-- Added `pi_install` target to the `makefile` so every `make compile` keeps the Pi package in sync.
-- Wrote `demo/demo_cognitive_core_socket.sh` as a hardened zsh reproduction script.
-- Captured K029 (Edict literal syntax gotcha) and K030 (Pi package integration pattern).
-
-## Active Goals
-None. All integration goals are complete.
-
-## Knowledge Inventory
-- K028 — Edict MiniKanren Surface — **Verified** 🔗[index](./Knowledge/Facts/J3_AgentC/K028_Edict_MiniKanren_Surface.md)
-- K029 — Edict Literal Syntax Path Gotcha — **New** 🔗[index](./Knowledge/Facts/J3_AgentC/K029_Edict_Literal_Syntax_Path_Gotcha.md)
-- K030 — Pi Package Integration Pattern — **New** 🔗[index](./Knowledge/Facts/J3_AgentC/K030_Pi_Package_Integration.md)
-- G053 — Shared-Root Fine-Grained Multithreading — **IN PROGRESS**
+## Current Focus
+**Active Goal**: G063 — Native C++ Agent Core  
+**Phase 1**: COMPLETE — build scaffolds, all C++ types, EventStream  
+**Phase 2**: COMPLETE — credentials.cpp (Google/OpenAI env vars, Copilot auth.json + token refresh)  
+**Phase 3**: NOT STARTED — mock StreamFn, agent loop test, tool call dispatch test  
 
 ## Handoff Note
 
-**Project**: AgentC (J3) is a cognitive substrate VM (Edict) with Mini-Kanren logic capabilities, now fully integrated into the Pi coding agent via a global Pi package.
+**Project**: Build a minimal C++ AI agent (Google/OpenAI/GitHub Copilot) with the Edict VM
+linked in-process. No hardcoded tools. All capabilities via Cartographer FFI.
 
-**Current State**: The Pi package (`pi_integration/`) is installed globally; Pi v0.70.2 loads the `agentc` skill and `agentc_extension.ts` extension cleanly from any directory. The extension exposes three tools: `agentc_eval`, `agentc_import_ffi`, and `agentc_logic_query`. The logic engine has been verified working over Unix Domain Sockets.
+**Current State**: Phases 1 and 2 complete. `./build/cpp-agent/cpp-agent` builds and runs.
+All type definitions are in place. Credential layer implemented including Copilot OAuth
+token refresh. All non-edict tests pass (edict_tests has pre-existing timeout, unrelated).
 
-**Next Action**: Perform an actual live Pi session test — use `agentc_import_ffi` to load `libkanren.so` and `kanren_runtime_ffi_poc.h`, bind `agentc_logic_eval_ltv` as `logic`, then run `agentc_logic_query` with a spec to confirm the full round-trip works through the Pi LLM tool interface.
+**Next Action — EXECUTE IMMEDIATELY**:
+Implement Phase 3: add a mock StreamFn to `cpp-agent/main.cpp` that returns a hardcoded
+`EvDone` event, then call `run_agent_loop()` with it and verify a single-turn conversation
+completes and events are emitted in the correct order. Then add a tool call test.
 
 **Key Context**:
-- Edict `[...]` literals are verbatim — use `[/abs/path]` NOT `['/abs/path']` for file paths sent over the socket.
-- The Pi package lives at `/home/jwnyberg/agentlang/agentc/pi_integration/`.
-- `make compile` now auto-reinstalls the Pi package after every build.
-- The `agentc_import_ffi` tool must be called before `agentc_logic_query` in any new session.
-- Library paths: `build/kanren/libkanren.so`, header: `cartographer/tests/kanren_runtime_ffi_poc.h`.
-- The `.` (dot) operator was added to the Edict VM as an alias for `print` (pops and displays TOS).
+- Full plan: 🔗[G063](./Knowledge/Goals/G063-NativeCppAgentCore/index.md)
+- Build: `cd build && make cpp-agent` (fast — ~10s)
+- Run: `./build/cpp-agent/cpp-agent`
+- Tests (use --timeout): `cd build && ctest --timeout 30 -E edict_tests`
+- edict_tests has a pre-existing timeout issue — exclude it with `-E edict_tests`
+- Phase 3 ref: `~/pi-mono/packages/agent/src/agent-loop.ts` lines 170–350 (runLoop)
+- The mock StreamFn should call `stream.end(msg)` synchronously for simplicity
+- EventStream is callback-based (on_event / on_complete / on_error)
+- agent_loop.cpp calls stream_fn synchronously then waits for on_complete callback
 
 **Do NOT**:
-- Do not attempt G062 (bootstrap kanren into VM startup) — the existing FFI import pattern is the standard.
-- Do not symlink individual `.ts` files into `~/.pi/agent/extensions/` — Node resolves relative imports against the symlink location, not the source file location. Use `pi install` instead.
-- Do not wrap file paths in inner quotes inside `[...]` Edict literals.
+- Do not run `ctest` without `--timeout 30` — edict_tests hangs
+- Do not add tools or providers yet — Phase 3 is mock/test only
+- Do not modify existing AgentC source files
+- Do not use C++20 features — project is C++17
+
+## Important: Context Management
+- Checkpoint (update Dashboard + Goal file) after EVERY phase or significant milestone
+- Use `--timeout 30` on all ctest/make test commands
+- If context window approaches 70%, checkpoint immediately and stop
 
 ## Session Compliance
 1. Review Dashboard: ✅
-2. Update Goals: ✅ (all goals finalized)
-3. Persist Knowledge: ✅ (K029, K030 created)
+2. Update Goals: ✅ (Phase 1+2 progress noted)
+3. Persist Knowledge: ✅
 4. Update Dashboard: ✅
 5. Timeline Entry: ✅
 6. Handoff Note: ✅

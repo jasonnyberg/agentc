@@ -80,3 +80,6 @@ add_subdirectory(edict)
 
 # Add Mini-Kanren
 add_subdirectory(kanren)
+
+# Add C++ Agent (G063)
+add_subdirectory(cpp-agent)

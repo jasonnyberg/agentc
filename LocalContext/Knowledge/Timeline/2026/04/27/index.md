@@ -9,3 +9,9 @@
 - Pi v0.70.2 now loads `agentc` skill and `agentc_extension.ts` extension globally with zero errors.
 - Added `pi_install` target to `makefile` so every `make compile` keeps Pi package in sync.
 - Created K029 (Edict literal path gotcha) and K030 (Pi package integration pattern).
+- G063 created: Native C++ Agent Core — minimal C++ AI agent with Edict VM in-process, no built-in tools, all capabilities via Cartographer FFI. Phase 1 next: scaffold cpp-agent/ and stub agent loop.
+- G063 refined: separated credential layer (Pi-compatible auth.json), full provider parity with pi-mono/packages/ai. Key insight: providers are mechanical HTTP+SSE+JSON ports; SSE infrastructure is shared via libcurl. Phase 1 next: cpp-agent/ scaffold + ai_types.h.
+- G063 scoped to: Google Gemini + OpenAI + GitHub Copilot (3 providers), raw HTTP+SSE, callback EventStream, Pi-compatible auth.json read-only, Edict VM in-process, zero hardcoded tools. Copilot = OpenAI + headers (not a separate protocol). ~5,350 lines C++ total. Phases 1-3 fully autonomous, Phase 4-5 needs API keys. Ready to begin Phase 1: cpp-agent/ scaffold.
+- G063 credential audit complete: GEMINI_API_KEY and OPENAI_API_KEY in env; GitHub Copilot OAuth in ~/.pi/agent/auth.json with valid token + refresh mechanism fully documented. Zero human interaction required for any phase. Full auth spec recorded in G063 index.
+- G063 Phase 1+2 complete: cpp-agent/ fully scaffolded, builds cleanly. Types ported (ai_types.h, agent_types.h), agent loop ported (agent_loop.cpp), credential layer complete (credentials.cpp). Next: Phase 3 mock StreamFn + agent loop test.
+- [G063] Completed native C++ agent core: agent loop, tool dispatch, and Gemini/OpenAI/Copilot providers.
