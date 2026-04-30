@@ -13,20 +13,42 @@ file(COPY ${nlohmann_json_SOURCE_DIR}/json.hpp DESTINATION ${nlohmann_json_SOURC
 
 find_package(CURL REQUIRED)
 
-add_executable(cpp-agent
-    main.cpp agent_loop.cpp api_registry.cpp sse_parser.cpp http_client.cpp
-    socket_server.cpp credentials.cpp edict_tools.cpp providers/google.cpp
+add_library(agent_runtime SHARED
+    runtime/core/runtime.cpp
+    runtime/c_api/agentc_runtime_c_api.cpp
+    runtime/providers/register_builtin_providers.cpp
+    api_registry.cpp
+    credentials.cpp
+    http_client.cpp
+    providers/google.cpp
     providers/openai.cpp
+)
+set_target_properties(agent_runtime PROPERTIES OUTPUT_NAME agent_runtime)
+
+target_include_directories(agent_runtime
+    PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}
+    ${nlohmann_json_SOURCE_DIR}
+)
+
+target_link_libraries(agent_runtime PRIVATE CURL::libcurl)
+target_compile_options(agent_runtime PRIVATE -Wall -Wextra -Wno-unused-parameter)
+
+add_executable(cpp-agent
+    main.cpp agent_loop.cpp socket_server.cpp edict_tools.cpp
 )
 
 target_include_directories(cpp-agent PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}
     ${nlohmann_json_SOURCE_DIR}
     ${asio_SOURCE_DIR}/asio/include
 )
 
-target_link_libraries(cpp-agent PRIVATE libedict CURL::libcurl)
+target_link_libraries(cpp-agent PRIVATE libedict agent_runtime CURL::libcurl)
 target_compile_options(cpp-agent PRIVATE -Wall -Wextra -Wno-unused-parameter -DASIO_STANDALONE)
 
 add_executable(hello_gemini hello_gemini.cpp)

@@ -279,12 +279,14 @@ Disabled by default:
 
 ## Persistence and Rehydration Model
 
+The Edict-native agent loop continues to rely on the previously chosen **mmap-backed Listree/slab persistence** model. This plan changes where orchestration lives, not the durable substrate: persistent logical state still lives in the embedded VM's mmap-backed Listree object graph and is restored through the slab/root-state path.
+
 ### Durable state in slab
 - conversation state,
 - agent loop state,
 - policy configuration,
 - model/provider defaults,
-- memory/dictionary structures,
+- memory/dictionary/Listree structures,
 - staged directives,
 - resumable workflow/task state,
 - enough metadata to re-import curated modules safely.

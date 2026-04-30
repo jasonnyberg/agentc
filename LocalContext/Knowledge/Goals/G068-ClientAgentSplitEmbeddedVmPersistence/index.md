@@ -116,7 +116,7 @@ while also inverting control so that:
 ## Durable vs Transient State Boundary
 
 ### Durable State (persist in slab)
-- Listree/object graph state,
+- mmap-backed Listree/object graph state,
 - VM roots and anchors,
 - agent memory/goals/facts/conversation state,
 - agent-loop state and policy configuration,
@@ -187,12 +187,14 @@ Model output is **data first**. The first production architecture does not grant
 - [x] Capture the chosen architecture in a work product.
 - [x] Define the role split between host, embedded VM, and native runtime library.
 - [x] Define the initial `agentc.call(request) -> value` capability contract.
-- [ ] Write the concrete C ABI and normalized request/response schema for the runtime library.
+- [x] Write the concrete C ABI and normalized request/response schema for the runtime library.
 
 ### Phase 2 - Runtime Extraction
 - [ ] Extract provider/auth/HTTP code into a reusable native runtime library.
 - [ ] Normalize provider responses into a single JSON contract.
 - [ ] Preserve current provider support (Gemini/OpenAI/Copilot) behind the new boundary.
+
+Phase 2 has now started: a first `libagent_runtime.so` target exists under `cpp-agent/`, exposes the new C ABI header, registers built-in providers once, and routes JSON requests through a reusable runtime wrapper while the host executable continues to work against the same provider implementations during transition.
 
 ### Phase 3 - Edict Module Surface
 - [ ] Add/import the `agentc` module namespace.
@@ -238,5 +240,12 @@ Model output is **data first**. The first production architecture does not grant
 - Remaining: Define the concrete runtime ABI, normalized request/response contract, extraction map from current `cpp-agent` code, and the first Edict module/builtin surface.
 - Next: Write the concrete `libagent_runtime` C ABI plus the normalized `agentc.call` request/response schema.
 
+### 2026-04-30 (implementation start)
+- Did: Added the first implementation slice for the new runtime boundary: `cpp-agent/include/agentc_runtime/agentc_runtime.h`, runtime core/c_api scaffolding, built-in provider registration, and a new `agent_runtime` shared-library target producing `libagent_runtime.so`.
+- Did: Implemented JSON-configured runtime creation/configuration/request methods, normalized JSON success/error envelopes, and a smoke-tested C ABI path via `ctypes` against `libagent_runtime.so`.
+- Did: Tightened the OpenAI-compatible provider path so it resolves auth more cleanly and produces a usable final assistant message for normalization.
+- Remaining: continue extracting common/provider code into the new runtime layout, add Edict-side wrappers/import path, and move host entrypoints onto the new runtime contract.
+- Next: refactor the current host/front-end to consume `libagent_runtime` through the new runtime core rather than owning provider wiring directly.
+
 ## Next Action
-Write the concrete `libagent_runtime` C ABI plus the normalized `agentc.call` request/response schema, then map existing `cpp-agent` provider/auth/http code into that extraction plan.
+Refactor the current host/front-end to consume `libagent_runtime` through the new runtime core, then add the first Edict-side `agentc` wrapper/import path over the C ABI.

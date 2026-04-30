@@ -4,6 +4,8 @@
 #include "../http_client.h"
 #include "../sse_parser.cpp"
 
+#include <stdexcept>
+
 void register_openai_provider() {
     register_provider("openai-completions", [](
         const Model& model,
@@ -32,52 +34,91 @@ void register_openai_provider() {
         HttpClient::Request req;
         req.url = model.base_url + "/chat/completions";
         req.body = payload.dump();
-        // GitHub Copilot integration logic
+
+        std::string auth_token;
+        std::string resolved_base_url = model.base_url;
         if (model.provider == "github-copilot") {
             auto creds = get_copilot_credentials();
-            std::string access_token = creds.first;
-            std::string base_url = creds.second;
+            auth_token = creds.first;
+            resolved_base_url = creds.second;
+            req.url = resolved_base_url + "/chat/completions";
 
-            // Cast model and opts to non-const to update them
-            Model& m = const_cast<Model&>(model);
-            StreamOptions& o = const_cast<StreamOptions&>(opts);
-            
-            o.api_key = access_token;
-            m.base_url = base_url;
-            
-            // Add dynamic Copilot headers
             req.headers.push_back("User-Agent: GitHubCopilotChat/0.35.0");
             req.headers.push_back("Editor-Version: vscode/1.107.0");
             req.headers.push_back("Editor-Plugin-Version: copilot-chat/0.35.0");
             req.headers.push_back("Copilot-Integration-Id: vscode-chat");
-            req.headers.push_back("X-Initiator: user"); // Defaulting to user-initiated
+            req.headers.push_back("X-Initiator: user");
             req.headers.push_back("Openai-Intent: conversation-edits");
+        } else {
+            auth_token = opts.api_key.value_or(get_openai_api_key());
         }
-        
-        req.headers.push_back("Authorization: Bearer " + opts.api_key.value_or(""));
+
+        req.headers.push_back("Authorization: Bearer " + auth_token);
+        req.headers.push_back("Content-Type: application/json");
+
+        AssistantMessage final_msg;
+        final_msg.api = model.api;
+        final_msg.provider = model.provider;
+        final_msg.model_id = model.id;
+        final_msg.stop_reason = StopReason::stop;
+
+        std::string full_text;
+        bool completed = false;
 
         SSEParser parser;
         parser.on_data = [&](const std::string& data) {
             if (data == "[DONE]") {
-                AssistantMessage final_msg;
-                final_msg.stop_reason = StopReason::stop;
-                stream.push(EvDone{.reason = StopReason::stop, .message = final_msg});
+                if (!full_text.empty() && final_msg.content.empty()) {
+                    final_msg.content.push_back(TextContent{.text = full_text});
+                }
+                completed = true;
+                stream.push(EvDone{.reason = final_msg.stop_reason, .message = final_msg});
                 stream.end(final_msg);
-            } else {
-                try {
-                    auto j = nlohmann::json::parse(data);
-                    if (j.contains("choices") && j["choices"][0]["delta"].contains("content")) {
-                        std::string delta = j["choices"][0]["delta"]["content"];
-                        AssistantMessage partial;
-                        partial.content.push_back(TextContent{.text = delta});
+                return;
+            }
+
+            try {
+                auto j = nlohmann::json::parse(data);
+                if (j.contains("id") && j["id"].is_string()) {
+                    final_msg.response_id = j["id"].get<std::string>();
+                }
+                if (j.contains("choices") && j["choices"].is_array() && !j["choices"].empty()) {
+                    const auto& choice = j["choices"][0];
+                    if (choice.contains("finish_reason") && choice["finish_reason"].is_string()) {
+                        const auto finish = choice["finish_reason"].get<std::string>();
+                        if (finish == "tool_calls") {
+                            final_msg.stop_reason = StopReason::tool_use;
+                        } else if (finish == "length") {
+                            final_msg.stop_reason = StopReason::length;
+                        } else if (finish == "stop") {
+                            final_msg.stop_reason = StopReason::stop;
+                        }
+                    }
+                    if (choice.contains("delta") && choice["delta"].contains("content")) {
+                        std::string delta = choice["delta"]["content"].get<std::string>();
+                        full_text += delta;
+                        AssistantMessage partial = final_msg;
+                        partial.content.clear();
+                        partial.content.push_back(TextContent{.text = full_text});
                         stream.push(EvTextDelta{.content_index = 0, .delta = delta, .partial = partial});
                     }
-                } catch (...) { /* ignore partial json */ }
+                }
+            } catch (...) {
+                // ignore partial or non-conforming chunks
             }
         };
 
-        client.post_sse(req, [&](const char* buf, size_t len) {
+        const bool ok = client.post_sse(req, [&](const char* buf, size_t len) {
             parser.feed(buf, len);
         });
+
+        if (!ok) {
+            stream.fail(std::make_exception_ptr(std::runtime_error("OpenAI-compatible request failed")));
+            return;
+        }
+
+        if (!completed) {
+            parser.finalize();
+        }
     });
 }
