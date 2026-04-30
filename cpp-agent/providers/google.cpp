@@ -33,16 +33,18 @@ void register_google_provider() {
             if (data == "[DONE]") {
                 AssistantMessage final_msg;
                 final_msg.stop_reason = StopReason::stop;
+                stream.push(EvDone{.reason = StopReason::stop, .message = final_msg});
                 stream.end(final_msg);
             } else {
-                auto j = nlohmann::json::parse(data);
-                // Extract text from Gemini response format
-                if (j.contains("candidates") && j["candidates"][0].contains("content")) {
-                    std::string text = j["candidates"][0]["content"]["parts"][0]["text"];
-                    AssistantMessage partial;
-                    partial.content.push_back(TextContent{.text = text});
-                    stream.push(EvTextDelta{.content_index = 0, .delta = text, .partial = partial});
-                }
+                try {
+                    auto j = nlohmann::json::parse(data);
+                    if (j.contains("candidates") && j["candidates"][0].contains("content")) {
+                        std::string text = j["candidates"][0]["content"]["parts"][0]["text"];
+                        AssistantMessage partial;
+                        partial.content.push_back(TextContent{.text = text});
+                        stream.push(EvTextDelta{.content_index = 0, .delta = text, .partial = partial});
+                    }
+                } catch (...) { /* ignore partial json */ }
             }
         };
 

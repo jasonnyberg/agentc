@@ -13,14 +13,16 @@ int main() {
     register_google_provider();
     register_openai_provider();
 
+    // Persistent Context
     AgentContext context;
     context.system_prompt = "You are a helpful coding assistant.";
 
+    // Persistent Registry
     EdictToolRegistry edict_tools;
     edict_tools.load_bundle("/tmp/test_tool.edict");
     context.tools = edict_tools.get_tools();
 
-    // Use actual provider: Google Gemini
+    // Persistent Agent Loop Config
     AgentLoopConfig config;
     try {
         config.stream_fn = get_provider("google-gemini-cli");
@@ -42,6 +44,9 @@ int main() {
     printf("AgentC Daemon ready (Gemini Mode). Listening on /tmp/agentc.sock\n");
 
     server.start_accept([&](asio::local::stream_protocol::socket socket) {
+        printf("Client attached.\n");
+        asio::write(socket, asio::buffer("AgentC Session Attached.\n> "));
+
         asio::streambuf buffer;
         while(true) {
             std::error_code ec;
@@ -51,11 +56,12 @@ int main() {
             std::istream is(&buffer);
             std::string input;
             std::getline(is, input);
-            
+            if (input == "exit") break;
+
             context.messages.push_back(UserMessage::text(input));
             
             StreamOptions opts;
-            opts.api_key = get_google_api_key(); // Fetch from env
+            opts.api_key = get_google_api_key();
             
             auto messages = run_agent_loop({UserMessage::text(input)}, context, config, [&](AgentEvent ev) {});
             
@@ -68,6 +74,7 @@ int main() {
             }
             asio::write(socket, asio::buffer(response + "\n> "));
         }
+        printf("Client detached.\n");
     });
     return 0;
 }

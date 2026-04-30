@@ -61,15 +61,18 @@ void register_openai_provider() {
             if (data == "[DONE]") {
                 AssistantMessage final_msg;
                 final_msg.stop_reason = StopReason::stop;
+                stream.push(EvDone{.reason = StopReason::stop, .message = final_msg});
                 stream.end(final_msg);
             } else {
-                auto j = nlohmann::json::parse(data);
-                if (j.contains("choices") && j["choices"][0]["delta"].contains("content")) {
-                    std::string delta = j["choices"][0]["delta"]["content"];
-                    AssistantMessage partial;
-                    partial.content.push_back(TextContent{.text = delta});
-                    stream.push(EvTextDelta{.content_index = 0, .delta = delta, .partial = partial});
-                }
+                try {
+                    auto j = nlohmann::json::parse(data);
+                    if (j.contains("choices") && j["choices"][0]["delta"].contains("content")) {
+                        std::string delta = j["choices"][0]["delta"]["content"];
+                        AssistantMessage partial;
+                        partial.content.push_back(TextContent{.text = delta});
+                        stream.push(EvTextDelta{.content_index = 0, .delta = delta, .partial = partial});
+                    }
+                } catch (...) { /* ignore partial json */ }
             }
         };
 
