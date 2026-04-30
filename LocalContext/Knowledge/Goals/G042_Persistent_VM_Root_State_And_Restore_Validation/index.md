@@ -8,6 +8,7 @@ Build on raw slab persistence by restoring root offsets and VM/bootstrap anchors
 
 - Completed.
 - 2026-03-13 root-anchor slices completed for representative top-level Listree state, including resumed multi-anchor mutation after restore.
+- LMDB references in this goal are historical validation context; the active target architecture is slab-backed restore without LMDB as a supported dependency.
 
 ## Parent / Depends On
 
@@ -53,17 +54,16 @@ Persisted slab bytes are necessary but not sufficient. The system still needs re
 
 ## 2026-03-13 Narrow Root-Anchor Slice
 
-- Extended `ArenaStore` with root-state persistence records so file-backed and LMDB-backed stores can save/load representative root anchors separately from allocator metadata and slab images.
+- Extended `ArenaStore` with root-state persistence records so representative stores could save/load root anchors separately from allocator metadata and slab images.
 - Added `ArenaRootState` / `ArenaRootAnchor` plus binary encode/decode support in the persistence layer.
 - Proved anchored restart on a representative top-level `ListreeValue` tree graph by restoring the saved root anchor after slab-image restore and then traversing the recovered state.
-- Added focused regressions for both file-backed and LMDB-backed anchored restore paths.
+- Added focused regressions for file-backed anchored restore paths and, historically, LMDB-backed validation during that development slice.
 - Updated `demo_arena_metadata_persistence` to print the restored root anchor before traversing the restored tree-backed state.
 
 ## Verified In This Slice
 
-- Focused anchored-restore regressions now exist for:
-  - `FileArenaStore`
-  - `LmdbArenaStore`
+- Focused anchored-restore regressions now exist for the active `FileArenaStore` path.
+- LMDB-backed regressions from the original slice should now be treated as legacy validation history rather than ongoing support requirements.
 - Full `./build/tst/reflect_tests` remains green with the new root-anchor coverage (`27` passing).
 - `./build/tst/demo_arena_metadata_persistence` now shows a restored root anchor and resumed traversal output.
 

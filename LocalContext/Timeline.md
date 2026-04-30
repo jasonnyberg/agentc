@@ -1,4 +1,9 @@
 ### 2026-04-30
+- Completed the LMDB inventory/classification slice for 🔗[G069](./Knowledge/Goals/G069-RemoveLMDBDependencies/index.md) and recorded the removal matrix in 🔗[WP_LMDB_SurfaceArea_Audit_2026-04-30](./Knowledge/WorkProducts/WP_LMDB_SurfaceArea_Audit_2026-04-30.md).
+- Confirmed the active LMDB removal surface is concentrated in root CMake, `core/alloc.*`, LMDB-only tests/demo paths, `README.md`, and a bounded set of LocalContext knowledge files.
+- Updated `README.md` and key LocalContext persistence knowledge to mark LMDB as legacy/superseded rather than active architecture.
+- Removed LMDB-only branches from `tests/alloc_tests.cpp` and `demo/demo_arena_metadata_persistence.cpp`, then rebuilt and revalidated focused memory/file-backed slab persistence tests successfully.
+- Finished the active LMDB code/build cleanup: removed `AGENTC_WITH_LMDB` from `CMakeLists.txt`, deleted `LmdbArenaStore` from `core/alloc.h` / `core/alloc.cpp`, rebuilt key targets, and verified active code/build paths contain no LMDB references.
 - Added HRM goal 🔗[G068](./Knowledge/Goals/G068-ClientAgentSplitEmbeddedVmPersistence/index.md) to formalize the target runtime architecture: client/agent split, embedded Edict VM, and mmap slab persistence.
 - Added architecture work product 🔗[WP_EmbeddedPersistentAgentArchitecture](./Knowledge/WorkProducts/WP_EmbeddedPersistentAgentArchitecture.md) capturing roles, communication boundaries, lifecycle, and restore model.
 - Added HRM goal 🔗[G069](./Knowledge/Goals/G069-RemoveLMDBDependencies/index.md) to remove LMDB from the supported build/runtime architecture and make slab persistence the only intended persistence path.

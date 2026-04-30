@@ -174,60 +174,6 @@ int main() {
     std::cout << "restored first slab-backed value: " << *CPtr<int>(firstValueSid) << "\n";
     std::cout << "restored last slab-backed value: " << *CPtr<int>(lastValueSid) << "\n";
 
-#ifdef AGENTC_WITH_LMDB
-    const std::string lmdbPath = "/tmp/j3_lmdb_arena_metadata_demo";
-    std::filesystem::remove_all(lmdbPath);
-    LmdbArenaStore lmdbStore(lmdbPath);
-    if (lmdbStore.isAvailable()) {
-        allocator.resetForTests();
-        auto lmdbCheckpoint = allocator.checkpoint();
-        if (!lmdbCheckpoint.valid || !lmdbStore.saveNamedCheckpoint("bootstrap", allocator.exportArenaMetadata())) {
-            std::cerr << "failed to save LMDB metadata checkpoint\n";
-            return 1;
-        }
-
-        allocator.resetForTests();
-        ArenaCheckpointMetadata lmdbRestored;
-        if (!lmdbStore.loadNamedCheckpoint("bootstrap", lmdbRestored) || !allocator.restoreArenaMetadata(lmdbRestored)) {
-            std::cerr << "failed to restore LMDB metadata checkpoint\n";
-            return 1;
-        }
-
-        auto lmdbRevived = allocator.currentCheckpoint();
-        CPtr<int> lmdbTransient(456);
-        SlabId lmdbSid = lmdbTransient.getSlabId();
-        std::cout << "lmdb restored checkpoint depth: " << lmdbRestored.checkpointLogStarts.size() << "\n";
-
-        auto lmdbImages = allocator.exportSlabImages();
-        for (const auto& image : lmdbImages) {
-            if (!lmdbStore.saveSlab(image)) {
-                std::cerr << "failed to save LMDB slab image\n";
-                return 1;
-            }
-        }
-        std::vector<ArenaSlabImage> reloadedImages;
-        for (const auto& image : lmdbImages) {
-            ArenaSlabImage reloaded;
-            if (!lmdbStore.loadSlab(image.slabIndex, reloaded)) {
-                std::cerr << "failed to load LMDB slab image\n";
-                return 1;
-            }
-            reloadedImages.push_back(std::move(reloaded));
-        }
-        std::cout << "lmdb slab images round-tripped: " << reloadedImages.size() << "\n";
-
-        if (!allocator.rollback(lmdbRevived)) {
-            std::cerr << "failed to rollback LMDB-restored checkpoint\n";
-            return 1;
-        }
-        std::cout << "lmdb allocation valid after rollback: " << (allocator.valid(lmdbSid) ? "yes" : "no") << "\n";
-        std::filesystem::remove_all(lmdbPath);
-        if (allocator.valid(lmdbSid)) {
-            return 1;
-        }
-    }
-#endif // AGENTC_WITH_LMDB
-
     const std::string structuredBase = "/tmp/j3_structured_tree_demo";
     std::remove((structuredBase + ".value").c_str());
     std::remove((structuredBase + ".ref").c_str());

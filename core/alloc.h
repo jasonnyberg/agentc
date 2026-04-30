@@ -238,28 +238,6 @@ private:
                   const std::map<std::string, ArenaCheckpointMetadata>& namedValue) const;
 };
 
-#ifdef AGENTC_WITH_LMDB
-class LmdbArenaStore : public ArenaStore {
-public:
-    explicit LmdbArenaStore(std::string directoryPath);
-    ~LmdbArenaStore() override;
-
-    bool loadCurrent(ArenaCheckpointMetadata& out) override;
-    bool saveCurrent(const ArenaCheckpointMetadata& checkpoint) override;
-    bool saveNamedCheckpoint(const std::string& name, const ArenaCheckpointMetadata& checkpoint) override;
-    bool loadNamedCheckpoint(const std::string& name, ArenaCheckpointMetadata& out) override;
-    bool saveSlab(const ArenaSlabImage& slab) override;
-    bool loadSlab(uint16_t slabIndex, ArenaSlabImage& out) override;
-    bool saveRootState(const std::string& name, const ArenaRootState& rootState) override;
-    bool loadRootState(const std::string& name, ArenaRootState& out) override;
-    bool isAvailable() const;
-
-private:
-    class Impl;
-    std::unique_ptr<Impl> impl;
-};
-#endif // AGENTC_WITH_LMDB
-
 class BlobAllocator {
 private:
     struct BlobSlab {

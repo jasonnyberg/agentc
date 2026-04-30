@@ -218,7 +218,7 @@ SDL-specific bridge code.
 
 The core runtime is complete and stable:
 
-- Arena allocator with checkpoint/rollback, three ArenaStore backends (memory, file, LMDB via `dlopen`)
+- Arena allocator with checkpoint/rollback and active ArenaStore backends for memory/file-backed persistence
 - Edict VM with full transaction support, speculative execution, rewrite rules, and miniKanren
 - Cartographer dynamic FFI with safety tagging and async import
 - Cartographer CLI pipeline: `cartographer_dump`, `cartographer_parse`, `cartographer_schema_inspect`, `cartographer_resolve`, `cartographer_resolve_inspect`
@@ -228,8 +228,8 @@ The core runtime is complete and stable:
 - First-slice Edict multithreading via imported pthread-backed callback helpers, with fresh-VM
   worker execution and mutex-protected shared-value cells
 
-Next: **LMDB persistent arena** (Goals G040–G042) — structured save/restore of full VM root
-state, enabling resumable agent sessions.
+Next: **embedded persistent agent runtime** — structured slab-backed save/restore of VM root
+state for reconnectable background agents without an external database dependency.
 
 ---
 
@@ -243,8 +243,8 @@ cognitive scratchpads.
 
 Concrete directions:
 
-- **Persistent sessions** — serialize and restore full VM state via LMDB, enabling agents
-  to resume mid-task across process boundaries.
+- **Persistent sessions** — serialize and restore full VM state via slab-backed persistence,
+  enabling agents to resume mid-task across process boundaries.
 - **Zero-copy sub-agent handoff** — spawn a sub-agent by passing the Arena's integer offset;
   it wakes inside the full shared context without serialization.
 - **Logic coprocessor** — route bounded planning problems (dependency solving, failure

@@ -437,41 +437,6 @@ TEST(CPtrTest, FileArenaStoreRoundTripsNamedCheckpoint) {
     std::remove(path.c_str());
 }
 
-#ifdef AGENTC_WITH_LMDB
-TEST(CPtrTest, LmdbArenaStoreRoundTripsNamedCheckpoint) {
-    const std::string path = "/tmp/j3_lmdb_arena_store_test";
-    std::filesystem::remove_all(path);
-
-    LmdbArenaStore store(path);
-    ASSERT_TRUE(store.isAvailable());
-
-    auto& allocator = Allocator<int>::getAllocator();
-    allocator.resetForTests();
-
-    auto checkpoint = allocator.checkpoint();
-    ASSERT_TRUE(checkpoint.valid);
-    ASSERT_TRUE(store.saveCurrent(allocator.exportArenaMetadata()));
-    ASSERT_TRUE(store.saveNamedCheckpoint("bootstrap", allocator.exportArenaMetadata()));
-
-    allocator.resetForTests();
-
-    ArenaCheckpointMetadata loaded;
-    ASSERT_TRUE(store.loadCurrent(loaded));
-    ASSERT_TRUE(store.loadNamedCheckpoint("bootstrap", loaded));
-    ASSERT_TRUE(allocator.restoreArenaMetadata(loaded));
-
-    auto revived = allocator.currentCheckpoint();
-    ASSERT_TRUE(revived.valid);
-
-    CPtr<int> transient(111);
-    SlabId sid = transient.getSlabId();
-    ASSERT_TRUE(allocator.rollback(revived));
-    EXPECT_FALSE(allocator.valid(sid));
-
-    std::filesystem::remove_all(path);
-}
-#endif // AGENTC_WITH_LMDB
-
 TEST(CPtrTest, MemoryArenaStoreRoundTripsSlabImages) {
     MemoryArenaStore store;
     roundTripSlabImagesThroughStore(store);
@@ -487,17 +452,6 @@ TEST(CPtrTest, FileArenaStoreRoundTripsSlabImages) {
         std::remove((path + ".slab." + std::to_string(i)).c_str());
     }
 }
-
-#ifdef AGENTC_WITH_LMDB
-TEST(CPtrTest, LmdbArenaStoreRoundTripsSlabImages) {
-    const std::string path = "/tmp/j3_lmdb_arena_slab_store_test";
-    std::filesystem::remove_all(path);
-    LmdbArenaStore store(path);
-    ASSERT_TRUE(store.isAvailable());
-    roundTripSlabImagesThroughStore(store);
-    std::filesystem::remove_all(path);
-}
-#endif // AGENTC_WITH_LMDB
 
 TEST(CPtrTest, FileArenaStoreRoundTripsStructuredListreeItemGraph) {
     resetStructuredListreeAllocators();
@@ -815,22 +769,6 @@ TEST(CPtrTest, FileArenaStoreRestoresAnchoredTopLevelTreeState) {
         std::remove((path + ".tree.slab." + std::to_string(i)).c_str());
     }
 }
-
-#ifdef AGENTC_WITH_LMDB
-TEST(CPtrTest, LmdbArenaStoreRestoresAnchoredTopLevelTreeState) {
-    const std::string path = "/tmp/j3_lmdb_root_anchor_store_test";
-    std::filesystem::remove_all(path);
-    LmdbArenaStore valueStore(path + "/value");
-    LmdbArenaStore refStore(path + "/ref");
-    LmdbArenaStore nodeStore(path + "/node");
-    LmdbArenaStore itemStore(path + "/item");
-    LmdbArenaStore treeStore(path + "/tree");
-    LmdbArenaStore stateStore(path + "/state");
-    ASSERT_TRUE(valueStore.isAvailable());
-    roundTripAnchoredTreeStateThroughStores(valueStore, refStore, nodeStore, itemStore, treeStore, stateStore);
-    std::filesystem::remove_all(path);
-}
-#endif // AGENTC_WITH_LMDB
 
 template <typename Store>
 void roundTripMultiAnchorStateAndResumeMutation(Store& valueStore,

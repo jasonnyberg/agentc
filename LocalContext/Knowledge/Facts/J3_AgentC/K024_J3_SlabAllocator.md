@@ -46,5 +46,5 @@ The J3 Slab Allocator provides a relocatable, reference-counted memory model for
 - `edict/edict_vm.cpp` layers VM transaction snapshots on top of allocator checkpoints so `STACK` and `DICT` frame depths can be restored together with transient allocations.
 - Verification exists in `tst/alloc_tests.cpp` and `edict/tests/transaction_test.cpp`, with a runnable demonstration in `tst/demo_speculation.cpp`.
 - Nested allocator checkpoints now work with top-most ordering rules, and `tst/alloc_tests.cpp` covers both nested rollback preservation and out-of-order commit rejection.
-- The allocator now exposes `ArenaCheckpointMetadata` plus store-backed metadata export/restore hooks used by `MemoryArenaStore`, `FileArenaStore`, and `LmdbArenaStore`.
+- The allocator now exposes `ArenaCheckpointMetadata` plus store-backed metadata export/restore hooks used by the active `MemoryArenaStore` and `FileArenaStore` paths; older LMDB adapter references are legacy only.
 - Restart-style metadata persistence is demonstrated in `tst/demo_arena_metadata_persistence.cpp`.

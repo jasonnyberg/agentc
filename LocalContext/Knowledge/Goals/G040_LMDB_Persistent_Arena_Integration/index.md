@@ -1,5 +1,8 @@
 # [G040] LMDB Persistent Arena Integration
 
+## Status Note
+Legacy / superseded as an architecture direction. Keep this goal as historical context for the persistence boundary work, but do not use it as guidance for current implementation planning.
+
 ## Goal
 
 Show why an LMDB-backed persistence layer is a strong fit for the slab-based allocator and define an implementation path that preserves current allocator, Listree, and VM semantics with minimal disruption.

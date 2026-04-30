@@ -20,7 +20,7 @@
 - **[Evaluation Model](K026_J3_Evaluation_Model.md)**: Explicit evaluation rules (no auto-execution).
 - **[Term Rewrite Runtime](K027_J3_Term_Rewrite_Runtime.md)**: Active VM rewrite semantics, wildcard substitution, and safety limits.
 - **[Edict Rewrite Surface](K029_Edict_Rewrite_Surface.md)**: Working source-defined rewrite rules, examples, and current limits.
-- **[Arena Persistence Boundary](K030_J3_Arena_Persistence.md)**: Metadata persistence boundary and current LMDB-backed checkpoint support.
+- **[Arena Persistence Boundary](K030_J3_Arena_Persistence.md)**: Slab-oriented persistence boundary, current file/memory-backed restore path, and legacy LMDB context.
 
 ## Notable Fixes
 - **[`op_EVAL` Tail-Call Fix](F001_OpEval_TailCall_Fix.md)**: Regression note for the historical infinite-loop/hang and its validation path.

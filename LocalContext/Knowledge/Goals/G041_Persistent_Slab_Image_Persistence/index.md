@@ -8,15 +8,16 @@ Extend the `ArenaStore` / `LmdbArenaStore` foundation from metadata-only checkpo
 
 - Completed.
 - First raw slab-image slice implemented on 2026-03-08 for trivially copyable allocator types.
+- LMDB references in this goal are historical; the active forward path is slab-backed persistence without LMDB as a supported dependency.
 
 ## Parent / Depends On
 
 - Parent: 🔗[`G040_LMDB_Persistent_Arena_Integration`](../G040_LMDB_Persistent_Arena_Integration/index.md)
-- Depends On: completed `ArenaStore` boundary, metadata export/restore hooks, and working `LmdbArenaStore` metadata persistence.
+- Depends On: completed `ArenaStore` boundary and metadata/slab export-restore hooks. References to `LmdbArenaStore` in this goal reflect the historical implementation state at the time.
 
 ## Why This Exists
 
-The current persistence path proves optional store wiring and LMDB metadata transactions, but it still does not persist actual slab contents. Raw slab-image persistence is the next concrete step toward durable allocator state.
+The persistence boundary had to move beyond metadata-only checkpoints and start persisting actual slab contents. Raw slab-image persistence was the next concrete step toward durable allocator state.
 
 ## Scope
 

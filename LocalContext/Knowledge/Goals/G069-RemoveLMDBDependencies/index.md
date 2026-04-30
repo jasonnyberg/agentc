@@ -4,7 +4,7 @@
 Strip active LMDB references, dependencies, and build requirements out of the AgentC codebase so the supported persistence path is exclusively the native memory-mapped slab mechanism.
 
 ## Status
-**PLANNED**
+**COMPLETE**
 
 ## Rationale
 The project has now chosen a simpler persistence direction: a memory-mapped slab-backed restore path instead of LMDB-backed persistence. Historical LMDB experiments were valuable, but keeping LMDB in the active codebase now creates architectural ambiguity, extra build complexity, and an incentive to preserve a persistence mode that is no longer the intended direction.
@@ -23,33 +23,43 @@ This goal exists to make the chosen architecture legible in code: mmap slab pers
 - Do not regress the slab-image and root-anchor work already proven in prior persistence goals.
 
 ## Acceptance Criteria
-- [ ] The default build no longer requires or links LMDB.
-- [ ] Active code paths for persistence point to mmap slab persistence rather than LMDB-backed stores.
-- [ ] Documentation, comments, and goals no longer describe LMDB as the intended future architecture.
-- [ ] Historical LMDB work is clearly marked as superseded or legacy rather than current direction.
-- [ ] Tests and demos continue to validate restart/restore behavior through the slab persistence path.
+- [x] The default build no longer requires or links LMDB.
+- [x] Active code paths for persistence point to mmap slab persistence rather than LMDB-backed stores.
+- [x] Documentation, comments, and goals no longer describe LMDB as the intended future architecture.
+- [x] Historical LMDB work is clearly marked as superseded or legacy rather than current direction.
+- [x] Tests and demos continue to validate restart/restore behavior through the slab persistence path.
 
 ## Implementation Plan
 
 ### Phase 1 - Inventory LMDB Surface Area
-- [ ] Enumerate all source files, build files, tests, demos, and docs that reference LMDB.
-- [ ] Classify each reference as: remove, replace, archive, or keep as historical context.
+- [x] Enumerate all source files, build files, tests, demos, and docs that reference LMDB.
+- [x] Classify each reference as: remove, replace, archive, or keep as historical context.
+
+Phase 1 evidence: 🔗[WP_LMDB_SurfaceArea_Audit_2026-04-30](../../WorkProducts/WP_LMDB_SurfaceArea_Audit_2026-04-30.md)
 
 ### Phase 2 - Build and Dependency Removal
-- [ ] Remove LMDB packages, compile flags, and linkage from supported build targets.
-- [ ] Ensure the project still builds cleanly with slab persistence as the only supported path.
+- [x] Remove LMDB packages, compile flags, and linkage from supported build targets.
+- [x] Ensure the project still builds cleanly with slab persistence as the only supported path.
+
+Phase 2 evidence: `CMakeLists.txt` no longer defines `AGENTC_WITH_LMDB` or propagates LMDB-specific compile definitions; `reflect`, `reflect_tests`, `demo_arena_metadata_persistence`, and `cpp-agent` rebuild cleanly.
 
 ### Phase 3 - Code Path Simplification
-- [ ] Remove or quarantine LMDB-backed arena/persistence implementations from active runtime paths.
-- [ ] Replace abstractions that still privilege LMDB as a first-class backend where that no longer matches the architecture.
+- [x] Remove or quarantine LMDB-backed arena/persistence implementations from active runtime paths.
+- [x] Replace abstractions that still privilege LMDB as a first-class backend where that no longer matches the architecture.
+
+Phase 3 evidence: `core/alloc.h` / `core/alloc.cpp` no longer define `LmdbArenaStore`; LMDB-only branches were removed from `tests/alloc_tests.cpp` and `demo/demo_arena_metadata_persistence.cpp`.
 
 ### Phase 4 - Documentation and Goal Cleanup
-- [ ] Update affected goal files, work products, comments, and operational docs to reflect the new persistence direction.
-- [ ] Mark LMDB-oriented goals as historical/superseded where appropriate.
+- [x] Update affected goal files, work products, comments, and operational docs to reflect the new persistence direction.
+- [x] Mark LMDB-oriented goals as historical/superseded where appropriate.
+
+Phase 4 evidence: `README.md`, `LocalContext/Knowledge/Facts/J3_AgentC/K030_J3_Arena_Persistence.md`, `LocalContext/Knowledge/Facts/J3_AgentC/K024_J3_SlabAllocator.md`, `LocalContext/Knowledge/Facts/J3_AgentC/index.md`, `LocalContext/Knowledge/Goals/G040_LMDB_Persistent_Arena_Integration/index.md`, `LocalContext/Knowledge/Goals/G041_Persistent_Slab_Image_Persistence/index.md`, `LocalContext/Knowledge/Goals/G042_Persistent_VM_Root_State_And_Restore_Validation/index.md`
 
 ### Phase 5 - Validation
-- [ ] Run focused build/test validation for slab persistence and restart.
-- [ ] Demonstrate that no supported agent runtime path depends on LMDB.
+- [x] Run focused build/test validation for slab persistence and restart.
+- [x] Demonstrate that no supported agent runtime path depends on LMDB.
+
+Phase 5 evidence: `cmake .. && make reflect reflect_tests demo_arena_metadata_persistence cpp-agent`, focused `reflect_tests` coverage for memory/file-backed slab and anchored restore paths, and repo search over active code/build paths showing no remaining `LMDB` / `LmdbArenaStore` / `AGENTC_WITH_LMDB` references.
 
 ## Related Goals
 - Historical persistence path:
@@ -67,4 +77,4 @@ This goal exists to make the chosen architecture legible in code: mmap slab pers
   - **Mitigation**: keep HRM records, but mark them as legacy/superseded.
 
 ## Next Action
-Perform an LMDB surface-area audit across source, CMake, tests, demos, and HRM docs, then classify each occurrence for removal, replacement, or archival.
+Fold the slab-only persistence direction into G068 implementation planning: define embedded-agent startup/shutdown checkpoint semantics and VM restore hooks for the reconnectable background agent architecture.
