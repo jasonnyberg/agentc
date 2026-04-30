@@ -1,4 +1,6 @@
 ### 2026-04-30
+- Refined 🔗[G068](./Knowledge/Goals/G068-ClientAgentSplitEmbeddedVmPersistence/index.md) around an Edict-native agent loop: `agentc` becomes an importable Edict capability/module backed by a reusable native LLM runtime library, while the host keeps only transport/lifecycle duties.
+- Added 🔗[WP_EdictNativeAgentModuleArchitecture](./Knowledge/WorkProducts/WP_EdictNativeAgentModuleArchitecture.md) as the authoritative plan for the new module/runtime split, normalized JSON→Edict response path, capability gating model, and migration away from a host-owned outer C++ agent loop.
 - Completed the LMDB inventory/classification slice for 🔗[G069](./Knowledge/Goals/G069-RemoveLMDBDependencies/index.md) and recorded the removal matrix in 🔗[WP_LMDB_SurfaceArea_Audit_2026-04-30](./Knowledge/WorkProducts/WP_LMDB_SurfaceArea_Audit_2026-04-30.md).
 - Confirmed the active LMDB removal surface is concentrated in root CMake, `core/alloc.*`, LMDB-only tests/demo paths, `README.md`, and a bounded set of LocalContext knowledge files.
 - Updated `README.md` and key LocalContext persistence knowledge to mark LMDB as legacy/superseded rather than active architecture.

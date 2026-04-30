@@ -1,100 +1,160 @@
 # Goal: G068 - Client/Agent Split with Embedded Persistent Edict VM
 
 ## Goal
-Establish the next-stage AgentC runtime architecture with a reconnectable client/agent boundary, an in-process embedded Edict VM, and memory-mapped slab persistence for fast restartable durable state.
+Establish the next-stage AgentC runtime architecture with a reconnectable client/host boundary, an in-process embedded Edict VM, memory-mapped slab persistence for durable state, and an **Edict-native agent loop** exposed through an importable `agentc` capability/module rather than a hardcoded outer C++ orchestration loop.
 
 ## Status
-**PLANNED**
+**IN PROGRESS**
 
 ## Rationale
-Recent work proved the value of keeping the interactive client separate from the long-lived agent process: the socket client can disconnect, reconnect, and be replaced without tearing down the active agent session. At the same time, further reflection clarified that splitting the AgentC agent from the Edict VM would introduce unnecessary IPC, marshaling, and lifecycle complexity.
+Recent work proved several important things:
+- keeping the interactive client separate from the long-lived runtime process is valuable,
+- keeping the Edict VM embedded in that process avoids unnecessary IPC,
+- slab-backed persistence is the right durability direction,
+- and native provider integration is viable in-process.
 
-The intended architecture is therefore:
-- keep **Client ↔ Agent** as a process boundary,
-- keep **Agent + Edict VM** in the same process,
-- use **memory-mapped slab persistence** so VM state can be restored quickly,
-- treat some runtime artifacts (notably binary FFI handles and other OS-owned resources) as **rehydrated transient state**, not durable serialized state.
+The new architectural refinement is that the long-lived host process should **not** remain the owner of the canonical agent loop. Instead, the host should embed Edict and expose interchangeable front-ends (shell, socket, pipe, batch), while LLM transport/provider logic lives behind a reusable native runtime library and appears inside Edict as an importable `agentc` module.
 
-This preserves low-latency in-process VM integration while still giving users a durable background agent that supports detach/reattach and later multiplexing.
+This keeps the previously chosen process boundary:
+- keep **Client ↔ Host** as a boundary,
+- keep **Host + Edict VM** in one process,
+- use **memory-mapped slab persistence** for durable logical state,
+- rehydrate runtime-native artifacts after restore,
+
+while also inverting control so that:
+- **Edict owns agent policy and orchestration**, and
+- **native code owns transport/provider mechanics**.
 
 ## Architectural Decision
 
 ### Chosen Split
 ```text
-[Client / TUI / CLI]
-      ⇅  UDS / stream I/O
-[AgentC Agent Process]
-      ├─ agent loop
-      ├─ provider integration
-      ├─ tool dispatch
-      ├─ session manager
-      ├─ embedded Edict VM
-      └─ mmap slab persistence / restore
+[Shell | Socket | Pipe | File | Batch Front-End]
+                  ⇅ stream / request input
+        [Host Process / Interpreter Front-End]
+                  |
+                  | in-process API
+                  v
+             [Embedded Edict VM]
+               - durable cognitive state
+               - canonical agent loop
+               - tool / memory / logic policy
+               - importable `agentc` module
+                  |
+                  | native runtime bridge
+                  v
+            [libagent_runtime.so]
+               - provider selection
+               - credentials
+               - HTTP transport
+               - response normalization
+                  |
+                  v
+          [Gemini / OpenAI / Copilot / future providers]
 ```
 
-### Explicit Non-Goal
-Do **not** split the AgentC agent layer from the Edict VM into separate long-lived processes unless later requirements demand isolation or remote hosting.
+### Explicit Non-Goals
+- Do **not** reintroduce an Agent↔VM IPC split.
+- Do **not** make arbitrary model-driven FFI/native access the initial default.
+- Do **not** make vendor-specific response JSON the long-term interpreter contract.
 
 ## Roles and Communication Boundaries
 
-### Client Layer
+### Client / Front-End Layer
 **Role**
-- user-facing TUI/CLI attachment,
+- user-facing shell, socket, pipe, or file/batch attachment,
 - send prompts and control commands,
-- receive streamed or buffered replies,
-- disconnect and reconnect safely.
+- render streamed or buffered replies,
+- disconnect and reconnect safely where transport supports it.
 
 **Communication**
-- Unix domain socket (`/tmp/agentc.sock`) or equivalent stream-based transport.
+- Unix domain socket initially,
+- stream I/O for shell/pipe modes,
+- future transport-specific adapters without changing core agent policy.
 
-### Agent Layer
+### Host Process
 **Role**
-- long-lived background process,
-- owns socket accept loop and session handling,
-- runs the agent loop,
-- calls Gemini/OpenAI providers,
-- owns the embedded Edict VM instance,
-- checkpoints/restores VM state.
+- long-lived runtime shell/daemon,
+- owns session acceptance and transport plumbing,
+- owns startup/shutdown lifecycle,
+- embeds Edict VM,
+- rehydrates transient native runtime state,
+- exposes/imports the `agentc` capability.
 
 **Communication**
-- upward: stream I/O over Unix domain socket,
-- outward: HTTPS/JSON(/SSE where appropriate) to providers,
-- inward: direct in-process C++ calls to the embedded Edict VM.
+- upward: stream I/O over socket/stdio/file entrypoints,
+- inward: direct in-process API boundary to the Edict VM,
+- outward: provider HTTP traffic via the native runtime library.
 
 ### Embedded Edict VM
 **Role**
 - durable cognitive state,
-- goals, facts, conversation memory, working state,
-- tool definitions and execution substrate,
-- restorable state image backed by slab persistence.
+- canonical agent loop/orchestration,
+- tool/memory/logic policy,
+- interpreter-visible request/response handling,
+- transaction/rewrite/import facilities,
+- persistence-safe runtime configuration.
 
 **Communication**
-- no agent/VM IPC boundary,
-- direct in-process API boundary,
-- persistence through mmap-backed slab image and restore hooks.
+- direct in-process API boundary only,
+- no VM socket bridge on the hot path,
+- receives normalized LLM responses as Edict/Listree data.
+
+### Native `agentc` Runtime Library
+**Role**
+- provider selection,
+- credentials/auth,
+- HTTP requests,
+- optional streaming assembly,
+- normalization of provider responses into a single JSON contract.
+
+**Communication**
+- callable from the host/VM bridge,
+- returns normalized JSON buffers for Edict consumption,
+- does not own multi-step agent behavior.
 
 ## Durable vs Transient State Boundary
 
 ### Durable State (persist in slab)
 - Listree/object graph state,
 - VM roots and anchors,
-- agent memory/goals/facts/conversation state worth preserving,
-- tool registry metadata and logical configuration,
-- resumable workflow/task state.
+- agent memory/goals/facts/conversation state,
+- agent-loop state and policy configuration,
+- model/provider defaults,
+- resumable workflow/task state,
+- metadata needed to rehydrate curated imports and runtime configuration.
 
 ### Transient Rehydrated State (rebuild on restore)
 - FFI dynamic-library handles,
 - function pointers and imported runtime binding artifacts,
 - open sockets,
 - active HTTP streams,
-- thread-local runtime state,
-- parser buffers / in-flight request state.
+- provider client state,
+- SSE/parser buffers,
+- in-flight request state,
+- thread-local runtime state.
+
+## Module / Capability Model
+
+### Initial required surface
+- `agentc.call(request) -> value`
+  - Dispatch prompt/request to the selected model.
+  - Normalize provider response to JSON.
+  - Convert JSON directly into Edict/Listree.
+  - Return data to Edict policy code.
+- `agentc.configure(config)`
+  - Set default provider/model/policy values.
+- `agentc.last()`
+  - Return debugging/trace metadata for the last call.
+
+### Initial execution rule
+Model output is **data first**. The first production architecture does not grant the model unrestricted access to interpreter-native FFI/import powers. Any later widening of that capability must be behind explicit policy switches.
 
 ## Lifecycle Semantics
-- `exit` → disconnect current client session only.
-- `shutdown-agent` → checkpoint slab state, terminate the long-lived agent process.
-- agent startup → restore VM state from slab when available, then begin accepting clients.
-- client restart → reconnect to the same background agent without requiring VM teardown.
+- `exit` → disconnect current client/front-end session only.
+- `shutdown-agent` → checkpoint slab state, quiesce host activity, terminate the long-lived host process.
+- host startup → restore VM state from slab when available, rehydrate runtime/native capabilities, then begin accepting sessions.
+- client restart → reconnect to the same background host without requiring VM teardown.
 
 ## Dependencies / Related Goals
 - Builds on prior persistence groundwork:
@@ -106,51 +166,77 @@ Do **not** split the AgentC agent layer from the Edict VM into separate long-liv
   - 🔗[G067 Atomic AgentC Agent](../G067-AtomicAgentcAgent/index.md)
 - Depends on build/persistence simplification work:
   - 🔗[G069 Remove LMDB Dependencies](../G069-RemoveLMDBDependencies/index.md)
+- Detailed architecture plan:
+  - 🔗[WP_EdictNativeAgentModuleArchitecture](../../WorkProducts/WP_EdictNativeAgentModuleArchitecture.md)
+  - 🔗[WP_EmbeddedPersistentAgentArchitecture](../../WorkProducts/WP_EmbeddedPersistentAgentArchitecture.md)
 
 ## Acceptance Criteria
-- [ ] The architecture is documented as **Client/Agent split, Agent+VM embedded** with no agent/VM IPC dependency.
-- [ ] The long-lived agent process can survive client disconnects and accept reconnects over the socket interface.
-- [ ] VM persistence design explicitly uses a memory-mapped slab image rather than LMDB as the primary restart mechanism.
-- [ ] Durable vs transient runtime state is documented, including explicit treatment of FFI artifacts as rehydrated state.
-- [ ] Lifecycle commands are defined for disconnect vs full agent shutdown.
-- [ ] LMDB is treated as legacy history, not an active dependency of the target architecture.
-- [ ] A concrete demo plan exists for: start agent → interact over socket → disconnect/reconnect → shutdown agent → restore from persisted slab.
+- [x] The architecture is documented as **Client/Host split, Host+VM embedded** with no Host↔VM IPC dependency.
+- [x] A concrete work product defines the **Edict-native loop** and **importable `agentc` module** direction.
+- [ ] The long-lived host process can survive client disconnects and accept reconnects over the socket interface.
+- [x] VM persistence design explicitly uses a memory-mapped slab image rather than LMDB as the primary restart mechanism.
+- [x] Durable vs transient runtime state is documented, including explicit treatment of FFI/runtime artifacts as rehydrated state.
+- [x] Lifecycle commands are defined for disconnect vs full agent shutdown.
+- [x] Unsafe model-driven native/FFI access is explicitly gated off by default in the target design.
+- [x] The architecture supports multiple interchangeable front-ends (socket, pipe, file, shell) over the same embedded interpreter model.
+- [ ] A concrete demo plan exists for: start host → interact → disconnect/reconnect → shutdown → restore from persisted slab.
 
 ## Implementation Plan
 
-### Phase 1 - Architecture and Protocol Consolidation
-- [ ] Capture the chosen architecture in a work product.
-- [ ] Define client protocol semantics for `exit`, `shutdown-agent`, and reconnect behavior.
-- [ ] Decide how multiplexing will be staged: single-controller first, multi-client later.
+### Phase 1 - Architecture and Runtime Contract
+- [x] Capture the chosen architecture in a work product.
+- [x] Define the role split between host, embedded VM, and native runtime library.
+- [x] Define the initial `agentc.call(request) -> value` capability contract.
+- [ ] Write the concrete C ABI and normalized request/response schema for the runtime library.
 
-### Phase 2 - mmap Slab Persistence Design
-- [ ] Define the slab file layout and restore contract for the embedded VM.
-- [ ] Reconcile existing persistence work (G041/G042) with the agent runtime startup/shutdown path.
-- [ ] Remove LMDB as an active design dependency from the supported persistence path.
-- [ ] Define what metadata must be persisted for rehydrating FFI imports safely.
+### Phase 2 - Runtime Extraction
+- [ ] Extract provider/auth/HTTP code into a reusable native runtime library.
+- [ ] Normalize provider responses into a single JSON contract.
+- [ ] Preserve current provider support (Gemini/OpenAI/Copilot) behind the new boundary.
 
-### Phase 3 - Embedded VM Lifecycle Hooks
-- [ ] Add agent-managed checkpoint/save hooks.
+### Phase 3 - Edict Module Surface
+- [ ] Add/import the `agentc` module namespace.
+- [ ] Convert normalized JSON responses directly into Edict/Listree values.
+- [ ] Add debug/trace state via `agentc.last()`.
+
+### Phase 4 - Edict-Native Loop and Policy
+- [ ] Move canonical agent orchestration into Edict code/modules.
+- [ ] Keep model output data-first initially.
+- [ ] Add explicit policy gates before any model-directed program execution or privileged capability use.
+
+### Phase 5 - Host Unification and Lifecycle
+- [ ] Refactor `cpp-agent` into a thin host/front-end around the embedded interpreter.
+- [ ] Preserve reconnectable socket behavior.
+- [ ] Support additional front-end modes (shell/pipe/file) without changing agent policy ownership.
+
+### Phase 6 - Persistence and Restore
+- [ ] Add host-managed checkpoint/save hooks.
 - [ ] Add startup restore hooks.
-- [ ] Ensure clean shutdown checkpoints are possible without introducing an Agent↔VM IPC boundary.
+- [ ] Rehydrate transient runtime handles/imports safely without introducing a Host↔VM IPC boundary.
 
-### Phase 4 - Client Reattach and Session Management
-- [ ] Preserve the background agent process across client disconnects.
-- [ ] Support reconnect to the active agent instance.
-- [ ] Add safe write/disconnect handling and prepare for multiplexing.
-
-### Phase 5 - Demonstration and Validation
-- [ ] Demonstrate a live Gemini-backed client session against the background agent.
-- [ ] Demonstrate disconnect/reconnect without losing agent state.
+### Phase 7 - Demonstration and Validation
+- [ ] Demonstrate a live provider-backed Edict-native session.
+- [ ] Demonstrate disconnect/reconnect without losing state.
 - [ ] Demonstrate shutdown and restart with VM state restored from persisted slab.
+- [ ] Demonstrate the same core runtime via at least two front-end shapes.
 
 ## Risks and Mitigations
-- **Risk**: Persistence scope creep into non-restorable runtime objects.
-  - **Mitigation**: keep a strict durable/transient boundary and fail clearly on unsupported payload classes.
-- **Risk**: Protocol ambiguity between session exit and full process shutdown.
-  - **Mitigation**: define explicit commands and document lifecycle semantics.
-- **Risk**: Hidden coupling between provider runtime state and persisted VM state.
-  - **Mitigation**: persist logical state only; rebuild provider/request machinery after restore.
+- **Risk**: raw vendor JSON becomes an unstable interpreter contract.
+  - **Mitigation**: normalize provider responses before Edict consumes them.
+- **Risk**: model-directed recursion causes runaway loops or token burn.
+  - **Mitigation**: enforce depth, turn, timeout, and token budgets.
+- **Risk**: model-emitted directives become an accidental unrestricted execution path.
+  - **Mitigation**: start with data-only mode and explicit capability gates.
+- **Risk**: the host re-accumulates agent policy during refactor.
+  - **Mitigation**: keep native code responsible for transport/runtime services, not orchestration.
+
+## Progress Notes
+
+### 2026-04-30
+- Did: Reframed the target runtime around an Edict-native agent loop and documented the architecture in 🔗[WP_EdictNativeAgentModuleArchitecture](../../WorkProducts/WP_EdictNativeAgentModuleArchitecture.md).
+- Decided: The canonical LLM interface should be an importable `agentc` Edict module/capability backed by a reusable native runtime library, while the long-lived host keeps transport/lifecycle duties and the VM owns orchestration/policy.
+- Remaining: Define the concrete runtime ABI, normalized request/response contract, extraction map from current `cpp-agent` code, and the first Edict module/builtin surface.
+- Next: Write the concrete `libagent_runtime` C ABI plus the normalized `agentc.call` request/response schema.
 
 ## Next Action
-Create a dedicated architecture work product that turns this decision into a concrete runtime, lifecycle, and demo plan.
+Write the concrete `libagent_runtime` C ABI plus the normalized `agentc.call` request/response schema, then map existing `cpp-agent` provider/auth/http code into that extraction plan.

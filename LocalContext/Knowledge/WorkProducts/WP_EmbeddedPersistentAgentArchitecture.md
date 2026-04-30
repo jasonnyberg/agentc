@@ -1,5 +1,7 @@
 # Work Product: Embedded Persistent Agent Architecture
 
+> Note: this work product remains valid for the **Client ↔ Host split**, **embedded VM**, and **slab persistence** decisions, but its assumption of a host-owned outer agent loop is now refined by 🔗[WP_EdictNativeAgentModuleArchitecture](./WP_EdictNativeAgentModuleArchitecture.md), which is the authoritative detailed plan for the Edict-native loop/module direction.
+
 ## Purpose
 Capture the agreed AgentC runtime architecture: reconnectable client/agent separation, embedded Edict VM, and memory-mapped slab persistence as the primary durability mechanism.
 
