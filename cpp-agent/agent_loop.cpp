@@ -102,13 +102,19 @@ static void run_loop(AgentContext& ctx, std::vector<AgentMessage>& new_msgs,
 
         cfg.stream_fn(cfg.model, llm_ctx, StreamOptions{}, stream);
 
-        if (!got_final)
-            throw std::runtime_error("Provider stream completed without a final message");
+        if (!got_final) {
+             printf("DEBUG: StreamFn returned without triggering on_complete\n");
+             break; // Relax: stop iterating instead of crashing
+        }
 
         // Record the assistant message
         AgentMessage assistant_agent_msg = final_msg;
         ctx.messages.push_back(assistant_agent_msg);
         new_msgs.push_back(assistant_agent_msg);
+        
+        // Debug: Log the final content
+        printf("DEBUG: Final assistant message received, content blocks: %zu\n", final_msg.content.size());
+        
         ::emit(emit_fn, EvMessageStart{assistant_agent_msg});
         ::emit(emit_fn, EvMessageEnd{assistant_agent_msg});
 

@@ -13,24 +13,24 @@ struct SSEParser {
 
     void feed(const char* data, size_t len) {
         buf.append(data, len);
-        // Process complete lines separated by \n
         size_t pos = 0, end;
         while ((end = buf.find('\n', pos)) != std::string::npos) {
             std::string line = buf.substr(pos, end - pos);
-            // Strip trailing \r
             if (!line.empty() && line.back() == '\r') line.pop_back();
 
             if (line.rfind("data: ", 0) == 0) {
                 std::string payload = line.substr(6);
-                if (payload == "[DONE]") {
-                    // Signal end of stream
-                    if (on_data) on_data("[DONE]");
-                } else if (!payload.empty() && on_data) {
+                if (!payload.empty() && on_data) {
                     on_data(payload);
                 }
             }
             pos = end + 1;
         }
         buf = buf.substr(pos);
+    }
+    
+    // Explicitly notify that the stream has closed
+    void finalize() {
+        if (on_data) on_data("[DONE]");
     }
 };

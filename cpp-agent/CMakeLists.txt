@@ -28,3 +28,8 @@ target_include_directories(cpp-agent PRIVATE
 
 target_link_libraries(cpp-agent PRIVATE libedict CURL::libcurl)
 target_compile_options(cpp-agent PRIVATE -Wall -Wextra -Wno-unused-parameter -DASIO_STANDALONE)
+
+add_executable(hello_gemini hello_gemini.cpp)
+target_link_libraries(hello_gemini PRIVATE CURL::libcurl)
+target_include_directories(hello_gemini PRIVATE ${nlohmann_json_SOURCE_DIR})
+target_compile_options(hello_gemini PRIVATE -Wall -Wextra)
