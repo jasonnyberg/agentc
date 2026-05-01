@@ -1,0 +1,24 @@
+# agentc_stateful_loop.edict — slightly richer Edict-owned loop over agentc_call
+#
+# Prerequisite: load `cpp-agent/edict/modules/agentc.edict` first.
+#
+# Defined wrappers:
+#   agentc_state_init !        ( system_prompt -- state )
+#   agentc_state_text !        ( state -- assistant_text )
+#   agentc_state_response !    ( state -- last_response )
+#   agentc_state_turn !        ( runtime_handle state prompt -- next_state )
+#   agentc_state_demo !        ( system_prompt prompt -- next_state )
+#
+# This module keeps state intentionally simple for the first slice:
+# - `system_prompt`
+# - `last_prompt`
+# - `last_response`
+# - `assistant_text`
+#
+# It proves Edict can own a structured turn result, not just a bare assistant string.
+
+[@system_prompt {"system_prompt": "", "last_prompt": null, "last_response": null, "assistant_text": ""} @state system_prompt @state.system_prompt state] @agentc_state_init
+[@state state.assistant_text] @agentc_state_text
+[@state state.last_response] @agentc_state_response
+[@prompt @state @runtime_handle {} @request state.system_prompt @request.system prompt @request.prompt runtime_handle request agentc_call ! @response {"system_prompt": "", "last_prompt": null, "last_response": null, "assistant_text": ""} @next state.system_prompt @next.system_prompt prompt @next.last_prompt response @next.last_response response.message.text @next.assistant_text next] @agentc_state_turn
+[@prompt @system_prompt {"default_provider":"google","default_model":"gemini-2.5-flash"} agentc_runtime_create ! @runtime system_prompt agentc_state_init ! @state runtime state prompt agentc_state_turn ! @next_state runtime agentc_destroy ! / next_state] @agentc_state_demo

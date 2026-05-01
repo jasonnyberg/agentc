@@ -226,7 +226,7 @@ Phase 6 progress: the runtime-backed host now uses `cpp-agent/runtime/persistenc
 - [x] Demonstrate a live provider-backed Edict-native session.
 - [ ] Demonstrate disconnect/reconnect without losing state.
 - [ ] Demonstrate shutdown and restart with VM state restored from persisted slab.
-- [ ] Demonstrate the same core runtime via at least two front-end shapes.
+- [x] Demonstrate the same core runtime via at least two front-end shapes.
 
 ## Risks and Mitigations
 - **Risk**: raw vendor JSON becomes an unstable interpreter contract.
@@ -290,5 +290,21 @@ Phase 6 progress: the runtime-backed host now uses `cpp-agent/runtime/persistenc
 - Remaining: Build the first tiny Edict-owned loop/module on top of this verified primitive, then continue pushing persistence deeper than transcript-level state.
 - Next: Implement a minimal Edict-owned hello-world loop module that accepts a prompt, calls the runtime, extracts assistant text, and returns it as the canonical inverted-loop POC.
 
+### 2026-04-30 (hello-world inverted loop POC)
+- Did: Added `cpp-agent/edict/modules/agentc_hello_loop.edict`, a tiny Edict-owned loop primitive that builds a request object, calls `agentc_call`, extracts `response.message.text`, and returns assistant text.
+- Did: Added `cpp-agent/demo/demo_inverted_hello_loop.sh` and validated a live Google/Gemini run where Edict itself owned the request/response step and printed `Hello world`.
+- Did: Added `EdictHelloLoopTest` to `cpp_agent_tests`, proving the hello-loop helper module loads and extracts assistant text from the normalized response shape.
+- Decided: This is the first concrete POC of the inverted loop architecture: the outer host no longer needs to own the single-step LLM turn in order for Edict to request and interpret a model response.
+- Remaining: Grow this from a hello-world single-turn primitive into a small stateful Edict-owned loop, then keep moving persistence from transcript-level host state toward embedded VM/root-anchor ownership.
+- Next: Extend the hello-loop primitive into a slightly richer Edict-owned loop that can accept/store conversation state explicitly rather than only returning a single assistant text.
+
+### 2026-04-30 (stateful Edict loop slice)
+- Did: Added `cpp-agent/edict/modules/agentc_stateful_loop.edict`, which introduces a slightly richer Edict-owned turn contract with `agentc_state_init`, `agentc_state_turn`, and structured state fields including `system_prompt`, `last_prompt`, `last_response`, and `assistant_text`.
+- Did: Added `cpp-agent/demo/demo_inverted_stateful_loop.sh` and validated a live Google/Gemini run where Edict returned a structured turn-state object containing both assistant text and the normalized last response.
+- Did: Added `EdictStatefulLoopTest` to `cpp_agent_tests`, proving the stateful loop helper builds the expected structured state shape.
+- Decided: The project now has a concrete next-step POC beyond hello-world — Edict can own a structured single-turn state transition, not just a bare assistant string.
+- Remaining: Extend the state shape to include explicit conversation history or loop-owned memory, then start shifting durable authority from host transcript persistence toward VM/root-owned state.
+- Next: Extend the stateful Edict loop to carry explicit conversation/history state across turns in Edict-owned data, then align that with deeper VM/root persistence.
+
 ## Next Action
-Implement a minimal Edict-owned hello-world loop module on top of the verified `agentc_call` primitive, then continue migrating remaining runtime helpers and push persistence beyond transcript-level state toward host-owned embedded VM/root restore.
+Extend the stateful Edict loop to carry explicit conversation/history state across turns in Edict-owned data, then continue migrating remaining runtime helpers and push persistence beyond transcript-level state toward host-owned embedded VM/root restore.

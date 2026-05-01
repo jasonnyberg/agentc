@@ -62,6 +62,8 @@ target_compile_options(hello_gemini PRIVATE -Wall -Wextra)
 add_executable(cpp_agent_tests
     tests/runtime_abi_test.cpp
     tests/edict_agentc_module_test.cpp
+    tests/edict_hello_loop_test.cpp
+    tests/edict_stateful_loop_test.cpp
     tests/session_state_store_test.cpp
 )
 target_compile_definitions(cpp_agent_tests PRIVATE
