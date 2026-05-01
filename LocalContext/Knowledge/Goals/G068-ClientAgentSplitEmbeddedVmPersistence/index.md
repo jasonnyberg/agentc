@@ -306,5 +306,21 @@ Phase 6 progress: the runtime-backed host now uses `cpp-agent/runtime/persistenc
 - Remaining: Extend the state shape to include explicit conversation history or loop-owned memory, then start shifting durable authority from host transcript persistence toward VM/root-owned state.
 - Next: Extend the stateful Edict loop to carry explicit conversation/history state across turns in Edict-owned data, then align that with deeper VM/root persistence.
 
+### 2026-04-30 (Edict conversation-history loop slice)
+- Did: Extended `cpp-agent/edict/modules/agentc_stateful_loop.edict` so state now carries an explicit `messages` list in native Edict/Listree data and appends both user and assistant messages across turns.
+- Did: Upgraded `cpp-agent/demo/demo_inverted_stateful_loop.sh` into a two-turn live Gemini demo showing Edict-owned conversation history being sent back through the runtime on the second request.
+- Did: Updated `EdictStatefulLoopTest` to validate the explicit history-bearing state shape and confirmed the live demo returns a four-message conversation (`user`, `assistant`, `user`, `assistant`) in the final state object.
+- Decided: The inverted-loop POC has advanced from structured single-turn state to explicit Edict-owned multi-turn conversation state, which is the right bridge toward VM/root-owned durable agent state.
+- Remaining: Evolve this history-bearing Edict state into the canonical durable agent root and begin moving persistence authority from host transcript snapshots toward VM/root-anchor ownership.
+- Next: Define and implement the first canonical Edict agent-root shape around this conversation-bearing state, then connect it to deeper VM/root persistence rather than transcript-only host restore.
+
+### 2026-04-30 (canonical Edict agent-root POC)
+- Did: Added `cpp-agent/edict/modules/agentc_agent_root.edict`, defining the first canonical native Edict/Listree agent-root shape with `conversation`, `memory`, `policy`, `runtime`, and `loop` sections.
+- Did: Added `cpp-agent/demo/demo_inverted_agent_root.sh` and validated a live two-turn Gemini run where Edict returned the full canonical root object, including native conversation history plus declarative runtime/policy metadata.
+- Did: Added `EdictAgentRootTest` to `cpp_agent_tests`, proving the canonical root shape is materialized correctly from Edict code.
+- Decided: The project now has a concrete VM/root-oriented target object in native Edict data, which is the correct next anchor for deeper slab/root persistence work.
+- Remaining: Start shifting persistence ownership from transcript snapshots toward this canonical root object and define how host startup/restoration should anchor and rehydrate it.
+- Next: Connect the host/runtime persistence flow to the canonical agent-root object so restored state is rooted in VM-owned Edict structure rather than host-managed transcript JSON.
+
 ## Next Action
-Extend the stateful Edict loop to carry explicit conversation/history state across turns in Edict-owned data, then continue migrating remaining runtime helpers and push persistence beyond transcript-level state toward host-owned embedded VM/root restore.
+Connect the host/runtime persistence flow to the canonical agent-root object so restored state is rooted in VM-owned Edict structure rather than host-managed transcript JSON.

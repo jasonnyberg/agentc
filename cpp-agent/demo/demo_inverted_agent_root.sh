@@ -10,6 +10,7 @@ EXT_LIB="${EXT_LIB:-$PROJECT_ROOT/build/extensions/libagentc_extensions.so}"
 EXT_HDR="${EXT_HDR:-$PROJECT_ROOT/extensions/agentc_stdlib.h}"
 AGENTC_MODULE="${AGENTC_MODULE:-$PROJECT_ROOT/cpp-agent/edict/modules/agentc.edict}"
 STATEFUL_MODULE="${STATEFUL_MODULE:-$PROJECT_ROOT/cpp-agent/edict/modules/agentc_stateful_loop.edict}"
+ROOT_MODULE="${ROOT_MODULE:-$PROJECT_ROOT/cpp-agent/edict/modules/agentc_agent_root.edict}"
 SYSTEM_PROMPT="${SYSTEM_PROMPT:-You are a concise assistant.}"
 PROMPT1="${PROMPT1:-Say exactly: Hello world!}"
 PROMPT2="${PROMPT2:-What did you just say?}"
@@ -29,7 +30,7 @@ print(json.dumps(os.environ['PROMPT']))
 PY
 )"
 
-echo "=== Demo: stateful Edict-owned loop with conversation history ==="
+echo "=== Demo: canonical Edict agent-root POC ==="
 echo "Edict:         $EDICT"
 echo "Runtime lib:   $RUNTIME_LIB"
 echo "System prompt: $SYSTEM_PROMPT"
@@ -46,14 +47,16 @@ EDICT
   echo
   cat "$STATEFUL_MODULE"
   echo
+  cat "$ROOT_MODULE"
+  echo
   printf '{"text": %s} @system_input\n' "$SYSTEM_PROMPT_JSON"
   printf '{"text": %s} @prompt1_input\n' "$PROMPT1_JSON"
   printf '{"text": %s} @prompt2_input\n' "$PROMPT2_JSON"
-  echo '{"default_provider":"google","default_model":"gemini-2.5-flash"} agentc_runtime_create ! @runtime'
-  echo 'system_input.text agentc_state_init ! @state'
-  echo 'runtime state prompt1_input.text agentc_state_turn ! @state'
-  echo 'runtime state prompt2_input.text agentc_state_turn ! @state'
+  echo 'system_input.text agentc_agent_root_init ! @root'
+  echo 'root agentc_agent_root_create_runtime ! @runtime'
+  echo 'runtime root prompt1_input.text agentc_agent_root_turn ! @root'
+  echo 'runtime root prompt2_input.text agentc_agent_root_turn ! @root'
   echo 'runtime agentc_destroy ! /'
-  echo 'state to_json !'
+  echo 'root to_json !'
   echo 'print'
 } | "$EDICT" -

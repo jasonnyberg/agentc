@@ -29,14 +29,10 @@ std::string edictBinaryPath() {
     return (std::filesystem::path(TEST_BUILD_DIR) / "edict" / "edict").string();
 }
 
-std::string modulePath() {
-    return (std::filesystem::path(TEST_SOURCE_DIR) / "cpp-agent" / "edict" / "modules" / "agentc_stateful_loop.edict").string();
-}
-
 std::string runEdictScript(const std::string& script) {
     const auto tempDir = std::filesystem::temp_directory_path();
-    const auto scriptPath = tempDir / "agentc_stateful_loop_test.ed";
-    const auto outputPath = tempDir / "agentc_stateful_loop_test.out";
+    const auto scriptPath = tempDir / "agentc_agent_root_test.ed";
+    const auto outputPath = tempDir / "agentc_agent_root_test.out";
 
     {
         std::ofstream out(scriptPath);
@@ -56,30 +52,27 @@ std::string runEdictScript(const std::string& script) {
 
 } // namespace
 
-TEST(EdictStatefulLoopTest, BuildsStructuredTurnStateWithHistory) {
-    const std::string moduleSource = readFile(modulePath());
+TEST(EdictAgentRootTest, BuildsCanonicalRootShape) {
+    const auto base = std::filesystem::path(TEST_SOURCE_DIR) / "cpp-agent" / "edict" / "modules";
+    const std::string statefulModule = readFile(base / "agentc_stateful_loop.edict");
+    const std::string rootModule = readFile(base / "agentc_agent_root.edict");
 
     std::ostringstream script;
-    script << moduleSource << "\n";
-    script << R"([system prompt] agentc_state_init ! @state
-state [demo prompt] agentc_state_push_user ! @state
-{} @response
-'hello @response.message.text
-state response agentc_state_apply_response ! @state
-state to_json !
+    script << statefulModule << "\n";
+    script << rootModule << "\n";
+    script << R"([system prompt] agentc_agent_root_init ! @root
+root to_json !
 print
 )";
 
     const std::string output = runEdictScript(script.str());
     auto parsed = nlohmann::json::parse(output);
-    EXPECT_EQ(parsed["system_prompt"].get<std::string>(), "system prompt");
-    EXPECT_EQ(parsed["last_prompt"].get<std::string>(), "demo prompt");
-    EXPECT_EQ(parsed["assistant_text"].get<std::string>(), "hello");
-    ASSERT_TRUE(parsed["last_response"].is_object());
-    EXPECT_EQ(parsed["last_response"]["message"]["text"].get<std::string>(), "hello");
-    ASSERT_TRUE(parsed["messages"].is_array());
-    ASSERT_EQ(parsed["messages"].size(), 2u);
-    EXPECT_EQ(parsed["messages"][0]["role"].get<std::string>(), "user");
-    EXPECT_EQ(parsed["messages"][0]["text"].get<std::string>(), "demo prompt");
-    EXPECT_EQ(parsed["messages"][1]["text"].get<std::string>(), "hello");
+    ASSERT_TRUE(parsed["conversation"].is_object());
+    ASSERT_TRUE(parsed["memory"].is_object());
+    ASSERT_TRUE(parsed["policy"].is_object());
+    ASSERT_TRUE(parsed["runtime"].is_object());
+    ASSERT_TRUE(parsed["loop"].is_object());
+    EXPECT_EQ(parsed["conversation"]["system_prompt"].get<std::string>(), "system prompt");
+    EXPECT_EQ(parsed["runtime"]["default_provider"].get<std::string>(), "google");
+    EXPECT_EQ(parsed["loop"]["status"].get<std::string>(), "ready");
 }

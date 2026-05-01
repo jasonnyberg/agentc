@@ -1,0 +1,28 @@
+# agentc_agent_root.edict — first canonical Edict agent-root shape
+#
+# Prerequisite: load `cpp-agent/edict/modules/agentc.edict` and
+# `cpp-agent/edict/modules/agentc_stateful_loop.edict` first.
+#
+# Defined wrappers:
+#   agentc_agent_root_init !          ( system_prompt -- root )
+#   agentc_agent_root_create_runtime !( root -- runtime_handle )
+#   agentc_agent_root_text !          ( root -- assistant_text )
+#   agentc_agent_root_messages !      ( root -- messages )
+#   agentc_agent_root_turn !          ( runtime_handle root prompt -- root )
+#   agentc_agent_root_demo !          ( system_prompt prompt -- root )
+#
+# Root shape:
+# - `conversation` : conversation-bearing Edict state from agentc_stateful_loop.edict
+# - `memory`       : durable Edict-owned memory namespace (empty for now)
+# - `policy`       : policy/config placeholders owned by Edict
+# - `runtime`      : declarative runtime config metadata
+# - `loop`         : lightweight loop metadata
+#
+# This is the first step from transcript persistence toward a canonical VM/root state.
+
+[@system_prompt system_prompt agentc_state_init ! @conversation {"conversation": null, "memory": null, "policy": null, "runtime": null, "loop": null} @root conversation @root.conversation {"entries": []} @memory memory @root.memory {"allow_tools": "false"} @policy policy @root.policy {"default_provider": "google", "default_model": "gemini-2.5-flash"} @runtime runtime @root.runtime {"status": "ready", "last_prompt": null} @loop loop @root.loop root] @agentc_agent_root_init
+[@root root.runtime agentc_runtime_create !] @agentc_agent_root_create_runtime
+[@root root.conversation.assistant_text] @agentc_agent_root_text
+[@root root.conversation.messages] @agentc_agent_root_messages
+[@prompt @root @runtime_handle runtime_handle root.conversation prompt agentc_state_turn ! @root.conversation prompt @root.loop.last_prompt [turn-complete] @root.loop.status root] @agentc_agent_root_turn
+[@prompt @system_prompt system_prompt agentc_agent_root_init ! @root root agentc_agent_root_create_runtime ! @runtime runtime root prompt agentc_agent_root_turn ! @next_root runtime agentc_destroy ! / next_root] @agentc_agent_root_demo

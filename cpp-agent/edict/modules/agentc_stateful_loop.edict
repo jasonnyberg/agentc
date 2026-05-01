@@ -1,24 +1,31 @@
-# agentc_stateful_loop.edict — slightly richer Edict-owned loop over agentc_call
+# agentc_stateful_loop.edict — richer Edict-owned stateful loop over agentc_call
 #
 # Prerequisite: load `cpp-agent/edict/modules/agentc.edict` first.
 #
 # Defined wrappers:
-#   agentc_state_init !        ( system_prompt -- state )
-#   agentc_state_text !        ( state -- assistant_text )
-#   agentc_state_response !    ( state -- last_response )
-#   agentc_state_turn !        ( runtime_handle state prompt -- next_state )
-#   agentc_state_demo !        ( system_prompt prompt -- next_state )
+#   agentc_state_init !          ( system_prompt -- state )
+#   agentc_state_text !          ( state -- assistant_text )
+#   agentc_state_response !      ( state -- last_response )
+#   agentc_state_messages !      ( state -- messages )
+#   agentc_state_push_user !     ( state prompt -- state )
+#   agentc_state_apply_response !( state response -- state )
+#   agentc_state_turn !          ( runtime_handle state prompt -- state )
+#   agentc_state_demo !          ( system_prompt prompt -- state )
 #
-# This module keeps state intentionally simple for the first slice:
+# State shape:
 # - `system_prompt`
+# - `messages`
 # - `last_prompt`
 # - `last_response`
 # - `assistant_text`
 #
-# It proves Edict can own a structured turn result, not just a bare assistant string.
+# This slice proves Edict can own explicit conversation history in native data.
 
-[@system_prompt {"system_prompt": "", "last_prompt": null, "last_response": null, "assistant_text": ""} @state system_prompt @state.system_prompt state] @agentc_state_init
+[@system_prompt {"system_prompt": "", "messages": [], "last_prompt": null, "last_response": null, "assistant_text": ""} @state system_prompt @state.system_prompt state] @agentc_state_init
 [@state state.assistant_text] @agentc_state_text
 [@state state.last_response] @agentc_state_response
-[@prompt @state @runtime_handle {} @request state.system_prompt @request.system prompt @request.prompt runtime_handle request agentc_call ! @response {"system_prompt": "", "last_prompt": null, "last_response": null, "assistant_text": ""} @next state.system_prompt @next.system_prompt prompt @next.last_prompt response @next.last_response response.message.text @next.assistant_text next] @agentc_state_turn
+[@state state.messages] @agentc_state_messages
+[@prompt @state {"role": "user", "text": ""} @message prompt @message.text / message ^state.messages^ prompt @state.last_prompt / state] @agentc_state_push_user
+[@response @state response.message @message response @state.last_response / message.text @state.assistant_text / message ^state.messages^ state] @agentc_state_apply_response
+[@prompt @state @runtime_handle state prompt agentc_state_push_user ! @next_state {} @request next_state.system_prompt @request.system next_state.messages @request.messages runtime_handle request agentc_call ! @response next_state response agentc_state_apply_response !] @agentc_state_turn
 [@prompt @system_prompt {"default_provider":"google","default_model":"gemini-2.5-flash"} agentc_runtime_create ! @runtime system_prompt agentc_state_init ! @state runtime state prompt agentc_state_turn ! @next_state runtime agentc_destroy ! / next_state] @agentc_state_demo
