@@ -17,11 +17,12 @@ add_library(agent_runtime SHARED
     runtime/core/runtime.cpp
     runtime/c_api/agentc_runtime_c_api.cpp
     runtime/providers/register_builtin_providers.cpp
+    runtime/common/credentials.cpp
+    runtime/common/http_client.cpp
+    runtime/common/sse_parser.cpp
+    runtime/providers/google/google_provider.cpp
+    runtime/providers/openai/openai_provider.cpp
     api_registry.cpp
-    credentials.cpp
-    http_client.cpp
-    providers/google.cpp
-    providers/openai.cpp
 )
 set_target_properties(agent_runtime PROPERTIES OUTPUT_NAME agent_runtime)
 
@@ -56,3 +57,21 @@ add_executable(hello_gemini hello_gemini.cpp)
 target_link_libraries(hello_gemini PRIVATE CURL::libcurl)
 target_include_directories(hello_gemini PRIVATE ${nlohmann_json_SOURCE_DIR})
 target_compile_options(hello_gemini PRIVATE -Wall -Wextra)
+
+add_executable(cpp_agent_tests
+    tests/runtime_abi_test.cpp
+    tests/edict_agentc_module_test.cpp
+)
+target_compile_definitions(cpp_agent_tests PRIVATE
+    TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+    TEST_BUILD_DIR="${CMAKE_BINARY_DIR}"
+)
+target_include_directories(cpp_agent_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}
+    ${nlohmann_json_SOURCE_DIR}
+)
+target_link_libraries(cpp_agent_tests PRIVATE agent_runtime libedict gtest gtest_main pthread)
+add_dependencies(cpp_agent_tests agent_runtime agentc_extensions)
+add_test(NAME cpp_agent_tests COMMAND cpp_agent_tests)

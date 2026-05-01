@@ -1,4 +1,6 @@
 ### 2026-04-30
+- Added automated validation for the new runtime boundary: `cpp_agent_tests` now covers both the raw `libagent_runtime.so` C ABI and the Cartographer-imported Edict wrapper/module path, and passes under direct execution plus `ctest -R cpp_agent_tests`.
+- Continued the physical `cpp-agent/` refactor by moving the active runtime build onto `cpp-agent/runtime/common/{credentials,http_client,sse_parser}.*` and `cpp-agent/runtime/providers/{google,openai}/...` while preserving working host/runtime behavior.
 - Refactored `cpp-agent/main.cpp` into a thinner runtime-backed socket host over `libagent_runtime.so`, added `shutdown-agent` behavior plus `--config` / `--socket` / `--provider` / `--model` / `--system-prompt` options, and validated both live Gemini response handling and clean daemon shutdown.
 - Added the first Edict-side runtime bridge at `cpp-agent/edict/modules/agentc.edict` plus `cpp-agent/demo/demo_agentc_runtime_edict.sh`, proving the Cartographer-imported `libagent_runtime.so` path works end-to-end and returns normalized JSON envelopes back into Edict values.
 - Added `cpp-agent/config/runtime.default.json` as a host/runtime configuration example and validated socket startup from a JSON config file.

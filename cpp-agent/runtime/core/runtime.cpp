@@ -1,9 +1,9 @@
 #include "runtime.h"
 
 #include "../providers/register_builtin_providers.h"
+#include "../common/credentials.h"
 #include "../../ai_types.h"
 #include "../../api_registry.h"
-#include "../../credentials.h"
 
 #include <fstream>
 #include <sstream>

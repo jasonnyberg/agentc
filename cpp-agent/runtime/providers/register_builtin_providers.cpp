@@ -1,7 +1,7 @@
 #include "register_builtin_providers.h"
 
-#include "../../providers/google.h"
-#include "../../providers/openai.h"
+#include "google/google_provider.h"
+#include "openai/openai_provider.h"
 
 #include <mutex>
 

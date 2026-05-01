@@ -194,7 +194,7 @@ Model output is **data first**. The first production architecture does not grant
 - [ ] Normalize provider responses into a single JSON contract.
 - [ ] Preserve current provider support (Gemini/OpenAI/Copilot) behind the new boundary.
 
-Phase 2 has now started: a first `libagent_runtime.so` target exists under `cpp-agent/`, exposes the new C ABI header, registers built-in providers once, and routes JSON requests through a reusable runtime wrapper while the host executable continues to work against the same provider implementations during transition.
+Phase 2 has now started: a first `libagent_runtime.so` target exists under `cpp-agent/`, exposes the new C ABI header, registers built-in providers once, and routes JSON requests through a reusable runtime wrapper while the host executable continues to work against the same provider implementations during transition. Common/provider code migration is also underway: the active `agent_runtime` build now consumes `cpp-agent/runtime/common/{credentials,http_client,sse_parser}.*` and `cpp-agent/runtime/providers/{google,openai}/...` rather than the older top-level source locations.
 
 ### Phase 3 - Edict Module Surface
 - [x] Add/import the first `agentc` wrapper surface over the runtime C ABI.
@@ -259,5 +259,12 @@ Phase 5 progress: `cpp-agent/main.cpp` no longer wires providers directly throug
 - Remaining: keep thinning the host, add automated runtime/Edict wrapper tests, and continue moving common/provider code into the new runtime-oriented layout.
 - Next: add automated tests for the C ABI + Edict wrapper path, then continue physically migrating provider/common code into `cpp-agent/runtime/`.
 
+### 2026-04-30 (tests + runtime layout migration)
+- Did: Added `cpp_agent_tests` with automated coverage for both the raw runtime C ABI and the Edict-side wrapper/module path, and registered it with CTest.
+- Did: Validated the new tests via both direct execution and `ctest -R cpp_agent_tests`; coverage now proves runtime creation/configuration error reporting plus the Cartographer-imported `agentc.edict` wrapper round-trip.
+- Did: Continued physical source-layout migration by moving the active `agent_runtime` build onto `cpp-agent/runtime/common/{credentials,http_client,sse_parser}.*` and `cpp-agent/runtime/providers/{google,openai}/...` while preserving working host/runtime behavior.
+- Remaining: continue shrinking transitional top-level `cpp-agent` sources, migrate additional runtime-facing code/helpers into the new layout, and start reconnecting the host to embedded VM persistence/restore hooks.
+- Next: move the remaining reusable runtime support code and transitional compatibility shims toward the `cpp-agent/runtime/` layout, then begin stitching the runtime-backed host into the mmap/Listree persistence lifecycle.
+
 ## Next Action
-Add automated tests for the runtime C ABI plus the Edict-side wrapper path, then continue physically migrating common/provider code into the `cpp-agent/runtime/` layout.
+Continue migrating the remaining reusable runtime support code into the `cpp-agent/runtime/` layout, then begin stitching the runtime-backed host into the mmap/Listree persistence lifecycle.
