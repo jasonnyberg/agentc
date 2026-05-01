@@ -1,0 +1,28 @@
+# agentc.edict — first Edict-side wrapper layer for libagent_runtime.so
+#
+# Prerequisites before loading/using these wrappers:
+#   [<extensions_lib>] [<extensions_header>] resolver.import ! @ext
+#   [<agent_runtime_lib>] [<agent_runtime_header>] resolver.import ! @runtimeffi
+#
+# Defined wrappers:
+#   agentc_runtime_create !    ( config_value -- runtime_handle )
+#   agentc_configure !         ( runtime_handle config_value -- status )
+#   agentc_call_json !         ( runtime_handle request_value -- response_json_string )
+#   agentc_call !              ( runtime_handle request_value -- response_value )
+#   agentc_last_error_json !   ( runtime_handle -- json_string_or_null )
+#   agentc_last_error !        ( runtime_handle -- value_or_null )
+#   agentc_last_trace_json !   ( runtime_handle -- json_string_or_null )
+#   agentc_last_trace !        ( runtime_handle -- value_or_null )
+#   agentc_destroy !           ( runtime_handle -- )
+#
+# Note: Edict script mode is line-oriented, so each quoted thunk is defined on one line.
+
+[to_json ! @config_json config_json ext.agentc_ext_string_to_cstr_ltv ! @config_cstr config_cstr runtimeffi.agentc_runtime_create_json ! @runtime_handle config_cstr ext.agentc_ext_memory_free ! / runtime_handle] @agentc_runtime_create
+[@config_value @runtime_handle config_value to_json ! @config_json config_json ext.agentc_ext_string_to_cstr_ltv ! @config_cstr runtime_handle config_cstr runtimeffi.agentc_runtime_configure_json ! @status config_cstr ext.agentc_ext_memory_free ! / status] @agentc_configure
+[@request_value @runtime_handle request_value to_json ! @request_json request_json ext.agentc_ext_string_to_cstr_ltv ! @request_cstr runtime_handle request_cstr runtimeffi.agentc_runtime_request_json ! @response_cstr request_cstr ext.agentc_ext_memory_free ! / response_cstr ext.agentc_ext_string_from_cstr ! @response_json response_cstr runtimeffi.agentc_runtime_free_string ! / response_json] @agentc_call_json
+[@request_value @runtime_handle runtime_handle request_value agentc_call_json ! @response_json response_json from_json !] @agentc_call
+[@runtime_handle runtime_handle runtimeffi.agentc_runtime_last_error_json ! @error_cstr error_cstr ext.agentc_ext_string_from_cstr ! @error_json error_cstr runtimeffi.agentc_runtime_free_string ! / error_json] @agentc_last_error_json
+[@runtime_handle runtime_handle agentc_last_error_json ! @error_json error_json from_json !] @agentc_last_error
+[@runtime_handle runtime_handle runtimeffi.agentc_runtime_last_trace_json ! @trace_cstr trace_cstr ext.agentc_ext_string_from_cstr ! @trace_json trace_cstr runtimeffi.agentc_runtime_free_string ! / trace_json] @agentc_last_trace_json
+[@runtime_handle runtime_handle agentc_last_trace_json ! @trace_json trace_json from_json !] @agentc_last_trace
+[runtimeffi.agentc_runtime_destroy !] @agentc_destroy

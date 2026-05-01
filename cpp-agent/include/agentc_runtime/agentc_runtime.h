@@ -9,17 +9,17 @@ typedef void* agentc_runtime_t;
 
 const char* agentc_runtime_version(void);
 
-agentc_runtime_t agentc_runtime_create_json(const char* config_json);
-agentc_runtime_t agentc_runtime_create_file(const char* config_path);
+void* agentc_runtime_create_json(const char* config_json);
+void* agentc_runtime_create_file(const char* config_path);
 
-int agentc_runtime_configure_json(agentc_runtime_t runtime, const char* config_json);
-int agentc_runtime_configure_file(agentc_runtime_t runtime, const char* config_path);
+int agentc_runtime_configure_json(void* runtime, const char* config_json);
+int agentc_runtime_configure_file(void* runtime, const char* config_path);
 
-char* agentc_runtime_request_json(agentc_runtime_t runtime, const char* request_json);
-char* agentc_runtime_last_error_json(agentc_runtime_t runtime);
-char* agentc_runtime_last_trace_json(agentc_runtime_t runtime);
+char* agentc_runtime_request_json(void* runtime, const char* request_json);
+char* agentc_runtime_last_error_json(void* runtime);
+char* agentc_runtime_last_trace_json(void* runtime);
 
-void agentc_runtime_destroy(agentc_runtime_t runtime);
+void agentc_runtime_destroy(void* runtime);
 void agentc_runtime_free_string(char* value);
 
 #ifdef __cplusplus

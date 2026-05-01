@@ -37,7 +37,8 @@ target_link_libraries(agent_runtime PRIVATE CURL::libcurl)
 target_compile_options(agent_runtime PRIVATE -Wall -Wextra -Wno-unused-parameter)
 
 add_executable(cpp-agent
-    main.cpp agent_loop.cpp socket_server.cpp edict_tools.cpp
+    main.cpp
+    socket_server.cpp
 )
 
 target_include_directories(cpp-agent PRIVATE

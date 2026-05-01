@@ -197,9 +197,11 @@ Model output is **data first**. The first production architecture does not grant
 Phase 2 has now started: a first `libagent_runtime.so` target exists under `cpp-agent/`, exposes the new C ABI header, registers built-in providers once, and routes JSON requests through a reusable runtime wrapper while the host executable continues to work against the same provider implementations during transition.
 
 ### Phase 3 - Edict Module Surface
-- [ ] Add/import the `agentc` module namespace.
-- [ ] Convert normalized JSON responses directly into Edict/Listree values.
-- [ ] Add debug/trace state via `agentc.last()`.
+- [x] Add/import the first `agentc` wrapper surface over the runtime C ABI.
+- [x] Convert normalized JSON responses directly into Edict/Listree values.
+- [x] Add debug/trace state wrappers for last-error / last-trace retrieval.
+
+Phase 3 evidence: `cpp-agent/edict/modules/agentc.edict` now wraps `libagent_runtime.so` through Cartographer imports plus `extensions/libagentc_extensions.so`, and `cpp-agent/demo/demo_agentc_runtime_edict.sh` demonstrates the Edict-side path end-to-end.
 
 ### Phase 4 - Edict-Native Loop and Policy
 - [ ] Move canonical agent orchestration into Edict code/modules.
@@ -208,8 +210,10 @@ Phase 2 has now started: a first `libagent_runtime.so` target exists under `cpp-
 
 ### Phase 5 - Host Unification and Lifecycle
 - [ ] Refactor `cpp-agent` into a thin host/front-end around the embedded interpreter.
-- [ ] Preserve reconnectable socket behavior.
+- [x] Preserve reconnectable socket behavior.
 - [ ] Support additional front-end modes (shell/pipe/file) without changing agent policy ownership.
+
+Phase 5 progress: `cpp-agent/main.cpp` no longer wires providers directly through the old outer loop; it now consumes `libagent_runtime` via the C ABI, maintains lightweight session transcript state, supports `shutdown-agent`, and accepts runtime config via JSON file or defaults.
 
 ### Phase 6 - Persistence and Restore
 - [ ] Add host-managed checkpoint/save hooks.
@@ -247,5 +251,13 @@ Phase 2 has now started: a first `libagent_runtime.so` target exists under `cpp-
 - Remaining: continue extracting common/provider code into the new runtime layout, add Edict-side wrappers/import path, and move host entrypoints onto the new runtime contract.
 - Next: refactor the current host/front-end to consume `libagent_runtime` through the new runtime core rather than owning provider wiring directly.
 
+### 2026-04-30 (host + Edict bridge slice)
+- Did: Refactored `cpp-agent/main.cpp` into a thinner runtime-backed host that uses the new C ABI instead of directly wiring providers/agent-loop ownership, while preserving reconnectable socket behavior and adding `shutdown-agent` support.
+- Did: Added `cpp-agent/edict/modules/agentc.edict` as the first Edict-side wrapper/import path over `libagent_runtime.so`, using the existing extensions bridge to convert Edict values ↔ JSON strings ↔ C strings.
+- Did: Added `cpp-agent/demo/demo_agentc_runtime_edict.sh` and validated the Edict-side wrapper path end-to-end; also validated the runtime-backed socket host with a live Gemini request plus clean shutdown.
+- Did: Added `cpp-agent/config/runtime.default.json` and host CLI options (`--config`, `--socket`, `--provider`, `--model`, `--system-prompt`) so runtime selection/config is now externalizable via JSON file or flags.
+- Remaining: keep thinning the host, add automated runtime/Edict wrapper tests, and continue moving common/provider code into the new runtime-oriented layout.
+- Next: add automated tests for the C ABI + Edict wrapper path, then continue physically migrating provider/common code into `cpp-agent/runtime/`.
+
 ## Next Action
-Refactor the current host/front-end to consume `libagent_runtime` through the new runtime core, then add the first Edict-side `agentc` wrapper/import path over the C ABI.
+Add automated tests for the runtime C ABI plus the Edict-side wrapper path, then continue physically migrating common/provider code into the `cpp-agent/runtime/` layout.

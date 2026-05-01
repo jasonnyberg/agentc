@@ -1,0 +1,23 @@
+{
+  "default_provider": "google",
+  "default_model": "gemini-2.5-pro",
+  "defaults": {
+    "timeout_ms": 30000,
+    "response_mode": "text",
+    "include_raw": false
+  },
+  "providers": {
+    "google": {
+      "enabled": true,
+      "base_url": "https://generativelanguage.googleapis.com"
+    },
+    "openai": {
+      "enabled": true,
+      "base_url": "https://api.openai.com"
+    },
+    "github-copilot": {
+      "enabled": true,
+      "base_url": "https://api.individual.githubcopilot.com"
+    }
+  }
+}
