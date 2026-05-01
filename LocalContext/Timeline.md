@@ -1,4 +1,5 @@
 ### 2026-05-01
+- Added HRM goal 🔗[G070](./Knowledge/Goals/G070-InvertedLoopSurgicalCleanup/index.md) to capture the surgical cleanup plan for the inverted-loop transition: reduce host-owned turn/state mutation, define the transient runtime rehydration boundary, and remove JSON rematerialization from normal native-root persistence.
 - Captured the new operator-config slice in project memory and updated the implementation plan: provider/model selection is now treated as config (`agentc-config.json`, `AGENTC_CONFIG`, Edict file/path wrappers), while the next planned implementation step is transient runtime rehydration around embedded VM restore.
 
 ### 2026-04-30

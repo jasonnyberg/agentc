@@ -1,0 +1,111 @@
+# Goal: G070 - Inverted Loop Surgical Cleanup
+
+## Goal
+Execute a focused cleanup pass on the current inverted-loop implementation so the embedded Edict VM becomes the practical owner of turn/state transitions, transient runtime artifacts gain an explicit rehydration boundary, and native root persistence no longer depends on host-side JSON rematerialization.
+
+## Status
+**PROPOSED**
+
+## Rationale
+G068 established the target architecture clearly: keep the reconnectable **Client ↔ Host** boundary, keep **Host + Edict VM** embedded in one process, make the **canonical agent loop Edict-native**, and treat runtime/provider handles as **transient rehydrated state** rather than durable VM state.
+
+Recent implementation work moved decisively in that direction:
+- `libagent_runtime.so` now owns provider/auth/HTTP mechanics behind a reusable native boundary.
+- Edict can import that runtime through `agentc.edict` and already has live POCs for hello-world turns, stateful conversation history, and a canonical agent-root object.
+- The host now restores and persists a canonical root and can construct an embedded `EdictVM` around a restored anchored root.
+
+But the production path still carries transitional host-owned orchestration that risks hardening into the long-term architecture:
+- `cpp-agent/main.cpp` still owns a `shared_root` JSON object, builds requests from it, applies responses back into it, and mirrors that state into the VM.
+- `cpp-agent/runtime/persistence/agent_root_state.*` still contains host-side helpers for request building and response application — useful as a bridge, but too close to canonical policy ownership.
+- `SessionStateStore::saveRoot(...)` currently serializes the native root to JSON, resets structured allocators, rematerializes the root from JSON, and only then persists slabs, which weakens the intended “native rooted state is canonical” persistence model.
+
+This goal exists to convert that transitional scaffolding into a sharper, smaller host boundary before it becomes entrenched. The point is not broad refactoring for its own sake; it is a targeted cleanup that preserves momentum while removing the highest-leverage sources of host-owned agent behavior.
+
+## Scope
+- Move the production turn/state transition path closer to VM/Edict ownership.
+- Define the durable-vs-transient rehydration contract for runtime handles/imports around embedded VM restore.
+- Simplify native root persistence so normal save/restore paths do not trampoline through JSON rematerialization.
+- Retire or demote host-side canonical-loop helpers once the VM/Edict path is ready.
+
+## Non-Goals
+- Do not reintroduce a Host ↔ VM IPC boundary.
+- Do not widen model-directed native/FFI capabilities beyond the current data-first policy.
+- Do not redesign the entire runtime/provider layer; this goal is about ownership boundaries, not replacing the new runtime extraction.
+- Do not delete transitional shims prematurely if they are still needed for build stability during the cleanup.
+
+## Acceptance Criteria
+- [ ] The host no longer treats a host-owned JSON root as the canonical source of turn state.
+- [ ] The production turn path enters the embedded VM/Edict layer for request shaping and response-to-state mutation.
+- [ ] Durable root state stores only declarative runtime/import metadata; transient runtime handles/import bindings are rehydrated explicitly on startup/restore.
+- [ ] `SessionStateStore::saveRoot(...)` and the corresponding restore path persist native rooted state without a normal-path JSON serialize/reset/rematerialize trampoline.
+- [ ] Transitional host-side loop helpers are either removed, reduced to compatibility-only roles, or clearly demoted behind the VM-owned production path.
+- [ ] Existing demos/tests for runtime calls, root persistence, and embedded VM restore continue to pass after each cleanup slice.
+
+## Implementation Plan
+
+### Phase 1 - Pin Down the Ownership Boundary
+- [ ] Document the concrete production ownership split for one full turn: host responsibilities, VM/Edict responsibilities, runtime-library responsibilities.
+- [ ] Identify the exact host-owned code paths that still perform canonical loop work (`shared_root`, request shaping, response application, session reset behavior).
+- [ ] Define the rehydrated artifact set explicitly: runtime handles, imported module bindings, parser/client state, sockets, and any other non-durable runtime objects.
+
+Phase 1 target: make the cleanup executable as a sequence of narrow removals rather than a vague “move logic inward” directive.
+
+### Phase 2 - Make the VM/Edict Own the Production Turn Transition
+- [ ] Add or promote a VM/Edict entrypoint that accepts user input against the canonical root and performs the request-build / runtime-call / response-apply sequence inside the embedded VM boundary.
+- [ ] Change the host to submit input/control events to that entrypoint instead of mutating a host-owned canonical root directly.
+- [ ] Ensure host-visible reply text and persistence hooks are derived from the VM-owned root after the turn, not from a parallel host JSON state machine.
+
+Phase 2 target: remove the architectural ambiguity where the VM exists but the host still performs the real loop transition.
+
+### Phase 3 - Collapse Dual State Ownership
+- [ ] Eliminate `shared_root` as an independently authoritative copy of session state in `cpp-agent/main.cpp`.
+- [ ] Rework reset/startup flows so canonical state is created/restored once, then owned by the embedded VM/root.
+- [ ] Keep any host-side JSON materialization strictly observational/debugging if it is still needed.
+
+Phase 3 target: the VM/root becomes the sole practical source of truth for durable agent state.
+
+### Phase 4 - Clean Up Native Root Persistence
+- [ ] Replace the current `saveRoot(...)` JSON serialize/reset/rematerialize path with a direct native-root persistence path that preserves the intended slab/Listree semantics.
+- [ ] Verify that allocator lifecycle assumptions are safe for a long-lived embedded VM process and do not invalidate live state during normal save operations.
+- [ ] Add focused tests that exercise native-root save/restore without relying on JSON materialization as the proof mechanism.
+
+Phase 4 target: persistence semantics match the architecture — native rooted state is what is being saved, not a host-side JSON reconstruction of it.
+
+### Phase 5 - Retire Transitional Host Helpers
+- [ ] Reduce or remove host-side canonical-loop helpers in `agent_root_state.*` once the production VM/Edict path is stable.
+- [ ] Reassess compatibility shims and trim any that only existed to support the older host-owned loop path.
+- [ ] Update demos/tests/documentation so the primary story is the VM/Edict-owned production path, not the transitional host bridge.
+
+Phase 5 target: the codebase becomes legibly aligned with G068 instead of merely containing G068-shaped proof-of-concept slices.
+
+## Related Goals
+- Primary architectural parent:
+  - 🔗[G068 Client/Agent Split with Embedded Persistent Edict VM](../G068-ClientAgentSplitEmbeddedVmPersistence/index.md)
+- Supporting persistence groundwork:
+  - 🔗[G041 Persistent Slab Image Persistence](../G041_Persistent_Slab_Image_Persistence/index.md)
+  - 🔗[G042 Persistent VM Root State and Restore Validation](../G042_Persistent_VM_Root_State_And_Restore_Validation/index.md)
+  - 🔗[G069 Remove LMDB Dependencies](../G069-RemoveLMDBDependencies/index.md)
+- Relevant work products:
+  - 🔗[WP_EdictNativeAgentModuleArchitecture](../../WorkProducts/WP_EdictNativeAgentModuleArchitecture.md)
+  - 🔗[WP_EmbeddedPersistentAgentArchitecture](../../WorkProducts/WP_EmbeddedPersistentAgentArchitecture.md)
+  - 🔗[WP_CppAgentRuntimeFileStructure](../../WorkProducts/WP_CppAgentRuntimeFileStructure.md)
+
+## Risks and Mitigations
+- **Risk**: The cleanup removes host scaffolding faster than the VM/Edict path can replace it.
+  - **Mitigation**: land the work as thin slices with stable tests/demos after each ownership shift.
+- **Risk**: Persistence surgery destabilizes allocator assumptions or restore invariants.
+  - **Mitigation**: keep focused native-root save/restore tests in lockstep with implementation changes and avoid coupling save operations to global allocator resets.
+- **Risk**: The rehydration boundary remains implicit even after code movement.
+  - **Mitigation**: document the transient artifact set first, then make startup/restore code visibly rebuild only that set.
+- **Risk**: Transitional compatibility layers survive indefinitely.
+  - **Mitigation**: treat them as explicitly temporary and prune them once the VM-owned production path is the default path.
+
+## Progress Notes
+
+### 2026-05-01
+- Created this goal to capture the surgical cleanup plan identified after reviewing the accumulated inverted-loop changes against G068.
+- Decided to prioritize three specific architectural corrections: (1) reduce host-owned turn/state mutation, (2) define explicit transient runtime rehydration around VM restore, and (3) remove JSON rematerialization from normal native-root persistence.
+- Next: start Phase 1 by turning the current cleanup concerns into a concrete ownership-boundary map tied to the production `cpp-agent/main.cpp` turn path.
+
+## Next Action
+Start Phase 1 by mapping the current production turn path and rehydrated artifact set so the first code slice can move one turn-state transition boundary inward without destabilizing demos or persistence tests.
