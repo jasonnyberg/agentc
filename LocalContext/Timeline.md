@@ -1,3 +1,6 @@
+### 2026-05-01
+- Captured the new operator-config slice in project memory and updated the implementation plan: provider/model selection is now treated as config (`agentc-config.json`, `AGENTC_CONFIG`, Edict file/path wrappers), while the next planned implementation step is transient runtime rehydration around embedded VM restore.
+
 ### 2026-04-30
 - Added a project-root `agentc-config.json`, extended `agentc.edict` with file/path-based config wrappers that can use Edict-native `read_text` + `from_json`, taught the host/demos to prefer config-file-driven runtime selection, and revalidated live restart continuity with `gemini-2.5-flash` without recompiling code.
 - Switched the active Google default-model wiring to `gemini-3.1-flash` across host config/defaults, Edict demo modules, and related tests, then confirmed via a live persistence-demo rerun that the current provider path receives `404 NOT_FOUND` for that exact model identifier on `v1beta:generateContent`.

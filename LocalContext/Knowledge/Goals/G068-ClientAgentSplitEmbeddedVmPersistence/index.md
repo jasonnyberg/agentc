@@ -179,7 +179,7 @@ Model output is **data first**. The first production architecture does not grant
 - [x] Lifecycle commands are defined for disconnect vs full agent shutdown.
 - [x] Unsafe model-driven native/FFI access is explicitly gated off by default in the target design.
 - [x] The architecture supports multiple interchangeable front-ends (socket, pipe, file, shell) over the same embedded interpreter model.
-- [ ] A concrete demo plan exists for: start host → interact → disconnect/reconnect → shutdown → restore from persisted slab.
+- [x] A concrete demo plan exists for: start host → interact → disconnect/reconnect → shutdown → restore from persisted slab.
 
 ## Implementation Plan
 
@@ -190,18 +190,19 @@ Model output is **data first**. The first production architecture does not grant
 - [x] Write the concrete C ABI and normalized request/response schema for the runtime library.
 
 ### Phase 2 - Runtime Extraction
-- [ ] Extract provider/auth/HTTP code into a reusable native runtime library.
-- [ ] Normalize provider responses into a single JSON contract.
+- [x] Extract provider/auth/HTTP code into a reusable native runtime library.
+- [x] Normalize provider responses into a single JSON contract.
 - [ ] Preserve current provider support (Gemini/OpenAI/Copilot) behind the new boundary.
 
-Phase 2 has now started: a first `libagent_runtime.so` target exists under `cpp-agent/`, exposes the new C ABI header, registers built-in providers once, and routes JSON requests through a reusable runtime wrapper while the host executable continues to work against the same provider implementations during transition. Common/provider code migration is also underway: the active `agent_runtime` build now consumes `cpp-agent/runtime/common/{credentials,http_client,sse_parser}.*`, `cpp-agent/runtime/core/provider_registry.*`, and `cpp-agent/runtime/providers/{google,openai}/...` rather than the older top-level source locations.
+Phase 2 progress: `libagent_runtime.so` is now the active reusable boundary, the normalized JSON request/response contract is live, and the active `agent_runtime` build consumes `cpp-agent/runtime/common/{credentials,http_client,sse_parser}.*`, `cpp-agent/runtime/core/provider_registry.*`, and `cpp-agent/runtime/providers/{google,openai}/...` rather than the older top-level source locations. Copilot remains the main provider-specific surface still to be fully re-homed behind the new boundary.
 
 ### Phase 3 - Edict Module Surface
 - [x] Add/import the first `agentc` wrapper surface over the runtime C ABI.
 - [x] Convert normalized JSON responses directly into Edict/Listree values.
 - [x] Add debug/trace state wrappers for last-error / last-trace retrieval.
+- [x] Add file/path-based runtime config wrappers so Edict can load operator config without recompilation.
 
-Phase 3 evidence: `cpp-agent/edict/modules/agentc.edict` now wraps `libagent_runtime.so` through Cartographer imports plus `extensions/libagentc_extensions.so`, and `cpp-agent/demo/demo_agentc_runtime_edict.sh` demonstrates the Edict-side path end-to-end.
+Phase 3 evidence: `cpp-agent/edict/modules/agentc.edict` now wraps `libagent_runtime.so` through Cartographer imports plus `extensions/libagentc_extensions.so`, exposes JSON + file/path config helpers, and `cpp-agent/demo/demo_agentc_runtime_edict.sh` demonstrates the Edict-side path end-to-end using a project-root `agentc-config.json` file.
 
 ### Phase 4 - Edict-Native Loop and Policy
 - [ ] Move canonical agent orchestration into Edict code/modules.
@@ -213,20 +214,22 @@ Phase 3 evidence: `cpp-agent/edict/modules/agentc.edict` now wraps `libagent_run
 - [x] Preserve reconnectable socket behavior.
 - [ ] Support additional front-end modes (shell/pipe/file) without changing agent policy ownership.
 
-Phase 5 progress: `cpp-agent/main.cpp` no longer wires providers directly through the old outer loop; it now consumes `libagent_runtime` via the C ABI, maintains lightweight session transcript state, supports `shutdown-agent`, `reset-session`, and accepts runtime config via JSON file or defaults.
+Phase 5 progress: `cpp-agent/main.cpp` no longer wires providers directly through the old outer loop; it now consumes `libagent_runtime` via the C ABI, owns an embedded `EdictVM`, supports `shutdown-agent` and `reset-session`, and prefers operator config from `--config`, `AGENTC_CONFIG`, or `./agentc-config.json` instead of source-embedded model/provider literals.
 
 ### Phase 6 - Persistence and Restore
 - [x] Add host-managed checkpoint/save hooks.
 - [x] Add startup restore hooks.
 - [ ] Rehydrate transient runtime handles/imports safely without introducing a Host↔VM IPC boundary.
 
-Phase 6 progress: the runtime-backed host now uses `cpp-agent/runtime/persistence/session_state_store.*` to save and restore shared session state through the existing Listree/slab-backed file store path, and the state store is covered by automated tests.
+Phase 6 progress: the host now persists the canonical agent root, `SessionStateStore` exposes both JSON and native `loadRoot(...)` / `saveRoot(...)` helpers, `cpp-agent/main.cpp` reconstructs an embedded `EdictVM` around the restored anchored root, and the persistence path is covered by `SessionStateStoreTest`, `AgentRootStateTest`, and `EmbeddedVmRootRestoreTest`.
 
 ### Phase 7 - Demonstration and Validation
 - [x] Demonstrate a live provider-backed Edict-native session.
 - [ ] Demonstrate disconnect/reconnect without losing state.
-- [ ] Demonstrate shutdown and restart with VM state restored from persisted slab.
+- [x] Demonstrate shutdown and restart with VM state restored from persisted slab.
 - [x] Demonstrate the same core runtime via at least two front-end shapes.
+
+Phase 7 progress: `demo_agentc_runtime_edict.sh`, `demo_inverted_*`, and `demo_runtime_persistence.sh` now provide concrete live validation paths, with the persistence demo proving shutdown/restart continuity under operator-controlled `agentc-config.json` settings.
 
 ## Risks and Mitigations
 - **Risk**: raw vendor JSON becomes an unstable interpreter contract.
@@ -355,13 +358,13 @@ Phase 6 progress: the runtime-backed host now uses `cpp-agent/runtime/persistenc
 - Remaining: Resolve the correct supported Google model identifier before treating the 3.1 switch as complete; until then the runtime defaults are pointed at a non-working model name for live calls.
 - Next: Confirm the exact supported Google model string to use for the desired 3.1-flash path, then update the runtime defaults accordingly or revert to the last known-good flash model.
 
-### 2026-04-30 (config-file runtime selection slice)
+### 2026-05-01 (config-file runtime selection slice)
 - Did: Added a project-root `agentc-config.json` operator config file so provider/model/runtime defaults can now be changed without recompiling code.
 - Did: Extended `cpp-agent/edict/modules/agentc.edict` with file/path-based config wrappers: `agentc_runtime_create_file`, `agentc_runtime_create_path`, `agentc_configure_file`, `agentc_configure_path`, and `agentc_read_json_file`; the `*_path` wrappers use Edict's native `read_text` + `from_json` path.
 - Did: Updated host/demo behavior to prefer config-file-driven runtime selection: `cpp-agent/main.cpp` now honors `AGENTC_CONFIG` and auto-detects `./agentc-config.json`, while the Edict/runtime demos now load config from the new file instead of embedding provider/model literals.
-- Did: Re-centered the sample defaults on the last known-good Google model (`gemini-2.5-flash`) in `agentc-config.json` / `cpp-agent/config/runtime.default.json`, and proved the new config-driven path with a successful rerun of `cpp-agent/demo/demo_runtime_persistence.sh` restoring prior state across restart.
-- Validated: `cpp_agent_tests`, `ctest -R cpp_agent_tests`, `demo_agentc_runtime_edict.sh`, and `demo_runtime_persistence.sh` all pass with the new config-file-driven flow.
-- Decided: Provider/model selection should now be treated as operator configuration, not source-code configuration; remaining hardcoded runtime literals should keep shrinking over time.
+- Did: Re-centered the sample defaults on the last known-good Google model (`gemini-2.5-flash`) in `agentc-config.json` / `cpp-agent/config/runtime.default.json`, and proved the new config-driven path with successful reruns of `cpp-agent/demo/demo_agentc_runtime_edict.sh` and `cpp-agent/demo/demo_runtime_persistence.sh`.
+- Validated: `cpp_agent_tests`, `ctest -R cpp_agent_tests`, `demo_agentc_runtime_edict.sh`, and `demo_runtime_persistence.sh` all pass with the new config-file-driven flow; the persistence demo now shows a clean restart/restore path under operator-controlled config.
+- Decided: Provider/model selection should now be treated as operator configuration, not source-code configuration; the next implementation work should focus on transient runtime rehydration and shrinking the remaining host-owned state-mutation logic rather than on editing model strings in source.
 - Remaining: Continue reducing host-owned JSON mutation logic and formalize transient runtime rehydration around embedded VM restore, now that operator-level model switching no longer requires code edits.
 - Next: Define and implement the transient rehydration boundary for runtime handles/imports around embedded VM restore while continuing to move turn/state transition logic inward.
 
