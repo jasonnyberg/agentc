@@ -21,6 +21,7 @@ add_library(agent_runtime SHARED
     runtime/common/credentials.cpp
     runtime/common/http_client.cpp
     runtime/common/sse_parser.cpp
+    runtime/persistence/agent_root_state.cpp
     runtime/persistence/session_state_store.cpp
     runtime/providers/google/google_provider.cpp
     runtime/providers/openai/openai_provider.cpp
@@ -65,6 +66,8 @@ add_executable(cpp_agent_tests
     tests/edict_hello_loop_test.cpp
     tests/edict_stateful_loop_test.cpp
     tests/edict_agent_root_test.cpp
+    tests/agent_root_state_test.cpp
+    tests/embedded_vm_root_restore_test.cpp
     tests/session_state_store_test.cpp
 )
 target_compile_definitions(cpp_agent_tests PRIVATE

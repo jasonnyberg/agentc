@@ -322,5 +322,31 @@ Phase 6 progress: the runtime-backed host now uses `cpp-agent/runtime/persistenc
 - Remaining: Start shifting persistence ownership from transcript snapshots toward this canonical root object and define how host startup/restoration should anchor and rehydrate it.
 - Next: Connect the host/runtime persistence flow to the canonical agent-root object so restored state is rooted in VM-owned Edict structure rather than host-managed transcript JSON.
 
+### 2026-04-30 (accomplishment checkpoint)
+- Did: Landed the full early inverted-loop ladder in code: `agentc.edict` runtime wrappers, `agentc_hello_loop.edict`, `agentc_stateful_loop.edict`, and `agentc_agent_root.edict`, each validated with tests and live Gemini demos.
+- Did: Proved three progressively richer Edict-owned control surfaces: single-step hello-world, structured single-turn state, and explicit multi-turn conversation history wrapped in a canonical agent-root object.
+- Did: Kept the runtime migration and persistence story coherent: `libagent_runtime.so` is active, `cpp_agent_tests` covers ABI + Edict wrapper + persistence/root helpers, and transcript persistence is now clearly an intermediate step beneath the canonical root model.
+- Decided: The codebase has crossed from “architecture only” into a working Edict-native orchestration POC stack; future work should focus less on proving the inversion and more on rooting persistence and lifecycle in the canonical agent state.
+- Remaining: Move host persistence/restore ownership from transcript snapshots to the canonical root object and continue trimming transitional host/runtime duplication.
+- Next: Wire host/runtime persistence to the canonical agent-root object and define the rehydration boundary for transient runtime artifacts.
+
+### 2026-04-30 (host canonical-root persistence slice)
+- Did: Added `cpp-agent/runtime/persistence/agent_root_state.{h,cpp}` so the host now has explicit helpers for creating the canonical root, normalizing restored legacy transcript state into that root shape, building runtime requests from `conversation`, and applying normalized runtime responses back into the root.
+- Did: Updated `cpp-agent/main.cpp` so the long-lived host now persists/restores the canonical agent-root object instead of transcript-only session JSON, resets back to that root shape, and reconfigures `libagent_runtime` from the persisted `root.runtime` metadata on startup/reset.
+- Did: Expanded automated coverage with `AgentRootStateTest` and upgraded `SessionStateStoreTest` to round-trip the canonical root object; also fixed `cpp-agent/demo/demo_runtime_persistence.sh` so the persistence demo script runs reliably under zsh and no longer collides with the ambient `HOST` environment variable.
+- Validated: `cpp_agent_tests` passes with the new root helpers, and the runtime persistence demo now logs `Restored persisted agent root ...` on restart, proving the host is restoring the canonical root path rather than the old transcript-only envelope.
+- Decided: Host persistence has now moved one major step closer to the target architecture: it is still host-managed JSON↔Listree restore, but the durable object being restored is the canonical agent root rather than a host-specific transcript schema.
+- Remaining: Move from host-managed canonical-root JSON restore to actual embedded VM/root-anchor restore, and define the transient runtime rehydration contract around that deeper restore boundary.
+- Next: Begin wiring host startup/shutdown around an embedded VM/root-anchor restore path while keeping runtime handles, sockets, and other native artifacts explicitly transient and rehydrated.
+
+### 2026-04-30 (embedded VM/root-anchor host slice)
+- Did: Extended `cpp-agent/runtime/persistence/session_state_store.*` with explicit `loadRoot(...)` / `saveRoot(...)` APIs so host code can restore and persist the anchored canonical root as a native `ListreeValue` graph instead of only JSON envelopes.
+- Did: Updated `cpp-agent/main.cpp` so the host now constructs an embedded `EdictVM` around the restored anchored root at startup, resets/replaces that VM root when canonical state changes, and persists the VM-owned root anchor back through `saveRoot(...)` after turns.
+- Did: Added `EmbeddedVmRootRestoreTest`, proving a canonical persisted agent root can be restored as an anchored native Listree root and used to construct a fresh `EdictVM` with the expected restored state.
+- Validated: `cpp_agent_tests` and `ctest -R cpp_agent_tests` pass with the embedded-VM/root-anchor slice; the restart demo continues to log `Restored persisted agent root ...` on the second host run even when the upstream provider returns transient 503 load-shedding errors.
+- Decided: The host is now lifecycle-coupled to a restored embedded VM root anchor, even though the turn-update logic still performs JSON normalization/materialization between runtime calls and VM-owned canonical state.
+- Remaining: Reduce the remaining JSON-shaped host mutation path by moving more turn/state transition logic onto the VM/Edict side, and formalize the transient rehydration contract for runtime handles/imports around startup.
+- Next: Define and implement the first explicit transient rehydration boundary for host/runtime artifacts around embedded VM restore, then continue shrinking the host-owned JSON mutation path.
+
 ## Next Action
-Connect the host/runtime persistence flow to the canonical agent-root object so restored state is rooted in VM-owned Edict structure rather than host-managed transcript JSON.
+Define and implement the first explicit transient rehydration boundary for host/runtime artifacts around embedded VM restore, then continue shrinking the host-owned JSON mutation path.

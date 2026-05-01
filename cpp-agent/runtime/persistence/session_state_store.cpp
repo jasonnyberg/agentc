@@ -79,7 +79,7 @@ bool SessionStateStore::exists() const {
     return std::filesystem::exists(statePath() + ".root.bootstrap");
 }
 
-bool SessionStateStore::load(nlohmann::json& out, std::string* error) const {
+bool SessionStateStore::loadRoot(CPtr<agentc::ListreeValue>& out, std::string* error) const {
     if (!exists()) {
         if (error) *error = "session state does not exist";
         return false;
@@ -121,28 +121,34 @@ bool SessionStateStore::load(nlohmann::json& out, std::string* error) const {
         return false;
     }
 
-    CPtr<agentc::ListreeValue> root(rootSid);
-    if (!root) {
+    out = CPtr<agentc::ListreeValue>(rootSid);
+    if (!out) {
         if (error) *error = "restored session root is null";
         return false;
     }
-
-    try {
-        out = nlohmann::json::parse(agentc::toJson(root));
-        return true;
-    } catch (const std::exception& e) {
-        if (error) *error = std::string("failed to parse restored session json: ") + e.what();
-        return false;
-    }
+    return true;
 }
 
-bool SessionStateStore::save(const nlohmann::json& state, std::string* error) const {
+bool SessionStateStore::saveRoot(CPtr<agentc::ListreeValue> root, std::string* error) const {
+    if (!root) {
+        if (error) *error = "cannot save null session root";
+        return false;
+    }
+
+    std::string rootJson;
+    try {
+        rootJson = agentc::toJson(root);
+    } catch (const std::exception& e) {
+        if (error) *error = std::string("failed to serialize session root: ") + e.what();
+        return false;
+    }
+
     removeStaleFiles();
     resetStructuredListreeAllocators();
 
-    auto root = agentc::fromJson(state.dump());
-    if (!root) {
-        if (error) *error = "failed to materialize json into listree";
+    auto materializedRoot = agentc::fromJson(rootJson);
+    if (!materializedRoot) {
+        if (error) *error = "failed to materialize serialized session root into active allocator state";
         return false;
     }
 
@@ -154,7 +160,7 @@ bool SessionStateStore::save(const nlohmann::json& state, std::string* error) co
     FileArenaStore stateStore(statePath());
 
     if (!stateStore.saveNamedCheckpoint("bootstrap", Allocator<agentc::ListreeValue>::getAllocator().exportArenaMetadata()) ||
-        !stateStore.saveRootState("bootstrap", makeRootState("session", root.getSlabId()))) {
+        !stateStore.saveRootState("bootstrap", makeRootState("session", materializedRoot.getSlabId()))) {
         if (error) *error = "failed to save root state";
         return false;
     }
@@ -168,6 +174,30 @@ bool SessionStateStore::save(const nlohmann::json& state, std::string* error) co
     }
 
     return true;
+}
+
+bool SessionStateStore::load(nlohmann::json& out, std::string* error) const {
+    CPtr<agentc::ListreeValue> root;
+    if (!loadRoot(root, error)) {
+        return false;
+    }
+
+    try {
+        out = nlohmann::json::parse(agentc::toJson(root));
+        return true;
+    } catch (const std::exception& e) {
+        if (error) *error = std::string("failed to parse restored session json: ") + e.what();
+        return false;
+    }
+}
+
+bool SessionStateStore::save(const nlohmann::json& state, std::string* error) const {
+    auto root = agentc::fromJson(state.dump());
+    if (!root) {
+        if (error) *error = "failed to materialize json into listree";
+        return false;
+    }
+    return saveRoot(root, error);
 }
 
 void SessionStateStore::clear() const {

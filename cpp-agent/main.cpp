@@ -1,5 +1,7 @@
 #include "socket_server.h"
+#include "runtime/persistence/agent_root_state.h"
 #include "runtime/persistence/session_state_store.h"
+#include "../edict/edict_vm.h"
 #include <agentc_runtime/agentc_runtime.h>
 
 #include <asio.hpp>
@@ -9,7 +11,6 @@
 #include <nlohmann/json.hpp>
 #include <string>
 #include <system_error>
-#include <vector>
 
 namespace {
 
@@ -91,36 +92,54 @@ static std::string runtime_call_json(agentc_runtime_t runtime, const json& reque
     return result;
 }
 
-struct SessionState {
-    std::string system_prompt;
-    std::vector<json> messages;
-
-    json to_json() const {
-        return json{
-            {"system_prompt", system_prompt},
-            {"messages", messages}
-        };
-    }
-
-    static SessionState from_json(const json& value, const std::string& fallback_system_prompt) {
-        SessionState state;
-        state.system_prompt = value.value("system_prompt", fallback_system_prompt);
-        if (value.contains("messages") && value["messages"].is_array()) {
-            for (const auto& item : value["messages"]) {
-                state.messages.push_back(item);
-            }
+static json runtime_config_from_agent_root(const json& root, const HostOptions& options) {
+    json config = default_runtime_config(options);
+    if (root.contains("runtime") && root["runtime"].is_object()) {
+        const auto& runtime = root["runtime"];
+        if (runtime.contains("default_provider") && runtime["default_provider"].is_string()) {
+            config["default_provider"] = runtime["default_provider"];
         }
-        return state;
+        if (runtime.contains("default_model") && runtime["default_model"].is_string()) {
+            config["default_model"] = runtime["default_model"];
+        }
     }
-};
+    return config;
+}
 
-static json build_request(const SessionState& session, const std::string& input) {
-    return json{
-        {"system", session.system_prompt},
-        {"messages", session.messages},
-        {"prompt", input},
-        {"response_mode", "text"}
-    };
+static void configure_runtime_or_throw(agentc_runtime_t runtime, const json& config) {
+    if (agentc_runtime_configure_json(runtime, config.dump().c_str()) == 0) {
+        return;
+    }
+
+    char* error = agentc_runtime_last_error_json(runtime);
+    std::string message = "agentc_runtime_configure_json failed";
+    if (error) {
+        message += ": ";
+        message += error;
+        agentc_runtime_free_string(error);
+    }
+    throw std::runtime_error(message);
+}
+
+static CPtr<agentc::ListreeValue> materialize_root_value_or_throw(const json& root) {
+    auto value = agentc::fromJson(root.dump());
+    if (!value) {
+        throw std::runtime_error("failed to materialize canonical agent root into Listree");
+    }
+    return value;
+}
+
+static json root_json_from_vm_or_throw(agentc::edict::EdictVM& vm) {
+    auto root = vm.getCursor().getValue();
+    if (!root) {
+        throw std::runtime_error("embedded VM has null root");
+    }
+    return json::parse(agentc::toJson(root));
+}
+
+static void replace_vm_root_or_throw(agentc::edict::EdictVM& vm, const json& root) {
+    vm.setCursor(materialize_root_value_or_throw(root));
+    vm.reset();
 }
 
 static std::string extract_reply_text(const json& response) {
@@ -161,17 +180,24 @@ int main(int argc, char** argv) {
         }
 
         agentc::runtime::SessionStateStore session_store(options.state_base);
-        SessionState shared_session{.system_prompt = options.system_prompt, .messages = {}};
+        CPtr<agentc::ListreeValue> initial_root_value;
         if (session_store.exists()) {
-            json restored;
             std::string error;
-            if (session_store.load(restored, &error)) {
-                shared_session = SessionState::from_json(restored, options.system_prompt);
-                std::printf("Restored persisted session state from %s\n", options.state_base.c_str());
+            if (session_store.loadRoot(initial_root_value, &error)) {
+                std::printf("Restored persisted agent root from %s\n", options.state_base.c_str());
             } else {
-                std::fprintf(stderr, "Warning: failed to restore session state: %s\n", error.c_str());
+                std::fprintf(stderr, "Warning: failed to restore agent root: %s\n", error.c_str());
             }
         }
+        if (!initial_root_value) {
+            initial_root_value = materialize_root_value_or_throw(
+                agentc::runtime::make_default_agent_root(options.system_prompt, options.provider, options.model));
+        }
+        agentc::edict::EdictVM embedded_vm(initial_root_value);
+        json shared_root = agentc::runtime::normalize_agent_root(
+            root_json_from_vm_or_throw(embedded_vm), options.system_prompt, options.provider, options.model);
+        replace_vm_root_or_throw(embedded_vm, shared_root);
+        configure_runtime_or_throw(runtime, runtime_config_from_agent_root(shared_root, options));
 
         asio::io_context io_context;
         unlink(options.socket_path.c_str());
@@ -196,7 +222,9 @@ int main(int argc, char** argv) {
                 std::getline(is, input);
                 if (input == "exit") break;
                 if (input == "reset-session") {
-                    shared_session = SessionState{.system_prompt = options.system_prompt, .messages = {}};
+                    shared_root = agentc::runtime::make_default_agent_root(options.system_prompt, options.provider, options.model);
+                    replace_vm_root_or_throw(embedded_vm, shared_root);
+                    configure_runtime_or_throw(runtime, runtime_config_from_agent_root(shared_root, options));
                     session_store.clear();
                     if (!safe_write(socket, "Agent: session reset.\n> ")) break;
                     continue;
@@ -208,19 +236,17 @@ int main(int argc, char** argv) {
                 }
 
                 try {
-                    const auto request = build_request(shared_session, input);
+                    const auto request = agentc::runtime::build_request_from_agent_root(shared_root, input);
                     const auto response_text = runtime_call_json(runtime, request);
                     const auto response = json::parse(response_text);
                     const auto reply_text = extract_reply_text(response);
 
-                    shared_session.messages.push_back(json{{"role", "user"}, {"text", input}});
-                    if (response.value("ok", false) && response.contains("message") && response["message"].is_object()) {
-                        shared_session.messages.push_back(response["message"]);
-                    }
+                    agentc::runtime::apply_runtime_response_to_agent_root(shared_root, input, response);
+                    replace_vm_root_or_throw(embedded_vm, shared_root);
 
                     std::string persist_error;
-                    if (!session_store.save(shared_session.to_json(), &persist_error)) {
-                        std::fprintf(stderr, "Warning: failed to persist session state: %s\n", persist_error.c_str());
+                    if (!session_store.saveRoot(embedded_vm.getCursor().getValue(), &persist_error)) {
+                        std::fprintf(stderr, "Warning: failed to persist agent root: %s\n", persist_error.c_str());
                     }
 
                     const std::string reply = "Agent: " + reply_text + "\n> ";
