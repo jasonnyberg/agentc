@@ -10,7 +10,7 @@
 #   agentc_state_push_user !     ( state prompt -- state )
 #   agentc_state_apply_response !( state response -- state )
 #   agentc_state_turn !          ( runtime_handle state prompt -- state )
-#   agentc_state_demo !          ( system_prompt prompt -- state )
+#   agentc_state_demo !          ( config_path system_prompt prompt -- state )
 #
 # State shape:
 # - `system_prompt`
@@ -28,4 +28,4 @@
 [@prompt @state {"role": "user", "text": ""} @message prompt @message.text / message ^state.messages^ prompt @state.last_prompt / state] @agentc_state_push_user
 [@response @state response.message @message response @state.last_response / message.text @state.assistant_text / message ^state.messages^ state] @agentc_state_apply_response
 [@prompt @state @runtime_handle state prompt agentc_state_push_user ! @next_state {} @request next_state.system_prompt @request.system next_state.messages @request.messages runtime_handle request agentc_call ! @response next_state response agentc_state_apply_response !] @agentc_state_turn
-[@prompt @system_prompt {"default_provider":"google","default_model":"gemini-2.5-flash"} agentc_runtime_create ! @runtime system_prompt agentc_state_init ! @state runtime state prompt agentc_state_turn ! @next_state runtime agentc_destroy ! / next_state] @agentc_state_demo
+[@prompt @system_prompt @config_path config_path agentc_runtime_create_path ! @runtime system_prompt agentc_state_init ! @state runtime state prompt agentc_state_turn ! @next_state runtime agentc_destroy ! / next_state] @agentc_state_demo

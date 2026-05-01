@@ -10,6 +10,7 @@ EXT_LIB="${EXT_LIB:-$PROJECT_ROOT/build/extensions/libagentc_extensions.so}"
 EXT_HDR="${EXT_HDR:-$PROJECT_ROOT/extensions/agentc_stdlib.h}"
 AGENTC_MODULE="${AGENTC_MODULE:-$PROJECT_ROOT/cpp-agent/edict/modules/agentc.edict}"
 STATEFUL_MODULE="${STATEFUL_MODULE:-$PROJECT_ROOT/cpp-agent/edict/modules/agentc_stateful_loop.edict}"
+CONFIG="${CONFIG:-$PROJECT_ROOT/agentc-config.json}"
 SYSTEM_PROMPT="${SYSTEM_PROMPT:-You are a concise assistant.}"
 PROMPT1="${PROMPT1:-Say exactly: Hello world!}"
 PROMPT2="${PROMPT2:-What did you just say?}"
@@ -32,6 +33,7 @@ PY
 echo "=== Demo: stateful Edict-owned loop with conversation history ==="
 echo "Edict:         $EDICT"
 echo "Runtime lib:   $RUNTIME_LIB"
+echo "Config:        $CONFIG"
 echo "System prompt: $SYSTEM_PROMPT"
 echo "Prompt 1:      $PROMPT1"
 echo "Prompt 2:      $PROMPT2"
@@ -49,7 +51,8 @@ EDICT
   printf '{"text": %s} @system_input\n' "$SYSTEM_PROMPT_JSON"
   printf '{"text": %s} @prompt1_input\n' "$PROMPT1_JSON"
   printf '{"text": %s} @prompt2_input\n' "$PROMPT2_JSON"
-  echo '{"default_provider":"google","default_model":"gemini-2.5-flash"} agentc_runtime_create ! @runtime'
+  echo "[$CONFIG] @config_path"
+  echo 'config_path agentc_runtime_create_path ! @runtime'
   echo 'system_input.text agentc_state_init ! @state'
   echo 'runtime state prompt1_input.text agentc_state_turn ! @state'
   echo 'runtime state prompt2_input.text agentc_state_turn ! @state'

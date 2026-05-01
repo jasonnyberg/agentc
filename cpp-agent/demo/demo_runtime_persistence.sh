@@ -5,7 +5,7 @@ setopt null_glob
 DIR="${0:A:h}"
 PROJECT_ROOT="$(cd "$DIR/../.." && pwd)"
 HOST_BIN="${HOST_BIN:-$PROJECT_ROOT/build/cpp-agent/cpp-agent}"
-CONFIG="${CONFIG:-$PROJECT_ROOT/cpp-agent/config/runtime.default.json}"
+CONFIG="${CONFIG:-$PROJECT_ROOT/agentc-config.json}"
 SOCKET="${SOCKET:-/tmp/agentc_persist_demo.sock}"
 STATE_BASE="${STATE_BASE:-/tmp/agentc_persist_demo_state}"
 LOG1="${LOG1:-/tmp/agentc_persist_demo_1.log}"

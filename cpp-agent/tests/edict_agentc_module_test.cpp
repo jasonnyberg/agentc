@@ -45,6 +45,10 @@ std::string modulePath() {
     return (std::filesystem::path(TEST_SOURCE_DIR) / "cpp-agent" / "edict" / "modules" / "agentc.edict").string();
 }
 
+std::string projectConfigPath() {
+    return (std::filesystem::path(TEST_SOURCE_DIR) / "agentc-config.json").string();
+}
+
 std::string edictBinaryPath() {
     return (std::filesystem::path(TEST_BUILD_DIR) / "edict" / "edict").string();
 }
@@ -89,8 +93,8 @@ TEST(EdictAgentcModuleTest, WrapperReturnsNormalizedJsonEnvelope) {
     script << "[" << extensionsLibPath() << "] [" << extensionsHeaderPath() << "] resolver.import ! @ext\n";
     script << "[" << runtimeLibPath() << "] [" << runtimeHeaderPath() << "] resolver.import ! @runtimeffi\n";
     script << moduleSource << "\n";
-    script << R"({"default_provider":"google","default_model":"gemini-2.5-pro"} agentc_runtime_create ! @rt
-rt {"foo":"bar"} agentc_call ! to_json !
+    script << "[" << projectConfigPath() << "] agentc_runtime_create_path ! @rt\n";
+    script << R"(rt {"foo":"bar"} agentc_call ! to_json !
 print
 rt agentc_destroy ! /
 )";

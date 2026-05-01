@@ -108,7 +108,7 @@ nlohmann::json normalize_agent_root(const nlohmann::json& value,
 
 nlohmann::json build_request_from_agent_root(const nlohmann::json& root,
                                              const std::string& prompt) {
-    const json normalized = normalize_agent_root(root, "", "google", "gemini-2.5-pro");
+    const json normalized = normalize_agent_root(root, "", "google", "gemini-2.5-flash");
     return json{
         {"system", normalized["conversation"]["system_prompt"]},
         {"messages", normalized["conversation"]["messages"]},
@@ -120,7 +120,7 @@ nlohmann::json build_request_from_agent_root(const nlohmann::json& root,
 void apply_runtime_response_to_agent_root(nlohmann::json& root,
                                           const std::string& prompt,
                                           const nlohmann::json& response) {
-    root = normalize_agent_root(root, "", "google", "gemini-2.5-pro");
+    root = normalize_agent_root(root, "", "google", "gemini-2.5-flash");
 
     auto& conversation = root["conversation"];
     if (!conversation["messages"].is_array()) {

@@ -5,7 +5,7 @@
 # Defined wrappers:
 #   agentc_extract_text !   ( response_value -- assistant_text )
 #   agentc_hello_turn !     ( runtime_handle prompt_value -- assistant_text )
-#   agentc_hello_demo !     ( prompt_value -- assistant_text )
+#   agentc_hello_demo !     ( config_path prompt_value -- assistant_text )
 #
 # This is intentionally minimal: it proves Edict can own the LLM request step,
 # build the request object, call the imported runtime, interpret the normalized
@@ -13,4 +13,4 @@
 
 [@response response.message.text] @agentc_extract_text
 [@prompt @runtime_handle {} @request prompt @request.prompt runtime_handle request agentc_call ! @response response agentc_extract_text !] @agentc_hello_turn
-[@prompt {"default_provider":"google","default_model":"gemini-2.5-pro"} agentc_runtime_create ! @runtime runtime prompt agentc_hello_turn ! @text runtime agentc_destroy ! / text] @agentc_hello_demo
+[@prompt @config_path config_path agentc_runtime_create_path ! @runtime runtime prompt agentc_hello_turn ! @text runtime agentc_destroy ! / text] @agentc_hello_demo

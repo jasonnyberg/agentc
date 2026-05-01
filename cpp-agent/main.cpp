@@ -7,6 +7,7 @@
 #include <asio.hpp>
 #include <csignal>
 #include <cstdlib>
+#include <filesystem>
 #include <iostream>
 #include <nlohmann/json.hpp>
 #include <string>
@@ -33,10 +34,10 @@ static std::string env_or_default(const char* name, const std::string& fallback)
 
 struct HostOptions {
     std::string socket_path = "/tmp/agentc.sock";
-    std::string config_path;
+    std::string config_path = env_or_default("AGENTC_CONFIG", "");
     std::string state_base = env_or_default("AGENTC_STATE_BASE", "/tmp/agentc_session_state");
     std::string provider = env_or_default("AGENTC_PROVIDER", "google");
-    std::string model = env_or_default("AGENTC_MODEL", "gemini-2.5-pro");
+    std::string model = env_or_default("AGENTC_MODEL", "gemini-2.5-flash");
     std::string system_prompt = env_or_default("AGENTC_SYSTEM_PROMPT", "You are a helpful coding assistant.");
 };
 
@@ -82,6 +83,16 @@ static json default_runtime_config(const HostOptions& options) {
     };
 }
 
+static std::string resolve_runtime_config_path(const HostOptions& options) {
+    if (!options.config_path.empty()) {
+        return options.config_path;
+    }
+    if (std::filesystem::exists("agentc-config.json")) {
+        return "agentc-config.json";
+    }
+    return {};
+}
+
 static std::string runtime_call_json(agentc_runtime_t runtime, const json& request) {
     char* response = agentc_runtime_request_json(runtime, request.dump().c_str());
     if (!response) {
@@ -95,12 +106,8 @@ static std::string runtime_call_json(agentc_runtime_t runtime, const json& reque
 static json runtime_config_from_agent_root(const json& root, const HostOptions& options) {
     json config = default_runtime_config(options);
     if (root.contains("runtime") && root["runtime"].is_object()) {
-        const auto& runtime = root["runtime"];
-        if (runtime.contains("default_provider") && runtime["default_provider"].is_string()) {
-            config["default_provider"] = runtime["default_provider"];
-        }
-        if (runtime.contains("default_model") && runtime["default_model"].is_string()) {
-            config["default_model"] = runtime["default_model"];
+        for (auto it = root["runtime"].begin(); it != root["runtime"].end(); ++it) {
+            config[it.key()] = it.value();
         }
     }
     return config;
@@ -171,9 +178,10 @@ int main(int argc, char** argv) {
 
         const HostOptions options = parse_options(argc, argv);
         const auto config = default_runtime_config(options);
-        agentc_runtime_t runtime = options.config_path.empty()
+        const auto config_path = resolve_runtime_config_path(options);
+        agentc_runtime_t runtime = config_path.empty()
             ? agentc_runtime_create_json(config.dump().c_str())
-            : agentc_runtime_create_file(options.config_path.c_str());
+            : agentc_runtime_create_file(config_path.c_str());
         if (!runtime) {
             std::cerr << "Failed to initialize agent runtime" << std::endl;
             return 1;

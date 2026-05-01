@@ -10,6 +10,7 @@ EXT_LIB="${EXT_LIB:-$PROJECT_ROOT/build/extensions/libagentc_extensions.so}"
 EXT_HDR="${EXT_HDR:-$PROJECT_ROOT/extensions/agentc_stdlib.h}"
 AGENTC_MODULE="${AGENTC_MODULE:-$PROJECT_ROOT/cpp-agent/edict/modules/agentc.edict}"
 HELLO_LOOP_MODULE="${HELLO_LOOP_MODULE:-$PROJECT_ROOT/cpp-agent/edict/modules/agentc_hello_loop.edict}"
+CONFIG="${CONFIG:-$PROJECT_ROOT/agentc-config.json}"
 PROMPT="${PROMPT:-Say exactly: Hello world!}"
 PROMPT_JSON="$(PROMPT="$PROMPT" python3 - <<'PY'
 import json, os
@@ -20,6 +21,7 @@ PY
 echo "=== Demo: minimal inverted Edict-owned hello loop ==="
 echo "Edict:       $EDICT"
 echo "Runtime lib: $RUNTIME_LIB"
+echo "Config:      $CONFIG"
 echo "Prompt:      $PROMPT"
 echo
 
@@ -33,6 +35,7 @@ EDICT
   cat "$HELLO_LOOP_MODULE"
   echo
   printf '{"text": %s} @input\n' "$PROMPT_JSON"
-  echo 'input.text agentc_hello_demo !'
+  echo "[$CONFIG] @config_path"
+  echo 'config_path input.text agentc_hello_demo !'
   echo 'print'
 } | "$EDICT" -

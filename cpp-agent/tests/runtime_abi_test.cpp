@@ -8,7 +8,7 @@ using json = nlohmann::json;
 }
 
 TEST(AgentRuntimeAbiTest, CreateRequestAndDestroyReturnsNormalizedErrorEnvelope) {
-    agentc_runtime_t runtime = agentc_runtime_create_json(R"({"default_provider":"google","default_model":"gemini-2.5-pro"})");
+    agentc_runtime_t runtime = agentc_runtime_create_json(R"({"default_provider":"google","default_model":"gemini-2.5-flash"})");
     ASSERT_NE(runtime, nullptr);
 
     char* response = agentc_runtime_request_json(runtime, R"({"foo":"bar"})");

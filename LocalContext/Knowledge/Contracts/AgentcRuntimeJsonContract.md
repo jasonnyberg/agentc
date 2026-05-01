@@ -10,11 +10,21 @@ Define the JSON payloads exchanged across the AgentC runtime C ABI.
 
 ## 1. Runtime Config JSON
 
+### Recommended operator file
+The intended operator-facing configuration file is `agentc-config.json` at the project root (or any alternate path passed via `--config` / `AGENTC_CONFIG`).
+
+### Resolution precedence
+1. request-level `provider` / `model`
+2. persisted canonical root runtime preferences
+3. explicit host CLI flags / env overrides
+4. runtime config file (`agentc-config.json`)
+5. built-in fallback defaults
+
 ### Minimal config
 ```json
 {
   "default_provider": "google",
-  "default_model": "gemini-2.5-pro"
+  "default_model": "gemini-2.5-flash"
 }
 ```
 
@@ -22,7 +32,7 @@ Define the JSON payloads exchanged across the AgentC runtime C ABI.
 ```json
 {
   "default_provider": "google",
-  "default_model": "gemini-2.5-pro",
+  "default_model": "gemini-2.5-flash",
   "defaults": {
     "timeout_ms": 30000,
     "response_mode": "text",
@@ -31,7 +41,7 @@ Define the JSON payloads exchanged across the AgentC runtime C ABI.
   "providers": {
     "google": {
       "enabled": true,
-      "default_model": "gemini-2.5-pro",
+      "default_model": "gemini-2.5-flash",
       "api_key_env": "GEMINI_API_KEY",
       "base_url": "https://generativelanguage.googleapis.com"
     },

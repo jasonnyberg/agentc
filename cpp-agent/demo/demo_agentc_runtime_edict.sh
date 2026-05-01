@@ -9,6 +9,7 @@ RUNTIME_HDR="${RUNTIME_HDR:-$PROJECT_ROOT/cpp-agent/include/agentc_runtime/agent
 EXT_LIB="${EXT_LIB:-$PROJECT_ROOT/build/extensions/libagentc_extensions.so}"
 EXT_HDR="${EXT_HDR:-$PROJECT_ROOT/extensions/agentc_stdlib.h}"
 MODULE="${MODULE:-$PROJECT_ROOT/cpp-agent/edict/modules/agentc.edict}"
+CONFIG="${CONFIG:-$PROJECT_ROOT/agentc-config.json}"
 
 if [[ ! -x "$EDICT" ]]; then
   echo "Missing edict binary: $EDICT" >&2
@@ -29,6 +30,7 @@ echo "Runtime lib:  $RUNTIME_LIB"
 echo "Runtime hdr:  $RUNTIME_HDR"
 echo "Ext lib:      $EXT_LIB"
 echo "Module:       $MODULE"
+echo "Config:       $CONFIG"
 echo
 
 {
@@ -37,8 +39,8 @@ echo
 [$RUNTIME_LIB] [$RUNTIME_HDR] resolver.import ! @runtimeffi
 EDICT
   cat "$MODULE"
-  cat <<'EDICT'
-{"default_provider": "google", "default_model": "gemini-2.5-pro"} agentc_runtime_create ! @rt
+  cat <<EDICT
+[$CONFIG] agentc_runtime_create_path ! @rt
 rt {} agentc_call ! to_json !
 print
 rt agentc_destroy ! /

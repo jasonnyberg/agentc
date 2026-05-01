@@ -348,5 +348,22 @@ Phase 6 progress: the runtime-backed host now uses `cpp-agent/runtime/persistenc
 - Remaining: Reduce the remaining JSON-shaped host mutation path by moving more turn/state transition logic onto the VM/Edict side, and formalize the transient rehydration contract for runtime handles/imports around startup.
 - Next: Define and implement the first explicit transient rehydration boundary for host/runtime artifacts around embedded VM restore, then continue shrinking the host-owned JSON mutation path.
 
+### 2026-04-30 (Google model default switch attempt)
+- Did: Updated the active Google default model wiring in `cpp-agent/config/runtime.default.json`, `cpp-agent/main.cpp`, the Edict demo modules, and relevant tests to use `gemini-3.1-flash` instead of the prior `gemini-2.5-*` defaults.
+- Validated: Rebuilt `cpp-agent` and `cpp_agent_tests`; all automated tests still pass because they do not depend on the remote model existing.
+- Observed: A live rerun of `cpp-agent/demo/demo_runtime_persistence.sh` now fails with Google API `404 NOT_FOUND` for `models/gemini-3.1-flash` on `v1beta:generateContent`, indicating that exact model identifier is not currently accepted by the active provider path.
+- Remaining: Resolve the correct supported Google model identifier before treating the 3.1 switch as complete; until then the runtime defaults are pointed at a non-working model name for live calls.
+- Next: Confirm the exact supported Google model string to use for the desired 3.1-flash path, then update the runtime defaults accordingly or revert to the last known-good flash model.
+
+### 2026-04-30 (config-file runtime selection slice)
+- Did: Added a project-root `agentc-config.json` operator config file so provider/model/runtime defaults can now be changed without recompiling code.
+- Did: Extended `cpp-agent/edict/modules/agentc.edict` with file/path-based config wrappers: `agentc_runtime_create_file`, `agentc_runtime_create_path`, `agentc_configure_file`, `agentc_configure_path`, and `agentc_read_json_file`; the `*_path` wrappers use Edict's native `read_text` + `from_json` path.
+- Did: Updated host/demo behavior to prefer config-file-driven runtime selection: `cpp-agent/main.cpp` now honors `AGENTC_CONFIG` and auto-detects `./agentc-config.json`, while the Edict/runtime demos now load config from the new file instead of embedding provider/model literals.
+- Did: Re-centered the sample defaults on the last known-good Google model (`gemini-2.5-flash`) in `agentc-config.json` / `cpp-agent/config/runtime.default.json`, and proved the new config-driven path with a successful rerun of `cpp-agent/demo/demo_runtime_persistence.sh` restoring prior state across restart.
+- Validated: `cpp_agent_tests`, `ctest -R cpp_agent_tests`, `demo_agentc_runtime_edict.sh`, and `demo_runtime_persistence.sh` all pass with the new config-file-driven flow.
+- Decided: Provider/model selection should now be treated as operator configuration, not source-code configuration; remaining hardcoded runtime literals should keep shrinking over time.
+- Remaining: Continue reducing host-owned JSON mutation logic and formalize transient runtime rehydration around embedded VM restore, now that operator-level model switching no longer requires code edits.
+- Next: Define and implement the transient rehydration boundary for runtime handles/imports around embedded VM restore while continuing to move turn/state transition logic inward.
+
 ## Next Action
-Define and implement the first explicit transient rehydration boundary for host/runtime artifacts around embedded VM restore, then continue shrinking the host-owned JSON mutation path.
+Define and implement the transient rehydration boundary for runtime handles/imports around embedded VM restore while continuing to move turn/state transition logic inward.
