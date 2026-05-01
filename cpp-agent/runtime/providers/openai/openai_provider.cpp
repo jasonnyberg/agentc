@@ -1,7 +1,7 @@
 #include "openai_provider.h"
 
 #include "../../../ai_types.h"
-#include "../../../api_registry.h"
+#include "../../core/provider_registry.h"
 #include "../../common/credentials.h"
 #include "../../common/http_client.h"
 #include "../../common/sse_parser.h"
@@ -11,7 +11,7 @@
 namespace agentc::runtime {
 
 void register_openai_provider() {
-    ::register_provider("openai-completions", [](
+    agentc::runtime::register_provider("openai-completions", [](
         const Model& model,
         const Context& ctx,
         const StreamOptions& opts,

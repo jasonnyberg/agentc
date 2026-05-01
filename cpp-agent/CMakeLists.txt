@@ -15,14 +15,15 @@ find_package(CURL REQUIRED)
 
 add_library(agent_runtime SHARED
     runtime/core/runtime.cpp
+    runtime/core/provider_registry.cpp
     runtime/c_api/agentc_runtime_c_api.cpp
     runtime/providers/register_builtin_providers.cpp
     runtime/common/credentials.cpp
     runtime/common/http_client.cpp
     runtime/common/sse_parser.cpp
+    runtime/persistence/session_state_store.cpp
     runtime/providers/google/google_provider.cpp
     runtime/providers/openai/openai_provider.cpp
-    api_registry.cpp
 )
 set_target_properties(agent_runtime PROPERTIES OUTPUT_NAME agent_runtime)
 
@@ -61,6 +62,7 @@ target_compile_options(hello_gemini PRIVATE -Wall -Wextra)
 add_executable(cpp_agent_tests
     tests/runtime_abi_test.cpp
     tests/edict_agentc_module_test.cpp
+    tests/session_state_store_test.cpp
 )
 target_compile_definitions(cpp_agent_tests PRIVATE
     TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"

@@ -1,7 +1,7 @@
 #include "google_provider.h"
 
 #include "../../../ai_types.h"
-#include "../../../api_registry.h"
+#include "../../core/provider_registry.h"
 #include "../../common/credentials.h"
 #include "../../common/http_client.h"
 
@@ -11,7 +11,7 @@
 namespace agentc::runtime {
 
 void register_google_provider() {
-    ::register_provider("google-gemini-cli", [](
+    agentc::runtime::register_provider("google-gemini-cli", [](
         const Model& model,
         const Context& ctx,
         const StreamOptions& opts,

@@ -1,5 +1,9 @@
 #pragma once
-#include "../ai_types.h"
 
-// Register the Google Gemini provider (google-gemini-cli raw HTTP+SSE)
+namespace agentc::runtime {
 void register_google_provider();
+}
+
+inline void register_google_provider() {
+    agentc::runtime::register_google_provider();
+}

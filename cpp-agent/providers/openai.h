@@ -1,5 +1,9 @@
 #pragma once
-#include "../ai_types.h"
 
-// Register the OpenAI Completions provider (also handles GitHub Copilot)
+namespace agentc::runtime {
 void register_openai_provider();
+}
+
+inline void register_openai_provider() {
+    agentc::runtime::register_openai_provider();
+}

@@ -1,9 +1,9 @@
 #include "runtime.h"
 
+#include "provider_registry.h"
 #include "../providers/register_builtin_providers.h"
 #include "../common/credentials.h"
 #include "../../ai_types.h"
-#include "../../api_registry.h"
 
 #include <fstream>
 #include <sstream>
@@ -243,7 +243,7 @@ json Runtime::request_json(const std::string& request_json_text) {
         std::string streamed_text;
         std::exception_ptr stream_error;
 
-        auto provider_fn = get_provider(api);
+        auto provider_fn = agentc::runtime::get_provider(api);
         AssistantMessageStream stream;
         stream.on_event([&](AssistantMessageEvent ev) {
             std::visit([&](auto&& e) {

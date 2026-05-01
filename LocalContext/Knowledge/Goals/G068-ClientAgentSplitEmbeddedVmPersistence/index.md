@@ -194,7 +194,7 @@ Model output is **data first**. The first production architecture does not grant
 - [ ] Normalize provider responses into a single JSON contract.
 - [ ] Preserve current provider support (Gemini/OpenAI/Copilot) behind the new boundary.
 
-Phase 2 has now started: a first `libagent_runtime.so` target exists under `cpp-agent/`, exposes the new C ABI header, registers built-in providers once, and routes JSON requests through a reusable runtime wrapper while the host executable continues to work against the same provider implementations during transition. Common/provider code migration is also underway: the active `agent_runtime` build now consumes `cpp-agent/runtime/common/{credentials,http_client,sse_parser}.*` and `cpp-agent/runtime/providers/{google,openai}/...` rather than the older top-level source locations.
+Phase 2 has now started: a first `libagent_runtime.so` target exists under `cpp-agent/`, exposes the new C ABI header, registers built-in providers once, and routes JSON requests through a reusable runtime wrapper while the host executable continues to work against the same provider implementations during transition. Common/provider code migration is also underway: the active `agent_runtime` build now consumes `cpp-agent/runtime/common/{credentials,http_client,sse_parser}.*`, `cpp-agent/runtime/core/provider_registry.*`, and `cpp-agent/runtime/providers/{google,openai}/...` rather than the older top-level source locations.
 
 ### Phase 3 - Edict Module Surface
 - [x] Add/import the first `agentc` wrapper surface over the runtime C ABI.
@@ -213,15 +213,17 @@ Phase 3 evidence: `cpp-agent/edict/modules/agentc.edict` now wraps `libagent_run
 - [x] Preserve reconnectable socket behavior.
 - [ ] Support additional front-end modes (shell/pipe/file) without changing agent policy ownership.
 
-Phase 5 progress: `cpp-agent/main.cpp` no longer wires providers directly through the old outer loop; it now consumes `libagent_runtime` via the C ABI, maintains lightweight session transcript state, supports `shutdown-agent`, and accepts runtime config via JSON file or defaults.
+Phase 5 progress: `cpp-agent/main.cpp` no longer wires providers directly through the old outer loop; it now consumes `libagent_runtime` via the C ABI, maintains lightweight session transcript state, supports `shutdown-agent`, `reset-session`, and accepts runtime config via JSON file or defaults.
 
 ### Phase 6 - Persistence and Restore
-- [ ] Add host-managed checkpoint/save hooks.
-- [ ] Add startup restore hooks.
+- [x] Add host-managed checkpoint/save hooks.
+- [x] Add startup restore hooks.
 - [ ] Rehydrate transient runtime handles/imports safely without introducing a Host↔VM IPC boundary.
 
+Phase 6 progress: the runtime-backed host now uses `cpp-agent/runtime/persistence/session_state_store.*` to save and restore shared session state through the existing Listree/slab-backed file store path, and the state store is covered by automated tests.
+
 ### Phase 7 - Demonstration and Validation
-- [ ] Demonstrate a live provider-backed Edict-native session.
+- [x] Demonstrate a live provider-backed Edict-native session.
 - [ ] Demonstrate disconnect/reconnect without losing state.
 - [ ] Demonstrate shutdown and restart with VM state restored from persisted slab.
 - [ ] Demonstrate the same core runtime via at least two front-end shapes.
@@ -266,5 +268,27 @@ Phase 5 progress: `cpp-agent/main.cpp` no longer wires providers directly throug
 - Remaining: continue shrinking transitional top-level `cpp-agent` sources, migrate additional runtime-facing code/helpers into the new layout, and start reconnecting the host to embedded VM persistence/restore hooks.
 - Next: move the remaining reusable runtime support code and transitional compatibility shims toward the `cpp-agent/runtime/` layout, then begin stitching the runtime-backed host into the mmap/Listree persistence lifecycle.
 
+### 2026-04-30 (persistence hook-up slice)
+- Did: Added `cpp-agent/runtime/persistence/session_state_store.*` to persist host session state through the existing Listree/slab-backed file-store path and covered it with `SessionStateStoreTest`.
+- Did: Updated the runtime-backed host to restore prior session state on startup, persist shared conversation state after each successful turn, and support `reset-session` to clear both in-memory and persisted state.
+- Did: Manually validated restart continuity with a live Gemini-backed session using `--state-base`: first host run answered a prompt, second host run restored session state and answered a follow-up grounded in the prior turn.
+- Remaining: move from persisted transcript state toward persisted embedded-VM/runtime state, and connect transient runtime rehydration to the host startup lifecycle more explicitly.
+- Next: continue migrating remaining reusable runtime support code while designing the next persistence step from session-transcript restore toward embedded VM/root-anchor restore ownership in the host.
+
+### 2026-04-30 (runtime support migration continuation)
+- Did: Introduced `cpp-agent/runtime/core/provider_registry.*` and moved the active runtime build onto the new registry boundary instead of the old top-level `api_registry.cpp` implementation.
+- Did: Reduced legacy top-level runtime-support files (`api_registry.*`, `credentials.*`, `providers/google.*`, `providers/openai.*`) to compatibility wrappers/shims that forward toward the new runtime-oriented implementations.
+- Did: Added final top-level compatibility shims for `http_client.*` and `sse_parser.*`, so older include paths now forward into `cpp-agent/runtime/common/...` instead of duplicating behavior.
+- Did: Revalidated the runtime-backed host, `cpp_agent_tests`, and `ctest -R cpp_agent_tests` after the support-code migration.
+- Remaining: continue shrinking or relocating remaining transitional top-level runtime-support sources and move the persistence boundary closer to embedded VM/root-anchor ownership.
+- Next: migrate any remaining reusable runtime helpers off transitional top-level locations, then plan the first host-owned embedded VM/root restore slice.
+
+### 2026-04-30 (Edict live LLM import verification)
+- Did: Verified directly that Edict can import `libagent_runtime.so` through Cartographer, create a runtime handle, dispatch a live Google/Gemini request, and receive a normalized response object back through the `agentc_call` wrapper path.
+- Did: Produced a minimal hello-world-style inverted-loop primitive by running an Edict script that imported the runtime library and returned a live assistant message (`"Hello world"`) from Gemini through the data-first JSON→Edict path.
+- Decided: This is sufficient evidence that the core inversion seam now works — Edict can directly own the LLM request primitive even though the full canonical Edict-owned multi-step loop is not implemented yet.
+- Remaining: Build the first tiny Edict-owned loop/module on top of this verified primitive, then continue pushing persistence deeper than transcript-level state.
+- Next: Implement a minimal Edict-owned hello-world loop module that accepts a prompt, calls the runtime, extracts assistant text, and returns it as the canonical inverted-loop POC.
+
 ## Next Action
-Continue migrating the remaining reusable runtime support code into the `cpp-agent/runtime/` layout, then begin stitching the runtime-backed host into the mmap/Listree persistence lifecycle.
+Implement a minimal Edict-owned hello-world loop module on top of the verified `agentc_call` primitive, then continue migrating remaining runtime helpers and push persistence beyond transcript-level state toward host-owned embedded VM/root restore.
