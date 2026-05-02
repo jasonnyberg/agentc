@@ -48,7 +48,9 @@ bool decodeCheckpointStarts(const std::string& text, std::vector<size_t>& out) {
     return true;
 }
 
-std::string encodeMetadata(const ArenaCheckpointMetadata& metadata) {
+} // namespace
+
+std::string serializeArenaCheckpointMetadata(const ArenaCheckpointMetadata& metadata) {
     std::ostringstream out;
     out << metadata.version << ' '
         << metadata.slabSize << ' '
@@ -61,8 +63,8 @@ std::string encodeMetadata(const ArenaCheckpointMetadata& metadata) {
     return out.str();
 }
 
-bool decodeMetadata(const std::string& text, ArenaCheckpointMetadata& metadata) {
-    std::istringstream in(text);
+bool deserializeArenaCheckpointMetadata(std::string_view text, ArenaCheckpointMetadata& metadata) {
+    std::istringstream in{std::string(text)};
     std::string starts;
     if (!(in >> metadata.version >> metadata.slabSize >> metadata.activeSlabCount >>
           metadata.liveSlotCount >> metadata.allocationLogSize >> metadata.highestSlabIndex >>
@@ -74,7 +76,11 @@ bool decodeMetadata(const std::string& text, ArenaCheckpointMetadata& metadata) 
     return decodeCheckpointStarts(starts, metadata.checkpointLogStarts);
 }
 
-std::string encodeSlabImage(const ArenaSlabImage& image) {
+bool deserializeArenaCheckpointMetadata(const std::string& text, ArenaCheckpointMetadata& metadata) {
+    return deserializeArenaCheckpointMetadata(std::string_view(text), metadata);
+}
+
+std::string serializeArenaSlabImage(const ArenaSlabImage& image) {
     std::string out;
     uint8_t encoding = static_cast<uint8_t>(image.encoding);
     out.append(reinterpret_cast<const char*>(&encoding), sizeof(uint8_t));
@@ -104,7 +110,7 @@ std::string encodeSlabImage(const ArenaSlabImage& image) {
     return out;
 }
 
-bool decodeSlabImage(const std::string& text, ArenaSlabImage& image) {
+bool deserializeArenaSlabImage(std::string_view text, ArenaSlabImage& image) {
     image = {};
     if (text.size() < sizeof(uint8_t) + sizeof(uint16_t) + sizeof(uint32_t) + sizeof(size_t)) {
         return false;
@@ -138,7 +144,7 @@ bool decodeSlabImage(const std::string& text, ArenaSlabImage& image) {
     }
 
     if (image.encoding == ArenaSlabEncoding::RawBytes) {
-        const size_t remaining = text.data() + text.size() - cursor;
+        const size_t remaining = static_cast<size_t>((text.data() + text.size()) - cursor);
         image.bytes.resize(remaining);
         if (remaining > 0) {
             std::memcpy(image.bytes.data(), cursor, remaining);
@@ -146,7 +152,7 @@ bool decodeSlabImage(const std::string& text, ArenaSlabImage& image) {
         return true;
     }
 
-    if (static_cast<size_t>(text.data() + text.size() - cursor) < sizeof(size_t)) {
+    if (static_cast<size_t>((text.data() + text.size()) - cursor) < sizeof(size_t)) {
         return false;
     }
     size_t slotCount = 0;
@@ -155,7 +161,7 @@ bool decodeSlabImage(const std::string& text, ArenaSlabImage& image) {
     image.structuredSlots.clear();
     image.structuredSlots.reserve(slotCount);
     for (size_t i = 0; i < slotCount; ++i) {
-        if (static_cast<size_t>(text.data() + text.size() - cursor) < sizeof(uint16_t) + sizeof(size_t)) {
+        if (static_cast<size_t>((text.data() + text.size()) - cursor) < sizeof(uint16_t) + sizeof(size_t)) {
             return false;
         }
         ArenaStructuredSlot slot;
@@ -164,7 +170,7 @@ bool decodeSlabImage(const std::string& text, ArenaSlabImage& image) {
         size_t payloadSize = 0;
         std::memcpy(&payloadSize, cursor, sizeof(size_t));
         cursor += sizeof(size_t);
-        if (static_cast<size_t>(text.data() + text.size() - cursor) < payloadSize) {
+        if (static_cast<size_t>((text.data() + text.size()) - cursor) < payloadSize) {
             return false;
         }
         slot.payload.assign(cursor, payloadSize);
@@ -174,7 +180,11 @@ bool decodeSlabImage(const std::string& text, ArenaSlabImage& image) {
     return cursor == text.data() + text.size();
 }
 
-std::string encodeRootState(const ArenaRootState& rootState) {
+bool deserializeArenaSlabImage(const std::string& text, ArenaSlabImage& image) {
+    return deserializeArenaSlabImage(std::string_view(text), image);
+}
+
+std::string serializeArenaRootState(const ArenaRootState& rootState) {
     std::string out;
     arena_persistence_detail::appendPod(out, rootState.version);
     size_t anchorCount = rootState.anchors.size();
@@ -186,28 +196,31 @@ std::string encodeRootState(const ArenaRootState& rootState) {
     return out;
 }
 
-bool decodeRootState(const std::string& text, ArenaRootState& rootState) {
+bool deserializeArenaRootState(std::string_view text, ArenaRootState& rootState) {
     rootState = {};
+    const std::string owned(text);
     size_t cursor = 0;
     size_t anchorCount = 0;
-    if (!arena_persistence_detail::readPod(text, cursor, rootState.version) ||
-        !arena_persistence_detail::readPod(text, cursor, anchorCount)) {
+    if (!arena_persistence_detail::readPod(owned, cursor, rootState.version) ||
+        !arena_persistence_detail::readPod(owned, cursor, anchorCount)) {
         return false;
     }
     rootState.anchors.clear();
     rootState.anchors.reserve(anchorCount);
     for (size_t i = 0; i < anchorCount; ++i) {
         ArenaRootAnchor anchor;
-        if (!arena_persistence_detail::readString(text, cursor, anchor.name) ||
-            !arena_persistence_detail::readSlabId(text, cursor, anchor.valueSid)) {
+        if (!arena_persistence_detail::readString(owned, cursor, anchor.name) ||
+            !arena_persistence_detail::readSlabId(owned, cursor, anchor.valueSid)) {
             return false;
         }
         rootState.anchors.push_back(std::move(anchor));
     }
-    return cursor == text.size();
+    return cursor == owned.size();
 }
 
-} // namespace
+bool deserializeArenaRootState(const std::string& text, ArenaRootState& rootState) {
+    return deserializeArenaRootState(std::string_view(text), rootState);
+}
 
 bool MemoryArenaStore::loadCurrent(ArenaCheckpointMetadata& out) {
     if (!hasCurrent) {
@@ -320,7 +333,7 @@ bool FileArenaStore::saveSlab(const ArenaSlabImage& slab) {
     if (!out.good()) {
         return false;
     }
-    auto encoded = encodeSlabImage(slab);
+    auto encoded = serializeArenaSlabImage(slab);
     out.write(encoded.data(), static_cast<std::streamsize>(encoded.size()));
     return out.good();
 }
@@ -331,7 +344,7 @@ bool FileArenaStore::loadSlab(uint16_t slabIndex, ArenaSlabImage& out) {
         return false;
     }
     std::string data((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    return decodeSlabImage(data, out);
+    return deserializeArenaSlabImage(data, out);
 }
 
 bool FileArenaStore::saveRootState(const std::string& name, const ArenaRootState& rootState) {
@@ -339,7 +352,7 @@ bool FileArenaStore::saveRootState(const std::string& name, const ArenaRootState
     if (!out.good()) {
         return false;
     }
-    auto encoded = encodeRootState(rootState);
+    auto encoded = serializeArenaRootState(rootState);
     out.write(encoded.data(), static_cast<std::streamsize>(encoded.size()));
     return out.good();
 }
@@ -350,7 +363,7 @@ bool FileArenaStore::loadRootState(const std::string& name, ArenaRootState& out)
         return false;
     }
     std::string data((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    return decodeRootState(data, out);
+    return deserializeArenaRootState(data, out);
 }
 
 bool FileArenaStore::readAll(bool& hasCurrentOut,
@@ -370,7 +383,7 @@ bool FileArenaStore::readAll(bool& hasCurrentOut,
         if (kind == "current") {
             std::string payload;
             std::getline(in >> std::ws, payload);
-            if (!decodeMetadata(payload, currentOut)) {
+            if (!deserializeArenaCheckpointMetadata(payload, currentOut)) {
                 return false;
             }
             hasCurrentOut = true;
@@ -385,7 +398,7 @@ bool FileArenaStore::readAll(bool& hasCurrentOut,
             std::string payload;
             std::getline(in >> std::ws, payload);
             ArenaCheckpointMetadata metadata;
-            if (!decodeMetadata(payload, metadata)) {
+            if (!deserializeArenaCheckpointMetadata(payload, metadata)) {
                 return false;
             }
             namedOut[name] = metadata;
@@ -407,11 +420,11 @@ bool FileArenaStore::writeAll(bool hasCurrentValue,
     }
 
     if (hasCurrentValue) {
-        out << "current " << encodeMetadata(currentValue) << '\n';
+        out << "current " << serializeArenaCheckpointMetadata(currentValue) << '\n';
     }
 
     for (const auto& entry : namedValue) {
-        out << "named " << entry.first << ' ' << encodeMetadata(entry.second) << '\n';
+        out << "named " << entry.first << ' ' << serializeArenaCheckpointMetadata(entry.second) << '\n';
     }
 
     return out.good();

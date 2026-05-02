@@ -18,18 +18,23 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <fcntl.h>
 #include <fstream>
 #include <map>
 #include <memory>
 #include <new>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <unordered_set>
 #include <vector>
 #include <bitset>
 #include <iostream>
 #include <mutex>
 #include <type_traits>
+#include <filesystem>
+#include <sys/mman.h>
+#include <unistd.h>
 #include "debug.h"
 
 #define SLAB_SIZE (1<<10)
@@ -85,6 +90,32 @@ struct ArenaSlabImage {
     std::vector<ArenaStructuredSlot> structuredSlots;
 };
 
+struct ArenaMappedRawSlabAttachment {
+    uint16_t slabIndex = 0;
+    uint32_t count = 0;
+    std::vector<size_t> inUse;
+    std::shared_ptr<void> mappedRegion;
+    size_t mappedRegionSize = 0;
+    std::byte* items = nullptr;
+    size_t itemsSizeBytes = 0;
+};
+
+struct ArenaMappedStructuredSlabAttachment {
+    uint16_t slabIndex = 0;
+    uint32_t count = 0;
+    std::vector<size_t> inUse;
+    std::vector<ArenaStructuredSlot> structuredSlots;
+    std::shared_ptr<void> mappedRegion;
+    size_t mappedRegionSize = 0;
+    std::byte* items = nullptr;
+    size_t itemsSizeBytes = 0;
+};
+
+enum class ArenaSlabBackingPolicy : uint8_t {
+    Heap = 0,
+    MmapFile = 1,
+};
+
 struct ArenaRootAnchor {
     std::string name;
     SlabId valueSid;
@@ -94,6 +125,16 @@ struct ArenaRootState {
     uint32_t version = 1;
     std::vector<ArenaRootAnchor> anchors;
 };
+
+std::string serializeArenaCheckpointMetadata(const ArenaCheckpointMetadata& metadata);
+bool deserializeArenaCheckpointMetadata(std::string_view text, ArenaCheckpointMetadata& metadata);
+bool deserializeArenaCheckpointMetadata(const std::string& text, ArenaCheckpointMetadata& metadata);
+std::string serializeArenaSlabImage(const ArenaSlabImage& image);
+bool deserializeArenaSlabImage(std::string_view text, ArenaSlabImage& image);
+bool deserializeArenaSlabImage(const std::string& text, ArenaSlabImage& image);
+std::string serializeArenaRootState(const ArenaRootState& rootState);
+bool deserializeArenaRootState(std::string_view text, ArenaRootState& rootState);
+bool deserializeArenaRootState(const std::string& text, ArenaRootState& rootState);
 
 struct ArenaRestoreTag {};
 inline constexpr ArenaRestoreTag kArenaRestoreTag{};
@@ -175,6 +216,11 @@ template<typename T, typename Enable = void>
 struct ArenaWatermarkResetTraits {
     static constexpr bool strictEligible = std::is_trivially_destructible_v<T>;
     static void resetTransient(T&) {}
+};
+
+template<typename T, typename Enable = void>
+struct ArenaMmapStructuredAttachTraits {
+    static constexpr bool supported = false;
 };
 
 template<typename T>
@@ -373,15 +419,38 @@ private:
         size_t count;
         std::vector<size_t> inUse;
         T *items;
+        std::shared_ptr<void> mappedRegion;
+        bool mappedBacking;
         // Fix initialization order to match declaration order
-        Slab() : count(0), inUse(SLAB_SIZE, 0), items(static_cast<T*>(calloc(SLAB_SIZE, sizeof(T)))) {}
+        Slab()
+            : count(0),
+              inUse(SLAB_SIZE, 0),
+              items(static_cast<T*>(calloc(SLAB_SIZE, sizeof(T)))),
+              mappedBacking(false) {}
+        Slab(size_t initialCount,
+             std::vector<size_t> initialInUse,
+             T* mappedItems,
+             std::shared_ptr<void> mappedRegionIn,
+             size_t mappedSize)
+            : count(initialCount),
+              inUse(std::move(initialInUse)),
+              items(mappedItems),
+              mappedRegion(std::move(mappedRegionIn)),
+              mappedBacking(true) {
+            (void)mappedSize;
+        }
         ~Slab() {
-            free(items);
+            if (!mappedBacking) {
+                free(items);
+            }
         }
     };
 
     Slab *slabs[NUM_SLABS] = {nullptr};
     std::vector<SlabId> allocationLog;
+    ArenaSlabBackingPolicy backingPolicy_ = ArenaSlabBackingPolicy::Heap;
+    std::string mmapBackingDirectory_;
+    std::string mmapBackingFilePrefix_;
     std::vector<size_t> checkpointStack;
     std::vector<SlabId> checkpointWatermarks;
     std::vector<bool> checkpointAppendOnly;
@@ -430,13 +499,63 @@ private:
         return {};
     }
 
+    std::string mmapBackingPathForSlab(uint16_t slabIndex) const {
+        std::ostringstream name;
+        name << (mmapBackingFilePrefix_.empty() ? std::string("slab") : mmapBackingFilePrefix_)
+             << ".slab.";
+        name.width(4);
+        name.fill('0');
+        name << slabIndex << ".bin";
+        return (std::filesystem::path(mmapBackingDirectory_) / name.str()).string();
+    }
+
+    Slab* createOwnedSlab(uint16_t slabIndex) {
+        if constexpr (ArenaPersistenceTraits<T>::encoding == ArenaSlabEncoding::RawBytes) {
+            if (backingPolicy_ == ArenaSlabBackingPolicy::MmapFile) {
+                if (mmapBackingDirectory_.empty()) {
+                    throw std::runtime_error("mmap slab backing directory is not configured");
+                }
+                std::error_code ec;
+                std::filesystem::create_directories(mmapBackingDirectory_, ec);
+                if (ec) {
+                    throw std::runtime_error("failed to create mmap slab backing directory");
+                }
+                const auto path = mmapBackingPathForSlab(slabIndex);
+                const size_t bytes = SLAB_SIZE * sizeof(T);
+                const int fd = ::open(path.c_str(), O_RDWR | O_CREAT | O_TRUNC, 0644);
+                if (fd < 0) {
+                    throw std::runtime_error("failed to open mmap slab backing file");
+                }
+                if (::ftruncate(fd, static_cast<off_t>(bytes)) != 0) {
+                    ::close(fd);
+                    throw std::runtime_error("failed to size mmap slab backing file");
+                }
+                void* mapped = ::mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+                ::close(fd);
+                if (mapped == MAP_FAILED) {
+                    throw std::runtime_error("failed to mmap slab backing file");
+                }
+                std::shared_ptr<void> region(mapped, [bytes](void* ptr) {
+                    if (ptr && ptr != MAP_FAILED) {
+                        ::msync(ptr, bytes, MS_SYNC);
+                        ::munmap(ptr, bytes);
+                    }
+                });
+                T* mappedItems = reinterpret_cast<T*>(region.get());
+                return new Slab(0, std::vector<size_t>(SLAB_SIZE, 0), mappedItems, std::move(region), bytes);
+            }
+        }
+        (void)slabIndex;
+        return new Slab();
+    }
+
     SlabId allocateAppendOnlyRaw() {
         SlabId watermark = currentHighWatermark();
         uint16_t slabIndex = watermark ? watermark.first : 0;
 
         for (; slabIndex < NUM_SLABS; ++slabIndex) {
             if (!slabs[slabIndex]) {
-                slabs[slabIndex] = new Slab();
+                slabs[slabIndex] = createOwnedSlab(slabIndex);
             }
 
             uint16_t startOffset = 0;
@@ -584,7 +703,7 @@ public:
                     }
                 }
             } else { // allocate first unallocated slab
-                slabs[si.first] = new Slab();
+                slabs[si.first] = createOwnedSlab(si.first);
                 goto allocated;
             }
         }
@@ -622,6 +741,49 @@ public:
             return {};
         }
         return {checkpointStack.back(), checkpointStack.size(), true, checkpointWatermarks.back(), checkpointAppendOnly.back()};
+    }
+
+    void setSlabBackingPolicy(ArenaSlabBackingPolicy policy) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        backingPolicy_ = policy;
+    }
+
+    ArenaSlabBackingPolicy slabBackingPolicy() const {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        return backingPolicy_;
+    }
+
+    void configureMmapFileBackedSlabs(std::string directory,
+                                      std::string filePrefix = std::string()) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        mmapBackingDirectory_ = std::move(directory);
+        mmapBackingFilePrefix_ = std::move(filePrefix);
+    }
+
+    std::string slabBackingPath(uint16_t slabIndex) const {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        if (backingPolicy_ != ArenaSlabBackingPolicy::MmapFile || mmapBackingDirectory_.empty()) {
+            return std::string();
+        }
+        return mmapBackingPathForSlab(slabIndex);
+    }
+
+    bool slabUsesMappedBacking(uint16_t slabIndex) const {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        return slabIndex < NUM_SLABS && slabs[slabIndex] && slabs[slabIndex]->mappedBacking;
+    }
+
+    bool flushMappedSlabs() const {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        for (size_t slabIndex = 0; slabIndex < NUM_SLABS; ++slabIndex) {
+            if (!slabs[slabIndex] || !slabs[slabIndex]->mappedBacking || !slabs[slabIndex]->items) {
+                continue;
+            }
+            if (::msync(slabs[slabIndex]->items, SLAB_SIZE * sizeof(T), MS_SYNC) != 0) {
+                return false;
+            }
+        }
+        return true;
     }
 
     ArenaCheckpointMetadata exportArenaMetadata() const {
@@ -761,6 +923,74 @@ public:
         return out;
     }
 
+    std::vector<ArenaSlabImage> exportSlabImagesSince(const Checkpoint& checkpoint) const {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        std::vector<ArenaSlabImage> out;
+        if constexpr (!ArenaPersistenceTraits<T>::supported) {
+            return out;
+        }
+        if (!checkpoint.valid || !checkpoint.appendOnlyEligible) {
+            return out;
+        }
+
+        const auto isAfterWatermark = [&](const SlabId& sid) {
+            if (!checkpoint.watermark) {
+                return static_cast<bool>(sid);
+            }
+            return sid.first > checkpoint.watermark.first ||
+                   (sid.first == checkpoint.watermark.first && sid.second > checkpoint.watermark.second);
+        };
+
+        for (size_t slabIndex = 0; slabIndex < NUM_SLABS; ++slabIndex) {
+            if (!slabs[slabIndex]) {
+                continue;
+            }
+
+            bool hasUserSlot = false;
+            std::vector<size_t> filtered_in_use = slabs[slabIndex]->inUse;
+            for (size_t offset = 0; offset < SLAB_SIZE; ++offset) {
+                SlabId sid(static_cast<uint16_t>(slabIndex), static_cast<uint16_t>(offset));
+                if (!isAfterWatermark(sid)) {
+                    filtered_in_use[offset] = 0;
+                    continue;
+                }
+                if (refs(sid) > 0) {
+                    hasUserSlot = true;
+                } else {
+                    filtered_in_use[offset] = 0;
+                }
+            }
+            if (!hasUserSlot) {
+                continue;
+            }
+
+            ArenaSlabImage image;
+            image.slabIndex = static_cast<uint16_t>(slabIndex);
+            image.count = static_cast<uint32_t>(slabs[slabIndex]->count);
+            image.inUse = std::move(filtered_in_use);
+            image.encoding = ArenaPersistenceTraits<T>::encoding;
+            if constexpr (ArenaPersistenceTraits<T>::encoding == ArenaSlabEncoding::RawBytes) {
+                image.bytes.resize(SLAB_SIZE * sizeof(T));
+                std::memcpy(image.bytes.data(), slabs[slabIndex]->items, image.bytes.size());
+            } else {
+                for (size_t offset = 0; offset < SLAB_SIZE; ++offset) {
+                    SlabId sid(static_cast<uint16_t>(slabIndex), static_cast<uint16_t>(offset));
+                    if (!isAfterWatermark(sid) || refs(sid) == 0) {
+                        continue;
+                    }
+                    ArenaStructuredSlot slot;
+                    slot.offset = static_cast<uint16_t>(offset);
+                    if (!ArenaPersistenceTraits<T>::exportSlot(slabs[slabIndex]->items[offset], slot.payload)) {
+                        return {};
+                    }
+                    image.structuredSlots.push_back(std::move(slot));
+                }
+            }
+            out.push_back(std::move(image));
+        }
+        return out;
+    }
+
     bool restoreSlabImages(const std::vector<ArenaSlabImage>& images) {
         std::lock_guard<std::recursive_mutex> lock(mutex_);
         if constexpr (!ArenaPersistenceTraits<T>::supported) {
@@ -809,9 +1039,99 @@ public:
         return true;
     }
 
+    bool attachMappedRawSlabs(const std::vector<ArenaMappedRawSlabAttachment>& attachments) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        if constexpr (!ArenaPersistenceTraits<T>::supported || ArenaPersistenceTraits<T>::encoding != ArenaSlabEncoding::RawBytes) {
+            return false;
+        }
+
+        clearSlabsOnly();
+
+        for (const auto& attachment : attachments) {
+            if (attachment.slabIndex >= NUM_SLABS ||
+                attachment.inUse.size() != SLAB_SIZE ||
+                attachment.count > SLAB_SIZE ||
+                attachment.items == nullptr ||
+                attachment.itemsSizeBytes != SLAB_SIZE * sizeof(T) ||
+                attachment.mappedRegion == nullptr) {
+                return false;
+            }
+
+            slabs[attachment.slabIndex] = new Slab(
+                attachment.count,
+                attachment.inUse,
+                reinterpret_cast<T*>(attachment.items),
+                attachment.mappedRegion,
+                attachment.mappedRegionSize);
+        }
+
+        if (!slabs[0]) {
+            SlabId nullSentinel = allocRaw();
+            (void)nullSentinel;
+            allocationLog.clear();
+        }
+        return true;
+    }
+
+    bool attachMappedStructuredSlabs(const std::vector<ArenaMappedStructuredSlabAttachment>& attachments) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        if constexpr (!ArenaMmapStructuredAttachTraits<T>::supported) {
+            return false;
+        }
+
+        clearSlabsOnly();
+
+        for (const auto& attachment : attachments) {
+            if (attachment.slabIndex >= NUM_SLABS ||
+                attachment.inUse.size() != SLAB_SIZE ||
+                attachment.count > SLAB_SIZE ||
+                attachment.items == nullptr ||
+                attachment.itemsSizeBytes != SLAB_SIZE * sizeof(T) ||
+                attachment.mappedRegion == nullptr) {
+                return false;
+            }
+
+            auto* slab = new Slab(
+                attachment.count,
+                attachment.inUse,
+                reinterpret_cast<T*>(attachment.items),
+                attachment.mappedRegion,
+                attachment.mappedRegionSize);
+            std::vector<bool> restored(SLAB_SIZE, false);
+            for (const auto& slot : attachment.structuredSlots) {
+                if (slot.offset >= SLAB_SIZE || attachment.inUse[slot.offset] == 0 || restored[slot.offset]) {
+                    delete slab;
+                    return false;
+                }
+                if (!ArenaPersistenceTraits<T>::restoreSlot(&slab->items[slot.offset], slot.payload)) {
+                    delete slab;
+                    return false;
+                }
+                restored[slot.offset] = true;
+            }
+            for (size_t offset = 0; offset < SLAB_SIZE; ++offset) {
+                if (attachment.inUse[offset] > 0 && !restored[offset]) {
+                    delete slab;
+                    return false;
+                }
+            }
+            slabs[attachment.slabIndex] = slab;
+        }
+
+        if (!slabs[0]) {
+            SlabId nullSentinel = allocRaw();
+            (void)nullSentinel;
+            allocationLog.clear();
+        }
+        return true;
+    }
+
     void resetForTests() {
         std::lock_guard<std::recursive_mutex> lock(mutex_);
         clearAllSlabs();
+        backingPolicy_ = ArenaSlabBackingPolicy::Heap;
+        mmapBackingDirectory_.clear();
+        mmapBackingFilePrefix_.clear();
         SlabId sentinel = allocRaw();
         (void)sentinel;
         allocationLog.clear();

@@ -2,6 +2,7 @@
 
 #include "core/alloc.h"
 #include "listree/listree.h"
+#include "session_image_store.h"
 
 #include <nlohmann/json.hpp>
 #include <string>
@@ -10,7 +11,8 @@ namespace agentc::runtime {
 
 class SessionStateStore {
 public:
-    explicit SessionStateStore(std::string base_path);
+    explicit SessionStateStore(std::string root_path,
+                               std::string session_name = "default");
 
     bool exists() const;
     bool loadRoot(CPtr<agentc::ListreeValue>& out, std::string* error = nullptr) const;
@@ -20,16 +22,10 @@ public:
     void clear() const;
 
 private:
-    std::string base_path_;
+    std::string root_path_;
+    std::string session_name_;
 
-    std::string valuePath() const;
-    std::string refPath() const;
-    std::string nodePath() const;
-    std::string itemPath() const;
-    std::string treePath() const;
-    std::string statePath() const;
-
-    void removeStaleFiles() const;
+    SessionImageStore sessionImageStore() const;
 };
 
 } // namespace agentc::runtime

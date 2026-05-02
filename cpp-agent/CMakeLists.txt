@@ -22,6 +22,7 @@ add_library(agent_runtime SHARED
     runtime/common/http_client.cpp
     runtime/common/sse_parser.cpp
     runtime/persistence/agent_root_state.cpp
+    runtime/persistence/session_image_store.cpp
     runtime/persistence/session_state_store.cpp
     runtime/providers/google/google_provider.cpp
     runtime/providers/openai/openai_provider.cpp
@@ -42,6 +43,7 @@ target_compile_options(agent_runtime PRIVATE -Wall -Wextra -Wno-unused-parameter
 add_executable(cpp-agent
     main.cpp
     socket_server.cpp
+    runtime/persistence/agent_root_vm_ops.cpp
 )
 
 target_include_directories(cpp-agent PRIVATE
@@ -60,6 +62,18 @@ target_link_libraries(hello_gemini PRIVATE CURL::libcurl)
 target_include_directories(hello_gemini PRIVATE ${nlohmann_json_SOURCE_DIR})
 target_compile_options(hello_gemini PRIVATE -Wall -Wextra)
 
+add_library(agent_runtime_mock SHARED
+    tests/mock_runtime/mock_runtime.cpp
+)
+set_target_properties(agent_runtime_mock PROPERTIES OUTPUT_NAME agent_runtime_mock)
+target_include_directories(agent_runtime_mock PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}
+    ${nlohmann_json_SOURCE_DIR}
+)
+target_compile_options(agent_runtime_mock PRIVATE -Wall -Wextra -Wno-unused-parameter)
+
 add_executable(cpp_agent_tests
     tests/runtime_abi_test.cpp
     tests/edict_agentc_module_test.cpp
@@ -67,8 +81,10 @@ add_executable(cpp_agent_tests
     tests/edict_stateful_loop_test.cpp
     tests/edict_agent_root_test.cpp
     tests/agent_root_state_test.cpp
+    tests/agent_root_vm_ops_test.cpp
     tests/embedded_vm_root_restore_test.cpp
     tests/session_state_store_test.cpp
+    runtime/persistence/agent_root_vm_ops.cpp
 )
 target_compile_definitions(cpp_agent_tests PRIVATE
     TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
@@ -81,5 +97,5 @@ target_include_directories(cpp_agent_tests PRIVATE
     ${nlohmann_json_SOURCE_DIR}
 )
 target_link_libraries(cpp_agent_tests PRIVATE agent_runtime libedict gtest gtest_main pthread)
-add_dependencies(cpp_agent_tests agent_runtime agentc_extensions)
+add_dependencies(cpp_agent_tests agent_runtime agent_runtime_mock agentc_extensions)
 add_test(NAME cpp_agent_tests COMMAND cpp_agent_tests)

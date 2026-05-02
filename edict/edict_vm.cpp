@@ -36,6 +36,24 @@
 
 namespace agentc::edict {
 
+namespace {
+
+bool startupTraceEnabled() {
+    static const bool enabled = [] {
+        const char* value = std::getenv("AGENTC_EDICT_TRACE_STARTUP");
+        return value && *value && std::string(value) != "0";
+    }();
+    return enabled;
+}
+
+void startupTrace(const std::string& marker) {
+    if (startupTraceEnabled()) {
+        std::cerr << "EDICT-STARTUP: " << marker << std::endl;
+    }
+}
+
+} // namespace
+
 static bool edictTraceEnabled() {
     static const bool enabled = []() {
         const char* value = std::getenv("EDICT_TRACE");
@@ -400,10 +418,15 @@ EdictVM::EdictVM(CPtr<agentc::ListreeValue> root)
       instruction_ptr(0),
       code_ptr(nullptr),
       code_size(0) {
+    startupTrace("vm-ctor-enter");
     mapper = std::make_unique<agentc::cartographer::Mapper>();
+    startupTrace("vm-ctor-after-mapper");
     ffi = std::make_unique<agentc::cartographer::FFI>();
+    startupTrace("vm-ctor-after-ffi");
     cartographer = std::make_unique<agentc::cartographer::CartographerService>(*mapper, *ffi);
+    startupTrace("vm-ctor-after-cartographer");
     initResources(root);
+    startupTrace("vm-ctor-after-initResources");
 }
 
 EdictVM::~EdictVM() = default;
@@ -682,12 +705,19 @@ size_t EdictVM::getResourceDepth(VMResource res) const {
 }
 
 void EdictVM::initResources(CPtr<agentc::ListreeValue> root) {
+    startupTrace("initResources-enter");
     resources[VMRES_DICT] = agentc::createListValue();
+    startupTrace("initResources-after-dict");
     resources[VMRES_STACK] = agentc::createListValue();
+    startupTrace("initResources-after-stack");
     resources[VMRES_FUNC] = agentc::createListValue();
+    startupTrace("initResources-after-func");
     resources[VMRES_EXCP] = agentc::createListValue();
+    startupTrace("initResources-after-excp");
     resources[VMRES_CODE] = agentc::createListValue();
+    startupTrace("initResources-after-code");
     resources[VMRES_STATE] = agentc::createListValue();
+    startupTrace("initResources-after-state");
     code_ptr = nullptr;
     code_size = 0;
     instruction_ptr = 0;
@@ -695,10 +725,15 @@ void EdictVM::initResources(CPtr<agentc::ListreeValue> root) {
 
     // Seed initial frames for data and dictionary stacks
     enq(VMRES_STACK, agentc::createListValue());
+    startupTrace("initResources-after-stack-frame");
     enq(VMRES_DICT, agentc::createListValue());
+    startupTrace("initResources-after-dict-frame");
     stack_enq(VMRES_DICT, root ? root : agentc::createNullValue());
+    startupTrace("initResources-after-root");
     loadBuiltins();
+    startupTrace("initResources-after-loadBuiltins");
     runStartupBootstrapPrelude();
+    startupTrace("initResources-after-bootstrap");
 }
 
 void EdictVM::resetRuntime() {
@@ -2874,6 +2909,7 @@ int EdictVM::executeNested(const BytecodeBuffer& code) {
     }
 
     void EdictVM::runStartupBootstrapPrelude() {
+        startupTrace("bootstrap-prelude-enter");
         // The prelude source is a fixed string — compile it once and cache the
         // resulting bytecode.  Each VM still executes its own copy of the
         // bytecode (execution is inherently per-VM), but the parse+compile step
@@ -2886,7 +2922,9 @@ int EdictVM::executeNested(const BytecodeBuffer& code) {
                 "__bootstrap_import.curate_resolver ! @resolver "
                 "__bootstrap_import.curate_cartographer ! @cartographer");
         });
+        startupTrace("bootstrap-prelude-before-execute");
         execute(cachedBootstrap);
+        startupTrace("bootstrap-prelude-after-execute");
     }
 
 void EdictVM::op_CLOSURE() {

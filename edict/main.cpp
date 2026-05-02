@@ -25,6 +25,24 @@
 #include "../core/alloc.h"
 #include "../core/debug.h"
 
+namespace {
+
+bool startupTraceEnabled() {
+    static const bool enabled = [] {
+        const char* value = std::getenv("AGENTC_EDICT_TRACE_STARTUP");
+        return value && *value && std::string(value) != "0";
+    }();
+    return enabled;
+}
+
+void startupTrace(const std::string& marker) {
+    if (startupTraceEnabled()) {
+        std::cerr << "EDICT-STARTUP: " << marker << std::endl;
+    }
+}
+
+}
+
 static void printUsage(const char* name) {
     std::cout << "Usage:\n";
     std::cout << "  " << name << "            # start REPL\n";
@@ -70,6 +88,7 @@ static CPtr<agentc::ListreeValue> stackListAt(CPtr<agentc::ListreeValue> items, 
 
 int main(int argc, char** argv) {
     try {
+        startupTrace("main-enter");
         // Create a root node for the cursor
         CPtr<agentc::ListreeValue> root;
 
@@ -104,7 +123,9 @@ int main(int argc, char** argv) {
             // Script from stdin: edict -
             if (mode == "-") {
                 currentDebugLevel = DEBUG_WARNING;
+                startupTrace("stdin-script-before-repl");
                 agentc::edict::EdictREPL repl(root, std::cin, std::cout);
+                startupTrace("stdin-script-after-repl");
                 return repl.runScript(std::cin) ? 0 : 1;
             }
 
@@ -204,7 +225,9 @@ int main(int argc, char** argv) {
         }
 
         // Create and run the REPL
+        startupTrace("interactive-before-repl");
         agentc::edict::EdictREPL repl(root, std::cin, std::cout);
+        startupTrace("interactive-after-repl");
         repl.run();
         return 0;
     } catch (const std::exception& e) {
