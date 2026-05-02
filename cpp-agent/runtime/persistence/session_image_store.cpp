@@ -33,6 +33,7 @@ constexpr const char* kSessionImageMmapRawSlabFormat = "session_image_mmap_raw_v
 constexpr uint32_t kSessionImageMmapRawSlabVersion = 1;
 constexpr const char* kSessionImageMmapStructuredAttachSlabFormat = "session_image_mmap_structured_attach_v1";
 constexpr uint32_t kSessionImageMmapStructuredAttachSlabVersion = 1;
+constexpr size_t kAllocatorIdentityBytes = 64;
 
 struct SessionImageMmapSlabHeader {
     char magic[8];
@@ -42,6 +43,8 @@ struct SessionImageMmapSlabHeader {
     uint16_t slab_index = 0;
     uint8_t encoding = 0;
     uint8_t reserved = 0;
+    char allocator_name[kAllocatorIdentityBytes] = {};
+    char allocator_type[kAllocatorIdentityBytes] = {};
 };
 
 struct SessionImageMmapRawSlabHeader {
@@ -56,6 +59,8 @@ struct SessionImageMmapRawSlabHeader {
     uint16_t slab_index = 0;
     uint8_t encoding = 0;
     uint8_t reserved = 0;
+    char allocator_name[kAllocatorIdentityBytes] = {};
+    char allocator_type[kAllocatorIdentityBytes] = {};
 };
 
 struct SessionImageMmapStructuredAttachSlabHeader {
@@ -68,6 +73,8 @@ struct SessionImageMmapStructuredAttachSlabHeader {
     uint16_t slab_index = 0;
     uint8_t encoding = 0;
     uint8_t reserved = 0;
+    char allocator_name[kAllocatorIdentityBytes] = {};
+    char allocator_type[kAllocatorIdentityBytes] = {};
 };
 
 size_t systemPageSize() {
@@ -110,7 +117,36 @@ bool hasExpectedStructuredAttachSlabMagic(const SessionImageMmapStructuredAttach
     return std::memcmp(header.magic, magic.data(), magic.size()) == 0;
 }
 
-std::string encodeMmapFriendlySlabFile(const ArenaSlabImage& slab,
+void setAllocatorIdentity(char (&target)[kAllocatorIdentityBytes], const std::string& value) {
+    std::memset(target, 0, sizeof(target));
+    if (!value.empty()) {
+        std::strncpy(target, value.c_str(), sizeof(target) - 1);
+    }
+}
+
+std::string readAllocatorIdentity(const char (&source)[kAllocatorIdentityBytes]) {
+    return std::string(source, strnlen(source, sizeof(source)));
+}
+
+template <typename Header>
+bool validateAllocatorIdentity(const Header& header,
+                               const SessionImageAllocatorManifest& allocator,
+                               std::string* error) {
+    const std::string header_name = readAllocatorIdentity(header.allocator_name);
+    const std::string header_type = readAllocatorIdentity(header.allocator_type);
+    if (!allocator.name.empty() && !header_name.empty() && header_name != allocator.name) {
+        if (error) *error = "slab header allocator name does not match manifest";
+        return false;
+    }
+    if (!allocator.type.empty() && !header_type.empty() && header_type != allocator.type) {
+        if (error) *error = "slab header allocator type does not match manifest";
+        return false;
+    }
+    return true;
+}
+
+std::string encodeMmapFriendlySlabFile(const SessionImageAllocatorManifest& allocator,
+                                       const ArenaSlabImage& slab,
                                        SessionImageSlabFile& slab_file) {
     const std::string payload = serializeArenaSlabImage(slab);
     SessionImageMmapSlabHeader header;
@@ -121,6 +157,8 @@ std::string encodeMmapFriendlySlabFile(const ArenaSlabImage& slab,
     header.payload_size_bytes = static_cast<uint32_t>(payload.size());
     header.slab_index = slab.slabIndex;
     header.encoding = static_cast<uint8_t>(slab.encoding);
+    setAllocatorIdentity(header.allocator_name, allocator.name);
+    setAllocatorIdentity(header.allocator_type, allocator.type);
 
     std::string file_bytes(header.payload_offset_bytes + payload.size(), '\0');
     std::memcpy(file_bytes.data(), &header, sizeof(header));
@@ -134,7 +172,8 @@ std::string encodeMmapFriendlySlabFile(const ArenaSlabImage& slab,
     return file_bytes;
 }
 
-std::string encodeMmapAttachableRawSlabFile(const ArenaSlabImage& slab,
+std::string encodeMmapAttachableRawSlabFile(const SessionImageAllocatorManifest& allocator,
+                                            const ArenaSlabImage& slab,
                                             SessionImageSlabFile& slab_file) {
     SessionImageMmapRawSlabHeader header;
     const auto magic = rawSlabMagicBytes();
@@ -144,6 +183,8 @@ std::string encodeMmapAttachableRawSlabFile(const ArenaSlabImage& slab,
     header.encoding = static_cast<uint8_t>(slab.encoding);
     header.count = slab.count;
     header.in_use_entry_count = static_cast<uint32_t>(slab.inUse.size());
+    setAllocatorIdentity(header.allocator_name, allocator.name);
+    setAllocatorIdentity(header.allocator_type, allocator.type);
     header.item_size_bytes = slab.inUse.empty() ? 0u : static_cast<uint32_t>(slab.bytes.size() / slab.inUse.size());
     header.in_use_offset_bytes = static_cast<uint32_t>(alignUp(sizeof(SessionImageMmapRawSlabHeader), alignof(size_t)));
     header.items_offset_bytes = static_cast<uint32_t>(alignUp(header.in_use_offset_bytes + slab.inUse.size() * sizeof(size_t), systemPageSize()));
@@ -168,7 +209,8 @@ std::string encodeMmapAttachableRawSlabFile(const ArenaSlabImage& slab,
     return file_bytes;
 }
 
-std::string encodeMmapAttachableStructuredSlabFile(const ArenaSlabImage& slab,
+std::string encodeMmapAttachableStructuredSlabFile(const SessionImageAllocatorManifest& allocator,
+                                                   const ArenaSlabImage& slab,
                                                    size_t item_size_bytes,
                                                    SessionImageSlabFile& slab_file) {
     const std::string payload = serializeArenaSlabImage(slab);
@@ -182,6 +224,8 @@ std::string encodeMmapAttachableStructuredSlabFile(const ArenaSlabImage& slab,
     header.items_size_bytes = static_cast<uint32_t>(SLAB_SIZE * item_size_bytes);
     header.slab_index = slab.slabIndex;
     header.encoding = static_cast<uint8_t>(slab.encoding);
+    setAllocatorIdentity(header.allocator_name, allocator.name);
+    setAllocatorIdentity(header.allocator_type, allocator.type);
 
     std::string file_bytes(header.items_offset_bytes + header.items_size_bytes, '\0');
     std::memcpy(file_bytes.data(), &header, sizeof(header));
@@ -197,6 +241,7 @@ std::string encodeMmapAttachableStructuredSlabFile(const ArenaSlabImage& slab,
 
 bool decodeMmapFriendlySlabPayload(const void* mapped_data,
                                    size_t mapped_size,
+                                   const SessionImageAllocatorManifest& allocator,
                                    const SessionImageSlabFile& slab_file,
                                    ArenaSlabImage& slab,
                                    std::string* error) {
@@ -209,6 +254,9 @@ bool decodeMmapFriendlySlabPayload(const void* mapped_data,
     std::memcpy(&header, mapped_data, sizeof(header));
     if (!hasExpectedSlabMagic(header) || header.version != kSessionImageMmapSlabVersion) {
         if (error) *error = "mmap slab file has invalid header";
+        return false;
+    }
+    if (!validateAllocatorIdentity(header, allocator, error)) {
         return false;
     }
     if (header.slab_index != slab_file.index) {
@@ -235,6 +283,7 @@ bool decodeMmapFriendlySlabPayload(const void* mapped_data,
 
 bool decodeMmapAttachableRawSlab(const void* mapped_data,
                                  size_t mapped_size,
+                                 const SessionImageAllocatorManifest& allocator,
                                  const SessionImageSlabFile& slab_file,
                                  ArenaSlabImage& slab,
                                  std::string* error) {
@@ -247,6 +296,9 @@ bool decodeMmapAttachableRawSlab(const void* mapped_data,
     std::memcpy(&header, mapped_data, sizeof(header));
     if (!hasExpectedRawSlabMagic(header) || header.version != kSessionImageMmapRawSlabVersion) {
         if (error) *error = "raw mmap slab file has invalid header";
+        return false;
+    }
+    if (!validateAllocatorIdentity(header, allocator, error)) {
         return false;
     }
     if (header.encoding != static_cast<uint8_t>(ArenaSlabEncoding::RawBytes)) {
@@ -294,6 +346,7 @@ bool decodeMmapAttachableRawSlab(const void* mapped_data,
 
 bool decodeMmapAttachableStructuredSlab(const void* mapped_data,
                                         size_t mapped_size,
+                                        const SessionImageAllocatorManifest& allocator,
                                         const SessionImageSlabFile& slab_file,
                                         ArenaSlabImage& slab,
                                         std::string* error) {
@@ -306,6 +359,9 @@ bool decodeMmapAttachableStructuredSlab(const void* mapped_data,
     std::memcpy(&header, mapped_data, sizeof(header));
     if (!hasExpectedStructuredAttachSlabMagic(header) || header.version != kSessionImageMmapStructuredAttachSlabVersion) {
         if (error) *error = "structured attach mmap slab file has invalid header";
+        return false;
+    }
+    if (!validateAllocatorIdentity(header, allocator, error)) {
         return false;
     }
     if (header.encoding != static_cast<uint8_t>(ArenaSlabEncoding::Structured)) {
@@ -346,6 +402,7 @@ bool decodeMmapAttachableStructuredSlab(const void* mapped_data,
 
 bool mapMmapAttachableStructuredSlab(const void* mapped_data,
                                      size_t mapped_size,
+                                     const SessionImageAllocatorManifest& allocator,
                                      const SessionImageSlabFile& slab_file,
                                      size_t expected_item_size_bytes,
                                      const std::shared_ptr<void>& mapped_region,
@@ -360,6 +417,9 @@ bool mapMmapAttachableStructuredSlab(const void* mapped_data,
     std::memcpy(&header, mapped_data, sizeof(header));
     if (!hasExpectedStructuredAttachSlabMagic(header) || header.version != kSessionImageMmapStructuredAttachSlabVersion) {
         if (error) *error = "structured attach mmap slab file has invalid header";
+        return false;
+    }
+    if (!validateAllocatorIdentity(header, allocator, error)) {
         return false;
     }
     if (header.encoding != static_cast<uint8_t>(ArenaSlabEncoding::Structured)) {
@@ -412,6 +472,7 @@ bool mapMmapAttachableStructuredSlab(const void* mapped_data,
 
 bool mapMmapAttachableRawSlab(const void* mapped_data,
                               size_t mapped_size,
+                              const SessionImageAllocatorManifest& allocator,
                               const SessionImageSlabFile& slab_file,
                               size_t expected_item_size_bytes,
                               const std::shared_ptr<void>& mapped_region,
@@ -426,6 +487,9 @@ bool mapMmapAttachableRawSlab(const void* mapped_data,
     std::memcpy(&header, mapped_data, sizeof(header));
     if (!hasExpectedRawSlabMagic(header) || header.version != kSessionImageMmapRawSlabVersion) {
         if (error) *error = "raw mmap slab file has invalid header";
+        return false;
+    }
+    if (!validateAllocatorIdentity(header, allocator, error)) {
         return false;
     }
     if (header.encoding != static_cast<uint8_t>(ArenaSlabEncoding::RawBytes)) {
@@ -562,6 +626,81 @@ bool allocatorFromJson(const nlohmann::json& json, SessionImageAllocatorManifest
     return true;
 }
 
+nlohmann::json bootstrapAllocatorToJson(const SessionImageBootstrapAllocator& allocator) {
+    return nlohmann::json{
+        {"name", allocator.name},
+        {"type", allocator.type},
+        {"encoding", allocator.encoding},
+        {"item_size_bytes", allocator.item_size_bytes},
+        {"metadata_file", allocator.metadata_file},
+    };
+}
+
+bool bootstrapAllocatorFromJson(const nlohmann::json& json, SessionImageBootstrapAllocator& allocator) {
+    if (!json.is_object() || !json.contains("name") || !json.contains("type") ||
+        !json.contains("encoding") || !json.contains("item_size_bytes") ||
+        !json.contains("metadata_file") ||
+        !json["name"].is_string() || !json["type"].is_string() ||
+        !json["encoding"].is_string() || !json["item_size_bytes"].is_number_unsigned() ||
+        !json["metadata_file"].is_string()) {
+        return false;
+    }
+
+    allocator = {};
+    allocator.name = json["name"].get<std::string>();
+    allocator.type = json["type"].get<std::string>();
+    allocator.encoding = json["encoding"].get<std::string>();
+    allocator.item_size_bytes = json["item_size_bytes"].get<size_t>();
+    allocator.metadata_file = json["metadata_file"].get<std::string>();
+    return !allocator.name.empty() && !allocator.type.empty() && !allocator.encoding.empty() &&
+        !allocator.metadata_file.empty();
+}
+
+nlohmann::json bootstrapToJson(const SessionImageBootstrap& bootstrap) {
+    nlohmann::json allocators = nlohmann::json::array();
+    for (const auto& allocator : bootstrap.allocators) {
+        allocators.push_back(bootstrapAllocatorToJson(allocator));
+    }
+    return nlohmann::json{
+        {"version", bootstrap.version},
+        {"session", bootstrap.session},
+        {"roots_file", bootstrap.roots_file},
+        {"allocators", allocators},
+    };
+}
+
+bool bootstrapFromJson(const nlohmann::json& json, SessionImageBootstrap& bootstrap) {
+    if (!json.is_object() || !json.contains("version") || !json.contains("session") ||
+        !json.contains("roots_file") || !json.contains("allocators") ||
+        !json["version"].is_number_unsigned() || !json["session"].is_string() ||
+        !json["roots_file"].is_string() || !json["allocators"].is_array()) {
+        return false;
+    }
+
+    bootstrap = {};
+    bootstrap.version = json["version"].get<uint32_t>();
+    bootstrap.session = json["session"].get<std::string>();
+    bootstrap.roots_file = json["roots_file"].get<std::string>();
+    if (bootstrap.version != 1 || bootstrap.session.empty() || bootstrap.roots_file.empty()) {
+        return false;
+    }
+
+    std::vector<std::string> allocator_names;
+    for (const auto& allocator_json : json["allocators"]) {
+        SessionImageBootstrapAllocator allocator;
+        if (!bootstrapAllocatorFromJson(allocator_json, allocator)) {
+            return false;
+        }
+        if (std::find(allocator_names.begin(), allocator_names.end(), allocator.name) != allocator_names.end()) {
+            return false;
+        }
+        allocator_names.push_back(allocator.name);
+        bootstrap.allocators.push_back(std::move(allocator));
+    }
+
+    return true;
+}
+
 nlohmann::json manifestToJson(const SessionImageManifest& manifest) {
     nlohmann::json allocators = nlohmann::json::array();
     for (const auto& allocator : manifest.allocators) {
@@ -607,6 +746,86 @@ bool manifestFromJson(const nlohmann::json& json, SessionImageManifest& manifest
     return true;
 }
 
+std::string allocatorDirectoryRelativePath(const SessionImageAllocatorManifest& allocator) {
+    const auto metadata_parent = std::filesystem::path(allocator.metadata_file).parent_path();
+    if (!metadata_parent.empty()) {
+        return metadata_parent.generic_string();
+    }
+    if (!allocator.name.empty()) {
+        return (std::filesystem::path("allocators") / allocator.name).generic_string();
+    }
+    return "allocators";
+}
+
+bool isAllocatorSlabCandidate(const std::filesystem::directory_entry& entry,
+                              const SessionImageAllocatorManifest& allocator) {
+    if (!entry.is_regular_file()) {
+        return false;
+    }
+    const auto filename = entry.path().filename().string();
+    const auto metadata_name = std::filesystem::path(allocator.metadata_file).filename().string();
+    if (!metadata_name.empty() && filename == metadata_name) {
+        return false;
+    }
+    return filename.rfind("slab.", 0) == 0 && entry.path().extension() == ".bin";
+}
+
+const SessionImageSlabFile* findAllocatorSlabByIndex(const std::vector<SessionImageSlabFile>& slabs,
+                                                     uint16_t index) {
+    for (const auto& slab : slabs) {
+        if (slab.index == index) {
+            return &slab;
+        }
+    }
+    return nullptr;
+}
+
+bool resolveAllocatorSlabsForLoad(const SessionImageStore& image_store,
+                                  const SessionImageAllocatorManifest& allocator,
+                                  std::vector<SessionImageSlabFile>& resolved,
+                                  std::string* error) {
+    std::vector<SessionImageSlabFile> discovered;
+    if (!image_store.discoverAllocatorSlabs(allocator, discovered, error)) {
+        return false;
+    }
+
+    if (allocator.slabs.empty()) {
+        resolved = std::move(discovered);
+        return true;
+    }
+
+    resolved = allocator.slabs;
+    for (auto& slab : resolved) {
+        const auto* discovered_slab = findAllocatorSlabByIndex(discovered, slab.index);
+        if (!discovered_slab) {
+            continue;
+        }
+        if (slab.file != discovered_slab->file) {
+            if (error) *error = "manifest slab file does not match discovered slab file";
+            return false;
+        }
+        if (slab.format.empty()) {
+            slab.format = discovered_slab->format;
+        } else if (slab.format != discovered_slab->format) {
+            if (error) *error = "manifest slab format does not match discovered slab header";
+            return false;
+        }
+        if (slab.payload_offset_bytes == 0) {
+            slab.payload_offset_bytes = discovered_slab->payload_offset_bytes;
+        } else if (slab.payload_offset_bytes != discovered_slab->payload_offset_bytes) {
+            if (error) *error = "manifest slab payload offset does not match discovered slab header";
+            return false;
+        }
+        if (slab.payload_size_bytes == 0) {
+            slab.payload_size_bytes = discovered_slab->payload_size_bytes;
+        } else if (slab.payload_size_bytes != discovered_slab->payload_size_bytes) {
+            if (error) *error = "manifest slab payload size does not match discovered slab header";
+            return false;
+        }
+    }
+    return true;
+}
+
 } // namespace
 
 SessionImageStore::SessionImageStore(std::string root_path, std::string session_name)
@@ -614,7 +833,7 @@ SessionImageStore::SessionImageStore(std::string root_path, std::string session_
       session_name_(sanitize_session_name(std::move(session_name))) {}
 
 bool SessionImageStore::exists() const {
-    return std::filesystem::exists(manifestPath());
+    return std::filesystem::exists(bootstrapPath()) || std::filesystem::exists(manifestPath());
 }
 
 void SessionImageStore::clear() const {
@@ -630,8 +849,42 @@ std::string SessionImageStore::sessionPath() const {
     return (std::filesystem::path(root_path_) / session_name_).string();
 }
 
+std::string SessionImageStore::bootstrapPath() const {
+    return (std::filesystem::path(sessionPath()) / "bootstrap.json").string();
+}
+
 std::string SessionImageStore::manifestPath() const {
     return (std::filesystem::path(sessionPath()) / "manifest.json").string();
+}
+
+bool SessionImageStore::saveBootstrap(const SessionImageBootstrap& bootstrap, std::string* error) const {
+    SessionImageBootstrap normalized = bootstrap;
+    normalized.version = 1;
+    normalized.session = session_name_;
+    return writeBinaryFile("bootstrap.json", bootstrapToJson(normalized).dump(2), error);
+}
+
+bool SessionImageStore::loadBootstrap(SessionImageBootstrap& bootstrap, std::string* error) const {
+    std::string text;
+    if (!readBinaryFile("bootstrap.json", text, error)) {
+        return false;
+    }
+
+    try {
+        auto json = nlohmann::json::parse(text);
+        if (!bootstrapFromJson(json, bootstrap)) {
+            if (error) *error = "invalid session bootstrap";
+            return false;
+        }
+        if (bootstrap.session != session_name_) {
+            if (error) *error = "session bootstrap does not match requested session";
+            return false;
+        }
+        return true;
+    } catch (const std::exception& e) {
+        if (error) *error = std::string("failed to parse session bootstrap: ") + e.what();
+        return false;
+    }
 }
 
 bool SessionImageStore::saveManifest(const SessionImageManifest& manifest, std::string* error) const {
@@ -686,6 +939,61 @@ bool SessionImageStore::loadAllocatorMetadata(const SessionImageAllocatorManifes
     return true;
 }
 
+bool SessionImageStore::discoverAllocatorSlabs(const SessionImageAllocatorManifest& allocator,
+                                              std::vector<SessionImageSlabFile>& slabs,
+                                              std::string* error) const {
+    slabs.clear();
+
+    const auto relative_dir = allocatorDirectoryRelativePath(allocator);
+    const auto session_root = std::filesystem::path(sessionPath());
+    const auto absolute_dir = session_root / relative_dir;
+    std::error_code ec;
+    if (!std::filesystem::exists(absolute_dir, ec) || ec) {
+        return !ec;
+    }
+    if (!std::filesystem::is_directory(absolute_dir, ec) || ec) {
+        if (error) *error = "allocator slab path is not a directory";
+        return false;
+    }
+
+    for (const auto& entry : std::filesystem::directory_iterator(absolute_dir)) {
+        if (!isAllocatorSlabCandidate(entry, allocator)) {
+            continue;
+        }
+
+        const auto relative_path = entry.path().lexically_relative(session_root).generic_string();
+        SessionImageSlabHeaderInfo info;
+        if (!inspectSlabFile(relative_path, info, error)) {
+            return false;
+        }
+        if (!allocator.name.empty() && !info.allocator_name.empty() && info.allocator_name != allocator.name) {
+            if (error) *error = "discovered slab header allocator name does not match requested allocator";
+            return false;
+        }
+        if (!allocator.type.empty() && !info.allocator_type.empty() && info.allocator_type != allocator.type) {
+            if (error) *error = "discovered slab header allocator type does not match requested allocator";
+            return false;
+        }
+        if (findAllocatorSlabByIndex(slabs, info.index)) {
+            if (error) *error = "allocator slab discovery found duplicate slab index";
+            return false;
+        }
+
+        SessionImageSlabFile slab;
+        slab.index = info.index;
+        slab.file = relative_path;
+        slab.format = info.format;
+        slab.payload_offset_bytes = info.payload_offset_bytes;
+        slab.payload_size_bytes = info.payload_size_bytes;
+        slabs.push_back(std::move(slab));
+    }
+
+    std::sort(slabs.begin(), slabs.end(), [](const SessionImageSlabFile& lhs, const SessionImageSlabFile& rhs) {
+        return lhs.index < rhs.index;
+    });
+    return true;
+}
+
 bool SessionImageStore::saveAllocatorSlabs(SessionImageAllocatorManifest& allocator,
                                            const std::vector<ArenaSlabImage>& slabs,
                                            std::string* error) const {
@@ -701,8 +1009,8 @@ bool SessionImageStore::saveAllocatorSlabs(SessionImageAllocatorManifest& alloca
         }
         SessionImageSlabFile& slab_file = allocator.slabs[i];
         const std::string encoded = slabs[i].encoding == ArenaSlabEncoding::RawBytes
-            ? encodeMmapAttachableRawSlabFile(slabs[i], slab_file)
-            : encodeMmapFriendlySlabFile(slabs[i], slab_file);
+            ? encodeMmapAttachableRawSlabFile(allocator, slabs[i], slab_file)
+            : encodeMmapFriendlySlabFile(allocator, slabs[i], slab_file);
         if (!writeBinaryFile(slab_file.file, encoded, error)) {
             return false;
         }
@@ -729,7 +1037,7 @@ bool SessionImageStore::saveAllocatorAttachableStructuredSlabs(SessionImageAlloc
         }
         SessionImageSlabFile& slab_file = allocator.slabs[i];
         if (!writeBinaryFile(slab_file.file,
-                             encodeMmapAttachableStructuredSlabFile(slabs[i], allocator.item_size_bytes, slab_file),
+                             encodeMmapAttachableStructuredSlabFile(allocator, slabs[i], allocator.item_size_bytes, slab_file),
                              error)) {
             return false;
         }
@@ -740,9 +1048,14 @@ bool SessionImageStore::saveAllocatorAttachableStructuredSlabs(SessionImageAlloc
 bool SessionImageStore::loadAllocatorSlabs(const SessionImageAllocatorManifest& allocator,
                                            std::vector<ArenaSlabImage>& slabs,
                                            std::string* error) const {
+    std::vector<SessionImageSlabFile> slab_files;
+    if (!resolveAllocatorSlabsForLoad(*this, allocator, slab_files, error)) {
+        return false;
+    }
+
     slabs.clear();
-    slabs.reserve(allocator.slabs.size());
-    for (const auto& slab_file : allocator.slabs) {
+    slabs.reserve(slab_files.size());
+    for (const auto& slab_file : slab_files) {
         ArenaSlabImage slab;
         if (slab_file.format == kSessionImageMmapSlabFormat ||
             slab_file.format == kSessionImageMmapRawSlabFormat ||
@@ -763,10 +1076,10 @@ bool SessionImageStore::loadAllocatorSlabs(const SessionImageAllocatorManifest& 
             }
 
             const bool ok = slab_file.format == kSessionImageMmapRawSlabFormat
-                ? decodeMmapAttachableRawSlab(mapped, static_cast<size_t>(file_size), slab_file, slab, error)
+                ? decodeMmapAttachableRawSlab(mapped, static_cast<size_t>(file_size), allocator, slab_file, slab, error)
                 : (slab_file.format == kSessionImageMmapStructuredAttachSlabFormat
-                    ? decodeMmapAttachableStructuredSlab(mapped, static_cast<size_t>(file_size), slab_file, slab, error)
-                    : decodeMmapFriendlySlabPayload(mapped, static_cast<size_t>(file_size), slab_file, slab, error));
+                    ? decodeMmapAttachableStructuredSlab(mapped, static_cast<size_t>(file_size), allocator, slab_file, slab, error)
+                    : decodeMmapFriendlySlabPayload(mapped, static_cast<size_t>(file_size), allocator, slab_file, slab, error));
             ::munmap(mapped, file_size);
             if (!ok) {
                 return false;
@@ -791,7 +1104,7 @@ bool SessionImageStore::loadAllocatorSlabs(const SessionImageAllocatorManifest& 
                         if (error) *error = "failed to mmap slab file";
                         return false;
                     }
-                    const bool ok = decodeMmapFriendlySlabPayload(mapped, static_cast<size_t>(file_size), slab_file, slab, error);
+                    const bool ok = decodeMmapFriendlySlabPayload(mapped, static_cast<size_t>(file_size), allocator, slab_file, slab, error);
                     ::munmap(mapped, file_size);
                     if (!ok) {
                         if (error) *error = "failed to decode allocator slab image";
@@ -815,9 +1128,14 @@ bool SessionImageStore::loadAllocatorSlabs(const SessionImageAllocatorManifest& 
 bool SessionImageStore::loadAllocatorMappedRawSlabs(const SessionImageAllocatorManifest& allocator,
                                                     std::vector<ArenaMappedRawSlabAttachment>& slabs,
                                                     std::string* error) const {
+    std::vector<SessionImageSlabFile> slab_files;
+    if (!resolveAllocatorSlabsForLoad(*this, allocator, slab_files, error)) {
+        return false;
+    }
+
     slabs.clear();
-    slabs.reserve(allocator.slabs.size());
-    for (const auto& slab_file : allocator.slabs) {
+    slabs.reserve(slab_files.size());
+    for (const auto& slab_file : slab_files) {
         if (slab_file.format != kSessionImageMmapRawSlabFormat) {
             if (error) *error = "allocator slab is not in raw mmap-attachable format";
             return false;
@@ -847,6 +1165,7 @@ bool SessionImageStore::loadAllocatorMappedRawSlabs(const SessionImageAllocatorM
         ArenaMappedRawSlabAttachment slab;
         if (!mapMmapAttachableRawSlab(mapped_region.get(),
                                       static_cast<size_t>(file_size),
+                                      allocator,
                                       slab_file,
                                       allocator.item_size_bytes,
                                       mapped_region,
@@ -862,9 +1181,14 @@ bool SessionImageStore::loadAllocatorMappedRawSlabs(const SessionImageAllocatorM
 bool SessionImageStore::loadAllocatorMappedStructuredSlabs(const SessionImageAllocatorManifest& allocator,
                                                            std::vector<ArenaMappedStructuredSlabAttachment>& slabs,
                                                            std::string* error) const {
+    std::vector<SessionImageSlabFile> slab_files;
+    if (!resolveAllocatorSlabsForLoad(*this, allocator, slab_files, error)) {
+        return false;
+    }
+
     slabs.clear();
-    slabs.reserve(allocator.slabs.size());
-    for (const auto& slab_file : allocator.slabs) {
+    slabs.reserve(slab_files.size());
+    for (const auto& slab_file : slab_files) {
         if (slab_file.format != kSessionImageMmapStructuredAttachSlabFormat) {
             if (error) *error = "allocator slab is not in structured mmap-attachable format";
             return false;
@@ -894,6 +1218,7 @@ bool SessionImageStore::loadAllocatorMappedStructuredSlabs(const SessionImageAll
         ArenaMappedStructuredSlabAttachment slab;
         if (!mapMmapAttachableStructuredSlab(mapped_region.get(),
                                              static_cast<size_t>(file_size),
+                                             allocator,
                                              slab_file,
                                              allocator.item_size_bytes,
                                              mapped_region,
@@ -906,19 +1231,96 @@ bool SessionImageStore::loadAllocatorMappedStructuredSlabs(const SessionImageAll
     return true;
 }
 
-bool SessionImageStore::saveRootState(const SessionImageManifest& manifest,
+bool SessionImageStore::inspectSlabFile(const std::string& relative_path,
+                                        SessionImageSlabHeaderInfo& info,
+                                        std::string* error) const {
+    const auto path = resolveRelativePath(relative_path);
+    const int fd = ::open(path.c_str(), O_RDONLY);
+    if (fd < 0) {
+        if (error) *error = "failed to open slab file for inspection";
+        return false;
+    }
+
+    const auto file_size = std::filesystem::file_size(path);
+    void* mapped = ::mmap(nullptr, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
+    ::close(fd);
+    if (mapped == MAP_FAILED) {
+        if (error) *error = "failed to mmap slab file for inspection";
+        return false;
+    }
+
+    info = {};
+    const auto finalize = [&](bool ok) {
+        ::munmap(mapped, file_size);
+        return ok;
+    };
+
+    if (static_cast<size_t>(file_size) < sizeof(SessionImageMmapSlabHeader)) {
+        if (error) *error = "slab file is smaller than the minimum header";
+        return finalize(false);
+    }
+
+    SessionImageMmapSlabHeader common_header;
+    std::memcpy(&common_header, mapped, sizeof(common_header));
+    if (hasExpectedSlabMagic(common_header) && common_header.version == kSessionImageMmapSlabVersion) {
+        info.index = common_header.slab_index;
+        info.format = kSessionImageMmapSlabFormat;
+        info.allocator_name = readAllocatorIdentity(common_header.allocator_name);
+        info.allocator_type = readAllocatorIdentity(common_header.allocator_type);
+        info.encoding = static_cast<ArenaSlabEncoding>(common_header.encoding);
+        info.payload_offset_bytes = common_header.payload_offset_bytes;
+        info.payload_size_bytes = common_header.payload_size_bytes;
+        return finalize(true);
+    }
+
+    if (static_cast<size_t>(file_size) >= sizeof(SessionImageMmapRawSlabHeader)) {
+        SessionImageMmapRawSlabHeader raw_header;
+        std::memcpy(&raw_header, mapped, sizeof(raw_header));
+        if (hasExpectedRawSlabMagic(raw_header) && raw_header.version == kSessionImageMmapRawSlabVersion) {
+            info.index = raw_header.slab_index;
+            info.format = kSessionImageMmapRawSlabFormat;
+            info.allocator_name = readAllocatorIdentity(raw_header.allocator_name);
+            info.allocator_type = readAllocatorIdentity(raw_header.allocator_type);
+            info.encoding = static_cast<ArenaSlabEncoding>(raw_header.encoding);
+            info.payload_offset_bytes = raw_header.items_offset_bytes;
+            info.payload_size_bytes = raw_header.items_size_bytes;
+            return finalize(true);
+        }
+    }
+
+    if (static_cast<size_t>(file_size) >= sizeof(SessionImageMmapStructuredAttachSlabHeader)) {
+        SessionImageMmapStructuredAttachSlabHeader structured_header;
+        std::memcpy(&structured_header, mapped, sizeof(structured_header));
+        if (hasExpectedStructuredAttachSlabMagic(structured_header) &&
+            structured_header.version == kSessionImageMmapStructuredAttachSlabVersion) {
+            info.index = structured_header.slab_index;
+            info.format = kSessionImageMmapStructuredAttachSlabFormat;
+            info.allocator_name = readAllocatorIdentity(structured_header.allocator_name);
+            info.allocator_type = readAllocatorIdentity(structured_header.allocator_type);
+            info.encoding = static_cast<ArenaSlabEncoding>(structured_header.encoding);
+            info.payload_offset_bytes = structured_header.payload_offset_bytes;
+            info.payload_size_bytes = structured_header.payload_size_bytes;
+            return finalize(true);
+        }
+    }
+
+    if (error) *error = "unrecognized slab header format";
+    return finalize(false);
+}
+
+bool SessionImageStore::saveRootState(const std::string& roots_file,
                                       const ArenaRootState& root_state,
                                       std::string* error) const {
-    return writeBinaryFile(manifest.roots_file,
+    return writeBinaryFile(roots_file,
                            serializeArenaRootState(root_state),
                            error);
 }
 
-bool SessionImageStore::loadRootState(const SessionImageManifest& manifest,
+bool SessionImageStore::loadRootState(const std::string& roots_file,
                                       ArenaRootState& root_state,
                                       std::string* error) const {
     std::string text;
-    if (!readBinaryFile(manifest.roots_file, text, error)) {
+    if (!readBinaryFile(roots_file, text, error)) {
         return false;
     }
     if (!deserializeArenaRootState(text, root_state)) {

@@ -344,6 +344,11 @@ struct ArenaMmapStructuredAttachTraits<agentc::ListreeValueRef, void> {
 };
 
 template<>
+struct ArenaMmapStructuredAttachTraits<agentc::ListreeItem, void> {
+    static constexpr bool supported = true;
+};
+
+template<>
 struct ArenaWatermarkResetTraits<agentc::ListreeValueRef, void> {
     static constexpr bool strictEligible = true;
 

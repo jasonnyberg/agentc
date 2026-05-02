@@ -153,8 +153,8 @@ TEST(SessionStateStoreTest, WritesSessionManifestAndAllocatorImageIndex) {
     for (const auto& [name, allocator] : allocators) {
         ASSERT_TRUE(allocator["slabs"].is_array()) << name;
         for (const auto& slab : allocator["slabs"]) {
-            const auto slab_path = std::filesystem::path(root) / "manifest-check" /
-                                   slab["file"].get<std::string>();
+            const auto slab_rel = slab["file"].get<std::string>();
+            const auto slab_path = std::filesystem::path(root) / "manifest-check" / slab_rel;
             EXPECT_TRUE(std::filesystem::exists(slab_path)) << name;
             ASSERT_TRUE(slab.contains("format")) << name;
             EXPECT_EQ(slab["format"].get<std::string>(), "session_image_mmap_v1") << name;
@@ -166,6 +166,16 @@ TEST(SessionStateStoreTest, WritesSessionManifestAndAllocatorImageIndex) {
             EXPECT_GT(payload_size, 0u) << name;
             EXPECT_EQ(payload_offset % 4096u, 0u) << name;
             EXPECT_GE(std::filesystem::file_size(slab_path), payload_offset + payload_size) << name;
+
+            agentc::runtime::SessionImageStore image_store(root, "manifest-check");
+            agentc::runtime::SessionImageSlabHeaderInfo header_info;
+            ASSERT_TRUE(image_store.inspectSlabFile(slab_rel, header_info, &error)) << name << ": " << error;
+            EXPECT_EQ(header_info.index, slab["index"].get<uint16_t>()) << name;
+            EXPECT_EQ(header_info.format, slab["format"].get<std::string>()) << name;
+            EXPECT_EQ(header_info.allocator_name, allocator["name"].get<std::string>()) << name;
+            EXPECT_EQ(header_info.allocator_type, allocator["type"].get<std::string>()) << name;
+            EXPECT_EQ(header_info.payload_offset_bytes, payload_offset) << name;
+            EXPECT_EQ(header_info.payload_size_bytes, payload_size) << name;
         }
     }
 
@@ -174,6 +184,95 @@ TEST(SessionStateStoreTest, WritesSessionManifestAndAllocatorImageIndex) {
     EXPECT_EQ(restored["conversation"]["messages"].size(), 2u);
     EXPECT_EQ(restored["memory"]["summary"].get<std::string>(),
               "this summary is intentionally longer than the inline payload threshold");
+
+    store.clear();
+}
+
+TEST(SessionStateStoreTest, WritesSessionBootstrapAndCanRestoreWithoutManifest) {
+    const auto root = (std::filesystem::temp_directory_path() / "agentc_session_bootstrap_restore_test").string();
+    agentc::runtime::SessionStateStore store(root, "bootstrap-authority");
+    store.clear();
+
+    nlohmann::json session_root = agentc::runtime::make_default_agent_root(
+        "bootstrap-owned prompt that is long enough to exercise blob-backed string storage",
+        "google",
+        "gemini-2.5-flash");
+    session_root["conversation"]["messages"] = nlohmann::json::array({
+        nlohmann::json{{"role", "user"}, {"text", "bootstrap first message"}},
+        nlohmann::json{{"role", "assistant"}, {"text", "bootstrap second message"}}
+    });
+    session_root["memory"]["summary"] = "bootstrap restore should not depend on manifest presence";
+
+    std::string error;
+    ASSERT_TRUE(store.save(session_root, &error)) << error;
+
+    const auto bootstrap_path = std::filesystem::path(root) / "bootstrap-authority" / "bootstrap.json";
+    ASSERT_TRUE(std::filesystem::exists(bootstrap_path));
+    std::ifstream bootstrap_in(bootstrap_path);
+    ASSERT_TRUE(bootstrap_in.good());
+    nlohmann::json bootstrap = nlohmann::json::parse(bootstrap_in);
+    ASSERT_EQ(bootstrap["version"].get<int>(), 1);
+    ASSERT_EQ(bootstrap["session"].get<std::string>(), "bootstrap-authority");
+    ASSERT_EQ(bootstrap["roots_file"].get<std::string>(), "roots.bin");
+    ASSERT_TRUE(bootstrap["allocators"].is_array());
+    ASSERT_EQ(bootstrap["allocators"].size(), 5u);
+    for (const auto& allocator : bootstrap["allocators"]) {
+        EXPECT_TRUE(allocator.contains("metadata_file"));
+        EXPECT_FALSE(allocator.contains("slabs"));
+    }
+
+    ASSERT_TRUE(std::filesystem::remove(std::filesystem::path(root) / "bootstrap-authority" / "manifest.json"));
+    EXPECT_TRUE(store.exists());
+
+    nlohmann::json restored;
+    ASSERT_TRUE(store.load(restored, &error)) << error;
+    EXPECT_EQ(restored["conversation"]["messages"].size(), 2u);
+    EXPECT_EQ(restored["conversation"]["messages"][1]["text"].get<std::string>(), "bootstrap second message");
+    EXPECT_EQ(restored["memory"]["summary"].get<std::string>(),
+              "bootstrap restore should not depend on manifest presence");
+
+    store.clear();
+}
+
+TEST(SessionStateStoreTest, CanRestoreCanonicalRootWhenManifestSlabListsAreEmpty) {
+    const auto root = (std::filesystem::temp_directory_path() / "agentc_session_manifest_discovery_test").string();
+    agentc::runtime::SessionStateStore store(root, "header-discovery");
+    store.clear();
+
+    nlohmann::json session_root = agentc::runtime::make_default_agent_root(
+        "header-discovered prompt that is long enough to exercise blob-backed string storage",
+        "google",
+        "gemini-2.5-flash");
+    session_root["conversation"]["messages"] = nlohmann::json::array({
+        nlohmann::json{{"role", "user"}, {"text", "first message"}},
+        nlohmann::json{{"role", "assistant"}, {"text", "second message"}}
+    });
+    session_root["memory"]["summary"] = "header discovery should still find all allocator slabs";
+
+    std::string error;
+    ASSERT_TRUE(store.save(session_root, &error)) << error;
+
+    const auto manifest_path = std::filesystem::path(root) / "header-discovery" / "manifest.json";
+    ASSERT_TRUE(std::filesystem::exists(manifest_path));
+    std::ifstream in(manifest_path);
+    ASSERT_TRUE(in.good());
+    nlohmann::json manifest = nlohmann::json::parse(in);
+    for (auto& allocator : manifest["allocators"]) {
+        allocator["slabs"] = nlohmann::json::array();
+    }
+    {
+        std::ofstream out(manifest_path, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(out.good());
+        out << manifest.dump(2);
+        ASSERT_TRUE(out.good());
+    }
+
+    nlohmann::json restored;
+    ASSERT_TRUE(store.load(restored, &error)) << error;
+    EXPECT_EQ(restored["conversation"]["messages"].size(), 2u);
+    EXPECT_EQ(restored["conversation"]["messages"][1]["text"].get<std::string>(), "second message");
+    EXPECT_EQ(restored["memory"]["summary"].get<std::string>(),
+              "header discovery should still find all allocator slabs");
 
     store.clear();
 }
@@ -226,6 +325,143 @@ TEST(SessionStateStoreTest, CanAllocateRawSlabsFileFirstWithMmapBackingPolicy) {
     std::filesystem::remove_all(root, ec);
 }
 
+TEST(SessionStateStoreTest, CanAllocateStructuredListreeValueSlabsFileFirstWithMmapBackingPolicy) {
+    const auto root = (std::filesystem::temp_directory_path() / "agentc_file_first_value_allocator_test").string();
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
+    std::filesystem::create_directories(root, ec);
+    ASSERT_FALSE(ec);
+
+    auto& value_allocator = Allocator<agentc::ListreeValue>::getAllocator();
+    value_allocator.resetForTests();
+    value_allocator.configureMmapFileBackedSlabs(root, "valuefilefirst");
+    value_allocator.setSlabBackingPolicy(ArenaSlabBackingPolicy::MmapFile);
+
+    std::vector<SlabId> saved_ids;
+    saved_ids.reserve(SLAB_SIZE + 4);
+    for (size_t i = 0; i < SLAB_SIZE + 4; ++i) {
+        saved_ids.push_back(value_allocator.allocate(std::string("vv"), agentc::LtvFlags::Duplicate));
+    }
+
+    EXPECT_FALSE(value_allocator.slabUsesMappedBacking(0));
+    ASSERT_TRUE(value_allocator.slabUsesMappedBacking(1));
+    const auto slab0_path = value_allocator.slabBackingPath(0);
+    const auto slab1_path = value_allocator.slabBackingPath(1);
+    ASSERT_FALSE(slab0_path.empty());
+    ASSERT_FALSE(slab1_path.empty());
+    EXPECT_FALSE(std::filesystem::exists(slab0_path));
+    EXPECT_TRUE(std::filesystem::exists(slab1_path));
+    EXPECT_EQ(std::filesystem::file_size(slab1_path), static_cast<uint64_t>(SLAB_SIZE * sizeof(agentc::ListreeValue)));
+
+    const SlabId first_file_backed_sid = saved_ids[SLAB_SIZE - 1];
+    ASSERT_EQ(first_file_backed_sid.first, 1);
+    auto* first_value = value_allocator.getPtr(first_file_backed_sid);
+    ASSERT_NE(first_value, nullptr);
+    EXPECT_EQ(std::string(static_cast<const char*>(first_value->getData()), first_value->getLength()), "vv");
+    ASSERT_TRUE(value_allocator.flushMappedSlabs());
+
+    value_allocator.resetForTests();
+    std::filesystem::remove_all(root, ec);
+}
+
+TEST(SessionStateStoreTest, CanAllocateStructuredListreeValueRefSlabsFileFirstWithMmapBackingPolicy) {
+    const auto root = (std::filesystem::temp_directory_path() / "agentc_file_first_ref_allocator_test").string();
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
+    std::filesystem::create_directories(root, ec);
+    ASSERT_FALSE(ec);
+
+    auto& value_allocator = Allocator<agentc::ListreeValue>::getAllocator();
+    auto& ref_allocator = Allocator<agentc::ListreeValueRef>::getAllocator();
+    value_allocator.resetForTests();
+    ref_allocator.resetForTests();
+
+    ref_allocator.configureMmapFileBackedSlabs(root, "reffilefirst");
+    ref_allocator.setSlabBackingPolicy(ArenaSlabBackingPolicy::MmapFile);
+
+    auto shared_value = agentc::createStringValue("mapped-ref-value");
+    ASSERT_TRUE(shared_value);
+
+    std::vector<SlabId> saved_ids;
+    saved_ids.reserve(SLAB_SIZE + 4);
+    for (size_t i = 0; i < SLAB_SIZE + 4; ++i) {
+        saved_ids.push_back(ref_allocator.allocate(shared_value));
+    }
+
+    EXPECT_FALSE(ref_allocator.slabUsesMappedBacking(0));
+    ASSERT_TRUE(ref_allocator.slabUsesMappedBacking(1));
+    const auto slab0_path = ref_allocator.slabBackingPath(0);
+    const auto slab1_path = ref_allocator.slabBackingPath(1);
+    ASSERT_FALSE(slab0_path.empty());
+    ASSERT_FALSE(slab1_path.empty());
+    EXPECT_FALSE(std::filesystem::exists(slab0_path));
+    EXPECT_TRUE(std::filesystem::exists(slab1_path));
+    EXPECT_EQ(std::filesystem::file_size(slab1_path), static_cast<uint64_t>(SLAB_SIZE * sizeof(agentc::ListreeValueRef)));
+
+    const SlabId first_file_backed_sid = saved_ids[SLAB_SIZE - 1];
+    ASSERT_EQ(first_file_backed_sid.first, 1);
+    auto* first_ref = ref_allocator.getPtr(first_file_backed_sid);
+    ASSERT_NE(first_ref, nullptr);
+    auto restored_value = first_ref->getValue();
+    ASSERT_TRUE(restored_value);
+    EXPECT_EQ(std::string(static_cast<const char*>(restored_value->getData()), restored_value->getLength()),
+              "mapped-ref-value");
+    ASSERT_TRUE(ref_allocator.flushMappedSlabs());
+
+    ref_allocator.resetForTests();
+    value_allocator.resetForTests();
+    std::filesystem::remove_all(root, ec);
+}
+
+TEST(SessionStateStoreTest, CanAllocateBlobSlabsFileFirstWithMmapBackingPolicy) {
+    const auto root = (std::filesystem::temp_directory_path() / "agentc_file_first_blob_allocator_test").string();
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
+    std::filesystem::create_directories(root, ec);
+    ASSERT_FALSE(ec);
+
+    auto& blob_allocator = BlobAllocator::getAllocator();
+    blob_allocator.resetForTests();
+    blob_allocator.configureMmapFileBackedSlabs(root, "blobfilefirst");
+    blob_allocator.setSlabBackingPolicy(ArenaSlabBackingPolicy::MmapFile);
+
+    std::string large_payload(65535, 'a');
+    const SlabId first = blob_allocator.allocate(large_payload.data(), large_payload.size());
+    ASSERT_EQ(first.first, 0);
+    ASSERT_EQ(first.second, 1);
+    std::string small_payload = "blob-second-slab";
+    const SlabId second = blob_allocator.allocate(small_payload.data(), small_payload.size());
+    ASSERT_EQ(second.first, 1);
+    ASSERT_EQ(second.second, 0);
+
+    ASSERT_TRUE(blob_allocator.slabUsesMappedBacking(0));
+    ASSERT_TRUE(blob_allocator.slabUsesMappedBacking(1));
+    const auto slab0_path = blob_allocator.slabBackingPath(0);
+    const auto slab1_path = blob_allocator.slabBackingPath(1);
+    ASSERT_FALSE(slab0_path.empty());
+    ASSERT_FALSE(slab1_path.empty());
+    EXPECT_TRUE(std::filesystem::exists(slab0_path));
+    EXPECT_TRUE(std::filesystem::exists(slab1_path));
+    EXPECT_EQ(std::filesystem::file_size(slab0_path), 65536u);
+    EXPECT_EQ(std::filesystem::file_size(slab1_path), 65536u);
+
+    auto* blob_ptr = static_cast<const char*>(blob_allocator.getPointer(second));
+    ASSERT_NE(blob_ptr, nullptr);
+    EXPECT_EQ(std::string(blob_ptr, small_payload.size()), small_payload);
+    ASSERT_TRUE(blob_allocator.flushMappedSlabs());
+
+    std::ifstream slab1_in(slab1_path, std::ios::binary);
+    ASSERT_TRUE(slab1_in.good());
+    slab1_in.seekg(static_cast<std::streamoff>(second.second), std::ios::beg);
+    std::string persisted(small_payload.size(), '\0');
+    slab1_in.read(persisted.data(), static_cast<std::streamsize>(persisted.size()));
+    ASSERT_TRUE(slab1_in.good());
+    EXPECT_EQ(persisted, small_payload);
+
+    blob_allocator.resetForTests();
+    std::filesystem::remove_all(root, ec);
+}
+
 TEST(SessionStateStoreTest, CanAttachRawAllocatorSlabsFromMappedBacking) {
     const auto root = (std::filesystem::temp_directory_path() / "agentc_mmap_attachable_raw_allocator_test").string();
     agentc::runtime::SessionImageStore image_store(root, "raw-attach");
@@ -270,6 +506,11 @@ TEST(SessionStateStoreTest, CanAttachRawAllocatorSlabsFromMappedBacking) {
         EXPECT_EQ(slab.payload_size_bytes, static_cast<uint64_t>(SLAB_SIZE * sizeof(uint64_t)));
     }
 
+    auto mismatched_manifest = loaded_allocator_manifest;
+    mismatched_manifest.type = "mismatched::uint64_t";
+    std::vector<ArenaMappedRawSlabAttachment> mismatched_attachments;
+    EXPECT_FALSE(image_store.loadAllocatorMappedRawSlabs(mismatched_manifest, mismatched_attachments, &error));
+
     allocator.resetForTests();
     ArenaCheckpointMetadata restored_metadata;
     ASSERT_TRUE(image_store.loadAllocatorMetadata(loaded_allocator_manifest, restored_metadata, &error)) << error;
@@ -302,6 +543,225 @@ TEST(SessionStateStoreTest, CanAttachRawAllocatorSlabsFromMappedBacking) {
 
     allocator.resetForTests();
     image_store.clear();
+}
+
+TEST(SessionStateStoreTest, CanDiscoverMappedRawAllocatorSlabsWhenManifestSlabListIsEmpty) {
+    const auto root = (std::filesystem::temp_directory_path() / "agentc_mmap_attachable_raw_allocator_discovery_test").string();
+    agentc::runtime::SessionImageStore image_store(root, "raw-discovery");
+    image_store.clear();
+
+    auto& allocator = Allocator<uint64_t>::getAllocator();
+    allocator.resetForTests();
+
+    std::vector<SlabId> saved_ids;
+    saved_ids.reserve(SLAB_SIZE + 16);
+    for (uint64_t value = 1; value <= static_cast<uint64_t>(SLAB_SIZE + 16); ++value) {
+        saved_ids.push_back(allocator.allocate(value * 10));
+    }
+
+    const auto metadata = allocator.exportArenaMetadata();
+    const auto images = allocator.exportSlabImages();
+    ASSERT_FALSE(images.empty());
+
+    auto allocator_manifest = makeTestAllocatorManifest<uint64_t>("u64", "uint64_t", images);
+    std::string error;
+    ASSERT_TRUE(image_store.saveAllocatorMetadata(allocator_manifest, metadata, &error)) << error;
+    ASSERT_TRUE(image_store.saveAllocatorSlabs(allocator_manifest, images, &error)) << error;
+
+    auto manifest_without_slabs = allocator_manifest;
+    manifest_without_slabs.slabs.clear();
+    agentc::runtime::SessionImageManifest manifest;
+    manifest.session = image_store.sessionName();
+    manifest.allocators = {manifest_without_slabs};
+    ASSERT_TRUE(image_store.saveManifest(manifest, &error)) << error;
+
+    agentc::runtime::SessionImageManifest loaded_manifest;
+    ASSERT_TRUE(image_store.loadManifest(loaded_manifest, &error)) << error;
+    ASSERT_EQ(loaded_manifest.allocators.size(), 1u);
+    const auto& loaded_allocator_manifest = loaded_manifest.allocators.front();
+    ASSERT_TRUE(loaded_allocator_manifest.slabs.empty());
+
+    allocator.resetForTests();
+    ArenaCheckpointMetadata restored_metadata;
+    ASSERT_TRUE(image_store.loadAllocatorMetadata(loaded_allocator_manifest, restored_metadata, &error)) << error;
+    ASSERT_TRUE(allocator.restoreArenaMetadata(restored_metadata));
+
+    std::vector<ArenaMappedRawSlabAttachment> attachments;
+    ASSERT_TRUE(image_store.loadAllocatorMappedRawSlabs(loaded_allocator_manifest, attachments, &error)) << error;
+    ASSERT_EQ(attachments.size(), images.size());
+    ASSERT_TRUE(allocator.attachMappedRawSlabs(attachments));
+
+    auto* first_ptr = allocator.getPtr(saved_ids.front());
+    ASSERT_NE(first_ptr, nullptr);
+    EXPECT_EQ(*first_ptr, 10u);
+    auto* last_ptr = allocator.getPtr(saved_ids.back());
+    ASSERT_NE(last_ptr, nullptr);
+    EXPECT_EQ(*last_ptr, static_cast<uint64_t>(SLAB_SIZE + 16) * 10u);
+
+    allocator.resetForTests();
+    image_store.clear();
+}
+
+TEST(SessionStateStoreTest, CanAllocateStructuredCllSlabsFileFirstWithMmapBackingPolicy) {
+    const auto root = (std::filesystem::temp_directory_path() / "agentc_file_first_cll_allocator_test").string();
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
+    std::filesystem::create_directories(root, ec);
+    ASSERT_FALSE(ec);
+
+    auto& value_allocator = Allocator<agentc::ListreeValue>::getAllocator();
+    auto& ref_allocator = Allocator<agentc::ListreeValueRef>::getAllocator();
+    auto& node_allocator = Allocator<CLL<agentc::ListreeValueRef>>::getAllocator();
+    value_allocator.resetForTests();
+    ref_allocator.resetForTests();
+    node_allocator.resetForTests();
+
+    node_allocator.configureMmapFileBackedSlabs(root, "cllfilefirst");
+    node_allocator.setSlabBackingPolicy(ArenaSlabBackingPolicy::MmapFile);
+
+    auto shared_value = agentc::createStringValue("mapped-node-value");
+    ASSERT_TRUE(shared_value);
+    CPtr<agentc::ListreeValueRef> shared_ref;
+    {
+        SlabId ref_sid = ref_allocator.allocate(shared_value);
+        shared_ref = CPtr<agentc::ListreeValueRef>(ref_sid);
+    }
+    ASSERT_TRUE(shared_ref);
+
+    std::vector<SlabId> saved_ids;
+    saved_ids.reserve(SLAB_SIZE + 4);
+    for (size_t i = 0; i < SLAB_SIZE + 4; ++i) {
+        saved_ids.push_back(node_allocator.allocate(shared_ref));
+    }
+
+    EXPECT_FALSE(node_allocator.slabUsesMappedBacking(0));
+    ASSERT_TRUE(node_allocator.slabUsesMappedBacking(1));
+    const auto slab0_path = node_allocator.slabBackingPath(0);
+    const auto slab1_path = node_allocator.slabBackingPath(1);
+    ASSERT_FALSE(slab0_path.empty());
+    ASSERT_FALSE(slab1_path.empty());
+    EXPECT_FALSE(std::filesystem::exists(slab0_path));
+    EXPECT_TRUE(std::filesystem::exists(slab1_path));
+    EXPECT_EQ(std::filesystem::file_size(slab1_path), static_cast<uint64_t>(SLAB_SIZE * sizeof(CLL<agentc::ListreeValueRef>)));
+
+    const SlabId first_file_backed_sid = saved_ids[SLAB_SIZE - 1];
+    ASSERT_EQ(first_file_backed_sid.first, 1);
+    auto* first_node = node_allocator.getPtr(first_file_backed_sid);
+    ASSERT_NE(first_node, nullptr);
+    ASSERT_TRUE(first_node->data);
+    auto restored_value = first_node->data->getValue();
+    ASSERT_TRUE(restored_value);
+    EXPECT_EQ(std::string(static_cast<const char*>(restored_value->getData()), restored_value->getLength()),
+              "mapped-node-value");
+    ASSERT_TRUE(node_allocator.flushMappedSlabs());
+
+    node_allocator.resetForTests();
+    ref_allocator.resetForTests();
+    value_allocator.resetForTests();
+    std::filesystem::remove_all(root, ec);
+}
+
+TEST(SessionStateStoreTest, CanAllocateStructuredListreeItemSlabsFileFirstWithMmapBackingPolicy) {
+    const auto root = (std::filesystem::temp_directory_path() / "agentc_file_first_item_allocator_test").string();
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
+    std::filesystem::create_directories(root, ec);
+    ASSERT_FALSE(ec);
+
+    auto& node_allocator = Allocator<CLL<agentc::ListreeValueRef>>::getAllocator();
+    auto& item_allocator = Allocator<agentc::ListreeItem>::getAllocator();
+    node_allocator.resetForTests();
+    item_allocator.resetForTests();
+
+    item_allocator.configureMmapFileBackedSlabs(root, "itemfilefirst");
+    item_allocator.setSlabBackingPolicy(ArenaSlabBackingPolicy::MmapFile);
+
+    std::vector<SlabId> saved_ids;
+    saved_ids.reserve(SLAB_SIZE + 4);
+    for (size_t i = 0; i < SLAB_SIZE + 4; ++i) {
+        saved_ids.push_back(item_allocator.allocate(std::string("nm")));
+    }
+
+    EXPECT_FALSE(item_allocator.slabUsesMappedBacking(0));
+    ASSERT_TRUE(item_allocator.slabUsesMappedBacking(1));
+    const auto slab0_path = item_allocator.slabBackingPath(0);
+    const auto slab1_path = item_allocator.slabBackingPath(1);
+    ASSERT_FALSE(slab0_path.empty());
+    ASSERT_FALSE(slab1_path.empty());
+    EXPECT_FALSE(std::filesystem::exists(slab0_path));
+    EXPECT_TRUE(std::filesystem::exists(slab1_path));
+    EXPECT_EQ(std::filesystem::file_size(slab1_path), static_cast<uint64_t>(SLAB_SIZE * sizeof(agentc::ListreeItem)));
+
+    const SlabId first_file_backed_sid = saved_ids[SLAB_SIZE - 1];
+    ASSERT_EQ(first_file_backed_sid.first, 1);
+    auto* first_item = item_allocator.getPtr(first_file_backed_sid);
+    ASSERT_NE(first_item, nullptr);
+    EXPECT_EQ(first_item->getName(), "nm");
+    EXPECT_FALSE(first_item->getValue(false, false));
+
+    ASSERT_TRUE(item_allocator.flushMappedSlabs());
+
+    item_allocator.resetForTests();
+    node_allocator.resetForTests();
+    std::filesystem::remove_all(root, ec);
+}
+
+TEST(SessionStateStoreTest, CanAllocateStructuredAATreeSlabsFileFirstWithMmapBackingPolicy) {
+    const auto root = (std::filesystem::temp_directory_path() / "agentc_file_first_tree_allocator_test").string();
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
+    std::filesystem::create_directories(root, ec);
+    ASSERT_FALSE(ec);
+
+    auto& item_allocator = Allocator<agentc::ListreeItem>::getAllocator();
+    auto& tree_allocator = Allocator<AATree<agentc::ListreeItem>>::getAllocator();
+    item_allocator.resetForTests();
+    tree_allocator.resetForTests();
+
+    tree_allocator.configureMmapFileBackedSlabs(root, "treefilefirst");
+    tree_allocator.setSlabBackingPolicy(ArenaSlabBackingPolicy::MmapFile);
+
+    CPtr<AATree<agentc::ListreeItem>> root_node;
+    {
+        SlabId sid = tree_allocator.allocate();
+        root_node = CPtr<AATree<agentc::ListreeItem>>(sid);
+    }
+    ASSERT_TRUE(root_node);
+    root_node->name = "root";
+    {
+        SlabId item_sid = item_allocator.allocate(std::string("root-item"));
+        root_node->data = CPtr<agentc::ListreeItem>(item_sid);
+    }
+
+    for (size_t i = 1; i < SLAB_SIZE; ++i) {
+        tree_allocator.allocate();
+    }
+
+    EXPECT_FALSE(tree_allocator.slabUsesMappedBacking(0));
+    auto child_item = CPtr<agentc::ListreeItem>(item_allocator.allocate(std::string("child-item")));
+    root_node->add("child", child_item);
+
+    auto child_node = root_node->find("child");
+    ASSERT_TRUE(child_node);
+    EXPECT_EQ(child_node.getSlabId().first, 1);
+    ASSERT_TRUE(tree_allocator.slabUsesMappedBacking(1));
+    const auto slab0_path = tree_allocator.slabBackingPath(0);
+    const auto slab1_path = tree_allocator.slabBackingPath(1);
+    ASSERT_FALSE(slab0_path.empty());
+    ASSERT_FALSE(slab1_path.empty());
+    EXPECT_FALSE(std::filesystem::exists(slab0_path));
+    EXPECT_TRUE(std::filesystem::exists(slab1_path));
+    EXPECT_EQ(std::filesystem::file_size(slab1_path), static_cast<uint64_t>(SLAB_SIZE * sizeof(AATree<agentc::ListreeItem>)));
+
+    EXPECT_EQ(child_node->name, "child");
+    ASSERT_TRUE(child_node->data);
+    EXPECT_EQ(child_node->data->getName(), "child-item");
+    EXPECT_EQ(child_node->level, 1u);
+    ASSERT_TRUE(tree_allocator.flushMappedSlabs());
+
+    tree_allocator.resetForTests();
+    item_allocator.resetForTests();
+    std::filesystem::remove_all(root, ec);
 }
 
 TEST(SessionStateStoreTest, CanAttachStructuredListreeValueRefSlabsFromMappedBacking) {

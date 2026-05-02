@@ -286,18 +286,87 @@ private:
 
 class BlobAllocator {
 private:
+    static constexpr size_t kBlobSlabBytes = 65536;
+
     struct BlobSlab {
         size_t count;
         char* bytes;
-        BlobSlab() : count(0), bytes(static_cast<char*>(malloc(65536))) {}
-        ~BlobSlab() { free(bytes); }
+        std::shared_ptr<void> mappedRegion;
+        bool mappedBacking;
+        BlobSlab()
+            : count(0),
+              bytes(static_cast<char*>(malloc(kBlobSlabBytes))),
+              mappedBacking(false) {}
+        BlobSlab(char* mappedBytes, std::shared_ptr<void> mappedRegionIn)
+            : count(0),
+              bytes(mappedBytes),
+              mappedRegion(std::move(mappedRegionIn)),
+              mappedBacking(true) {}
+        ~BlobSlab() {
+            if (!mappedBacking) {
+                free(bytes);
+            }
+        }
     };
 
     BlobSlab *slabs[NUM_SLABS] = {nullptr};
     std::vector<SlabId> checkpointWatermarks;
     std::vector<size_t> checkpointStack;
+    ArenaSlabBackingPolicy backingPolicy_ = ArenaSlabBackingPolicy::Heap;
+    std::string mmapBackingDirectory_;
+    std::string mmapBackingFilePrefix_;
 
-    BlobAllocator() {}
+    std::string mmapBackingPathForSlab(uint16_t slabIndex) const {
+        std::ostringstream name;
+        name << (mmapBackingFilePrefix_.empty() ? std::string("blob") : mmapBackingFilePrefix_)
+             << ".slab.";
+        name.width(4);
+        name.fill('0');
+        name << slabIndex << ".bin";
+        return (std::filesystem::path(mmapBackingDirectory_) / name.str()).string();
+    }
+
+    BlobSlab* createOwnedSlab(uint16_t slabIndex) {
+        if (backingPolicy_ == ArenaSlabBackingPolicy::MmapFile) {
+            if (mmapBackingDirectory_.empty()) {
+                throw std::runtime_error("blob mmap slab backing directory is not configured");
+            }
+            std::error_code ec;
+            std::filesystem::create_directories(mmapBackingDirectory_, ec);
+            if (ec) {
+                throw std::runtime_error("failed to create blob mmap slab backing directory");
+            }
+            const auto path = mmapBackingPathForSlab(slabIndex);
+            const int fd = ::open(path.c_str(), O_RDWR | O_CREAT | O_TRUNC, 0644);
+            if (fd < 0) {
+                throw std::runtime_error("failed to open blob mmap slab backing file");
+            }
+            if (::ftruncate(fd, static_cast<off_t>(kBlobSlabBytes)) != 0) {
+                ::close(fd);
+                throw std::runtime_error("failed to size blob mmap slab backing file");
+            }
+            void* mapped = ::mmap(nullptr, kBlobSlabBytes, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+            ::close(fd);
+            if (mapped == MAP_FAILED) {
+                throw std::runtime_error("failed to mmap blob slab backing file");
+            }
+            std::shared_ptr<void> region(mapped, [](void* ptr) {
+                if (ptr && ptr != MAP_FAILED) {
+                    ::msync(ptr, kBlobSlabBytes, MS_SYNC);
+                    ::munmap(ptr, kBlobSlabBytes);
+                }
+            });
+            char* mappedBytes = static_cast<char*>(region.get());
+            return new BlobSlab(mappedBytes, std::move(region));
+        }
+        (void)slabIndex;
+        return new BlobSlab();
+    }
+
+    BlobAllocator()
+        : backingPolicy_(ArenaSlabBackingPolicy::Heap),
+          mmapBackingDirectory_(),
+          mmapBackingFilePrefix_() {}
 
 public:
     static BlobAllocator& getAllocator() {
@@ -315,14 +384,14 @@ public:
     }
 
     SlabId allocate(const void* data, size_t length) {
-        if (length == 0 || length > 65536) return SlabId(0, 0);
+        if (length == 0 || length > kBlobSlabBytes) return SlabId(0, 0);
 
         for (uint16_t i = 0; i < NUM_SLABS; ++i) {
             if (!slabs[i]) {
-                slabs[i] = new BlobSlab();
+                slabs[i] = createOwnedSlab(i);
                 if (i == 0) slabs[i]->count = 1; // reserve (0,0) as null sentinel
             }
-            if (65536 - slabs[i]->count >= length) {
+            if (kBlobSlabBytes - slabs[i]->count >= length) {
                 SlabId id(i, static_cast<uint16_t>(slabs[i]->count));
                 if (data) memcpy(&slabs[i]->bytes[slabs[i]->count], data, length);
                 else memset(&slabs[i]->bytes[slabs[i]->count], 0, length);
@@ -392,6 +461,50 @@ public:
         }
     }
 
+    void resetForTests() {
+        clearAllSlabs();
+        backingPolicy_ = ArenaSlabBackingPolicy::Heap;
+        mmapBackingDirectory_.clear();
+        mmapBackingFilePrefix_.clear();
+    }
+
+    void setSlabBackingPolicy(ArenaSlabBackingPolicy policy) {
+        backingPolicy_ = policy;
+    }
+
+    ArenaSlabBackingPolicy slabBackingPolicy() const {
+        return backingPolicy_;
+    }
+
+    void configureMmapFileBackedSlabs(std::string directory,
+                                      std::string filePrefix = std::string()) {
+        mmapBackingDirectory_ = std::move(directory);
+        mmapBackingFilePrefix_ = std::move(filePrefix);
+    }
+
+    std::string slabBackingPath(uint16_t slabIndex) const {
+        if (backingPolicy_ != ArenaSlabBackingPolicy::MmapFile || mmapBackingDirectory_.empty()) {
+            return std::string();
+        }
+        return mmapBackingPathForSlab(slabIndex);
+    }
+
+    bool slabUsesMappedBacking(uint16_t slabIndex) const {
+        return slabIndex < NUM_SLABS && slabs[slabIndex] && slabs[slabIndex]->mappedBacking;
+    }
+
+    bool flushMappedSlabs() const {
+        for (int slabIndex = 0; slabIndex < NUM_SLABS; ++slabIndex) {
+            if (!slabs[slabIndex] || !slabs[slabIndex]->mappedBacking || !slabs[slabIndex]->bytes) {
+                continue;
+            }
+            if (::msync(slabs[slabIndex]->bytes, kBlobSlabBytes, MS_SYNC) != 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     struct BlobStats {
         size_t activeSlabs = 0;
         size_t totalBytes  = 0;  // activeSlabs * 65536
@@ -404,7 +517,7 @@ public:
             if (!slabs[i] || slabs[i]->count == 0) continue;
             ++stats.activeSlabs;
             stats.usedBytes  += slabs[i]->count;
-            stats.totalBytes += 65536;
+            stats.totalBytes += kBlobSlabBytes;
         }
         return stats;
     }
@@ -510,40 +623,38 @@ private:
     }
 
     Slab* createOwnedSlab(uint16_t slabIndex) {
-        if constexpr (ArenaPersistenceTraits<T>::encoding == ArenaSlabEncoding::RawBytes) {
-            if (backingPolicy_ == ArenaSlabBackingPolicy::MmapFile) {
-                if (mmapBackingDirectory_.empty()) {
-                    throw std::runtime_error("mmap slab backing directory is not configured");
-                }
-                std::error_code ec;
-                std::filesystem::create_directories(mmapBackingDirectory_, ec);
-                if (ec) {
-                    throw std::runtime_error("failed to create mmap slab backing directory");
-                }
-                const auto path = mmapBackingPathForSlab(slabIndex);
-                const size_t bytes = SLAB_SIZE * sizeof(T);
-                const int fd = ::open(path.c_str(), O_RDWR | O_CREAT | O_TRUNC, 0644);
-                if (fd < 0) {
-                    throw std::runtime_error("failed to open mmap slab backing file");
-                }
-                if (::ftruncate(fd, static_cast<off_t>(bytes)) != 0) {
-                    ::close(fd);
-                    throw std::runtime_error("failed to size mmap slab backing file");
-                }
-                void* mapped = ::mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-                ::close(fd);
-                if (mapped == MAP_FAILED) {
-                    throw std::runtime_error("failed to mmap slab backing file");
-                }
-                std::shared_ptr<void> region(mapped, [bytes](void* ptr) {
-                    if (ptr && ptr != MAP_FAILED) {
-                        ::msync(ptr, bytes, MS_SYNC);
-                        ::munmap(ptr, bytes);
-                    }
-                });
-                T* mappedItems = reinterpret_cast<T*>(region.get());
-                return new Slab(0, std::vector<size_t>(SLAB_SIZE, 0), mappedItems, std::move(region), bytes);
+        if (backingPolicy_ == ArenaSlabBackingPolicy::MmapFile) {
+            if (mmapBackingDirectory_.empty()) {
+                throw std::runtime_error("mmap slab backing directory is not configured");
             }
+            std::error_code ec;
+            std::filesystem::create_directories(mmapBackingDirectory_, ec);
+            if (ec) {
+                throw std::runtime_error("failed to create mmap slab backing directory");
+            }
+            const auto path = mmapBackingPathForSlab(slabIndex);
+            const size_t bytes = SLAB_SIZE * sizeof(T);
+            const int fd = ::open(path.c_str(), O_RDWR | O_CREAT | O_TRUNC, 0644);
+            if (fd < 0) {
+                throw std::runtime_error("failed to open mmap slab backing file");
+            }
+            if (::ftruncate(fd, static_cast<off_t>(bytes)) != 0) {
+                ::close(fd);
+                throw std::runtime_error("failed to size mmap slab backing file");
+            }
+            void* mapped = ::mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+            ::close(fd);
+            if (mapped == MAP_FAILED) {
+                throw std::runtime_error("failed to mmap slab backing file");
+            }
+            std::shared_ptr<void> region(mapped, [bytes](void* ptr) {
+                if (ptr && ptr != MAP_FAILED) {
+                    ::msync(ptr, bytes, MS_SYNC);
+                    ::munmap(ptr, bytes);
+                }
+            });
+            T* mappedItems = reinterpret_cast<T*>(region.get());
+            return new Slab(0, std::vector<size_t>(SLAB_SIZE, 0), mappedItems, std::move(region), bytes);
         }
         (void)slabIndex;
         return new Slab();

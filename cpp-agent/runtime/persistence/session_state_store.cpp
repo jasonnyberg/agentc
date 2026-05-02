@@ -127,10 +127,43 @@ bool exportAllocatorManifestAndImagesFromCheckpoint(const std::string& logical_n
     return true;
 }
 
+SessionImageBootstrapAllocator makeBootstrapAllocator(const SessionImageAllocatorManifest& manifest) {
+    SessionImageBootstrapAllocator bootstrap;
+    bootstrap.name = manifest.name;
+    bootstrap.type = manifest.type;
+    bootstrap.encoding = manifest.encoding;
+    bootstrap.item_size_bytes = manifest.item_size_bytes;
+    bootstrap.metadata_file = manifest.metadata_file;
+    return bootstrap;
+}
+
+SessionImageAllocatorManifest makeAllocatorDescriptor(const SessionImageBootstrapAllocator& bootstrap) {
+    SessionImageAllocatorManifest manifest;
+    manifest.name = bootstrap.name;
+    manifest.type = bootstrap.type;
+    manifest.encoding = bootstrap.encoding;
+    manifest.item_size_bytes = bootstrap.item_size_bytes;
+    manifest.metadata_file = bootstrap.metadata_file;
+    return manifest;
+}
+
+SessionImageBootstrap makeBootstrapFromManifest(const SessionImageManifest& manifest) {
+    SessionImageBootstrap bootstrap;
+    bootstrap.version = manifest.version;
+    bootstrap.session = manifest.session;
+    bootstrap.roots_file = manifest.roots_file;
+    bootstrap.allocators.reserve(manifest.allocators.size());
+    for (const auto& allocator : manifest.allocators) {
+        bootstrap.allocators.push_back(makeBootstrapAllocator(allocator));
+    }
+    return bootstrap;
+}
+
 template <typename T>
-bool restoreAllocatorFromManifest(const SessionImageStore& image_store,
-                                  const SessionImageAllocatorManifest& allocator_manifest,
+bool restoreAllocatorFromDescriptor(const SessionImageStore& image_store,
+                                  const SessionImageBootstrapAllocator& allocator_bootstrap,
                                   std::string* error) {
+    const auto allocator_manifest = makeAllocatorDescriptor(allocator_bootstrap);
     ArenaCheckpointMetadata metadata;
     if (!image_store.loadAllocatorMetadata(allocator_manifest, metadata, error)) {
         return false;
@@ -142,13 +175,12 @@ bool restoreAllocatorFromManifest(const SessionImageStore& image_store,
         return false;
     }
 
-    if (allocator_manifest.slabs.empty()) {
-        return metadata.liveSlotCount == 0;
-    }
-
     std::vector<ArenaSlabImage> images;
     if (!image_store.loadAllocatorSlabs(allocator_manifest, images, error)) {
         return false;
+    }
+    if (images.empty()) {
+        return metadata.liveSlotCount == 0;
     }
     if (!allocator.restoreSlabImages(images)) {
         if (error) *error = "failed to restore allocator slab images";
@@ -157,9 +189,9 @@ bool restoreAllocatorFromManifest(const SessionImageStore& image_store,
     return true;
 }
 
-const SessionImageAllocatorManifest* findAllocatorManifest(const SessionImageManifest& manifest,
-                                                           const std::string& name) {
-    for (const auto& allocator : manifest.allocators) {
+const SessionImageBootstrapAllocator* findAllocatorBootstrap(const SessionImageBootstrap& bootstrap,
+                                                                 const std::string& name) {
+    for (const auto& allocator : bootstrap.allocators) {
         if (allocator.name == name) {
             return &allocator;
         }
@@ -186,31 +218,39 @@ bool SessionStateStore::loadRoot(CPtr<agentc::ListreeValue>& out, std::string* e
 
     resetStructuredListreeAllocators();
 
-    SessionImageManifest manifest;
-    if (!image_store.loadManifest(manifest, error)) {
+    SessionImageBootstrap bootstrap;
+    if (std::filesystem::exists(image_store.bootstrapPath())) {
+        if (!image_store.loadBootstrap(bootstrap, error)) {
+            return false;
+        }
+    } else {
+        SessionImageManifest manifest;
+        if (!image_store.loadManifest(manifest, error)) {
+            return false;
+        }
+        bootstrap = makeBootstrapFromManifest(manifest);
+    }
+
+    const auto* value_bootstrap = findAllocatorBootstrap(bootstrap, "value");
+    const auto* ref_bootstrap = findAllocatorBootstrap(bootstrap, "ref");
+    const auto* node_bootstrap = findAllocatorBootstrap(bootstrap, "node");
+    const auto* item_bootstrap = findAllocatorBootstrap(bootstrap, "item");
+    const auto* tree_bootstrap = findAllocatorBootstrap(bootstrap, "tree");
+    if (!value_bootstrap || !ref_bootstrap || !node_bootstrap || !item_bootstrap || !tree_bootstrap) {
+        if (error) *error = "session bootstrap is missing required allocators";
         return false;
     }
 
-    const auto* value_manifest = findAllocatorManifest(manifest, "value");
-    const auto* ref_manifest = findAllocatorManifest(manifest, "ref");
-    const auto* node_manifest = findAllocatorManifest(manifest, "node");
-    const auto* item_manifest = findAllocatorManifest(manifest, "item");
-    const auto* tree_manifest = findAllocatorManifest(manifest, "tree");
-    if (!value_manifest || !ref_manifest || !node_manifest || !item_manifest || !tree_manifest) {
-        if (error) *error = "session manifest is missing required allocators";
-        return false;
-    }
-
-    if (!restoreAllocatorFromManifest<agentc::ListreeValue>(image_store, *value_manifest, error) ||
-        !restoreAllocatorFromManifest<agentc::ListreeValueRef>(image_store, *ref_manifest, error) ||
-        !restoreAllocatorFromManifest<CLL<agentc::ListreeValueRef>>(image_store, *node_manifest, error) ||
-        !restoreAllocatorFromManifest<agentc::ListreeItem>(image_store, *item_manifest, error) ||
-        !restoreAllocatorFromManifest<AATree<agentc::ListreeItem>>(image_store, *tree_manifest, error)) {
+    if (!restoreAllocatorFromDescriptor<agentc::ListreeValue>(image_store, *value_bootstrap, error) ||
+        !restoreAllocatorFromDescriptor<agentc::ListreeValueRef>(image_store, *ref_bootstrap, error) ||
+        !restoreAllocatorFromDescriptor<CLL<agentc::ListreeValueRef>>(image_store, *node_bootstrap, error) ||
+        !restoreAllocatorFromDescriptor<agentc::ListreeItem>(image_store, *item_bootstrap, error) ||
+        !restoreAllocatorFromDescriptor<AATree<agentc::ListreeItem>>(image_store, *tree_bootstrap, error)) {
         return false;
     }
 
     ArenaRootState root_state;
-    if (!image_store.loadRootState(manifest, root_state, error)) {
+    if (!image_store.loadRootState(bootstrap.roots_file, root_state, error)) {
         return false;
     }
 
@@ -313,9 +353,13 @@ bool SessionStateStore::saveRoot(CPtr<agentc::ListreeValue> root, std::string* e
     auto image_store = sessionImageStore();
     image_store.clear();
 
+    SessionImageBootstrap bootstrap;
+    bootstrap.session = image_store.sessionName();
+    bootstrap.roots_file = "roots.bin";
+
     SessionImageManifest manifest;
     manifest.session = image_store.sessionName();
-    manifest.roots_file = "roots.bin";
+    manifest.roots_file = bootstrap.roots_file;
 
     if (!image_store.saveAllocatorMetadata(value_manifest, value_metadata, error) ||
         !image_store.saveAllocatorMetadata(ref_manifest, ref_metadata, error) ||
@@ -337,8 +381,16 @@ bool SessionStateStore::saveRoot(CPtr<agentc::ListreeValue> root, std::string* e
         item_manifest,
         tree_manifest,
     };
+    bootstrap.allocators = {
+        makeBootstrapAllocator(value_manifest),
+        makeBootstrapAllocator(ref_manifest),
+        makeBootstrapAllocator(node_manifest),
+        makeBootstrapAllocator(item_manifest),
+        makeBootstrapAllocator(tree_manifest),
+    };
 
-    if (!image_store.saveRootState(manifest, makeRootState("session", snapshot_root_sid), error) ||
+    if (!image_store.saveRootState(bootstrap.roots_file, makeRootState("session", snapshot_root_sid), error) ||
+        !image_store.saveBootstrap(bootstrap, error) ||
         !image_store.saveManifest(manifest, error)) {
         return false;
     }
