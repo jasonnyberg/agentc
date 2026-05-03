@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "../runtime/persistence/agent_root_state.h"
+
 #include "../runtime/persistence/agent_root_vm_ops.h"
 #include "../../edict/edict_compiler.h"
 #include "../../edict/edict_vm.h"
@@ -211,6 +211,47 @@ TEST(AgentRootVmOpsTest, ReplyTextFromVmRootFormatsStoredErrorEnvelope) {
 
     agentc::runtime::apply_runtime_response_to_vm_agent_root(*vm, "Bad prompt", response);
     EXPECT_EQ(agentc::runtime::reply_text_from_vm_agent_root(*vm), "[error] broken");
+}
+
+TEST(AgentRootVmOpsTest, RehydratesTransientRuntimeStateExplicitlyOnStartup) {
+    auto root = agentc::runtime::make_default_agent_root("system", "google", "gemini-2.5-flash");
+    root["conversation"]["messages"] = nlohmann::json::array({
+        nlohmann::json{{"role", "user"}, {"text", "hello"}},
+        nlohmann::json{{"role", "assistant"}, {"text", "world"}}
+    });
+    root["__vm_runtime_response"] = nlohmann::json{{"stale", true}};
+    root["vm_runtime_handle"] = "stale-handle";
+
+    auto vm = makeVm(root);
+    const auto artifacts = mockRuntimeArtifacts();
+    agentc::runtime::rehydrate_vm_runtime_state(
+        *vm,
+        "system",
+        nlohmann::json{{"default_provider", "mock"}, {"default_model", "mock-model"}},
+        artifacts,
+        "startup-restored",
+        "agentc-config.json");
+
+    const auto rehydrated = nlohmann::json::parse(agentc::toJson(vm->getCursor().getValue()));
+    ASSERT_TRUE(rehydrated["runtime"].is_object());
+    ASSERT_TRUE(rehydrated["runtime"]["rehydration"].is_object());
+    EXPECT_EQ(rehydrated["runtime"]["rehydration"]["status"].get<std::string>(), "complete");
+    EXPECT_EQ(rehydrated["runtime"]["rehydration"]["last_event"].get<std::string>(), "startup-restored");
+    EXPECT_EQ(rehydrated["runtime"]["rehydration"]["config_source"].get<std::string>(), "config-file");
+    EXPECT_EQ(rehydrated["runtime"]["rehydration"]["config_path_hint"].get<std::string>(), "agentc-config.json");
+    EXPECT_EQ(rehydrated["runtime"]["rehydration"]["transient_handles_persisted"].get<std::string>(),
+              "not-persisted");
+    EXPECT_EQ(rehydrated["runtime"]["rehydration"]["transient_state_rebuilt"].get<std::string>(),
+              "rebuilt");
+    EXPECT_EQ(rehydrated["runtime"]["rehydration"]["binding"]["kind"].get<std::string>(),
+              "embedded_imported_agentc_runtime");
+    EXPECT_EQ(rehydrated["runtime"]["rehydration"]["binding"]["module_name"].get<std::string>(), "agentc");
+    EXPECT_EQ(rehydrated["runtime"]["default_provider"].get<std::string>(), "google");
+    EXPECT_EQ(rehydrated["runtime"]["default_model"].get<std::string>(), "gemini-2.5-flash");
+    EXPECT_FALSE(rehydrated.contains("__vm_runtime_response"));
+    EXPECT_FALSE(rehydrated.contains("vm_runtime_handle"));
+    ASSERT_EQ(rehydrated["conversation"]["messages"].size(), 2u);
+    EXPECT_EQ(rehydrated["conversation"]["messages"][1]["text"].get<std::string>(), "world");
 }
 
 TEST(AgentRootVmOpsTest, RunTurnCanInvokeRuntimeThroughImportedVmBindings) {

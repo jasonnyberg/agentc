@@ -3,7 +3,7 @@
 #include "provider_registry.h"
 #include "../providers/register_builtin_providers.h"
 #include "../common/credentials.h"
-#include "../../ai_types.h"
+#include "ai_types.h"
 
 #include <fstream>
 #include <sstream>

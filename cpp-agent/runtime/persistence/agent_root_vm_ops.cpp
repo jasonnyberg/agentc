@@ -1,6 +1,5 @@
 #include "agent_root_vm_ops.h"
 
-#include "agent_root_state.h"
 #include "../../../edict/edict_compiler.h"
 #include "../../../edict/edict_repl.h"
 #include "../../../listree/listree.h"
@@ -91,16 +90,55 @@ CPtr<agentc::ListreeValue> execute_vm_value_query_or_throw(
     std::initializer_list<CPtr<agentc::ListreeValue>> args,
     const char* label);
 
+std::string config_default_or(const json& config, const char* key, const char* fallback) {
+    return config.contains(key) && config[key].is_string()
+        ? config[key].get<std::string>()
+        : std::string(fallback);
+}
+
 json merged_runtime_config_for_vm_agent_root(agentc::edict::EdictVM& vm,
                                              const json& base_runtime_config) {
     json config = base_runtime_config;
     const auto root = json_from_value_or_throw(vm.getCursor().getValue(), "embedded vm root");
     if (root.contains("runtime") && root["runtime"].is_object()) {
-        for (auto it = root["runtime"].begin(); it != root["runtime"].end(); ++it) {
-            config[it.key()] = it.value();
+        const auto& runtime = root["runtime"];
+        for (const auto* key : {"default_provider", "default_model", "defaults", "providers"}) {
+            if (runtime.contains(key)) {
+                config[key] = runtime[key];
+            }
         }
     }
     return config;
+}
+
+void replace_vm_root_from_json_or_throw(agentc::edict::EdictVM& vm,
+                                        const json& root,
+                                        const char* label) {
+    vm.setCursor(json_value_or_throw(root, label));
+    vm.reset();
+}
+
+json runtime_rehydration_metadata(const json& /*base_runtime_config*/,
+                                  const VmRuntimeImportArtifacts& artifacts,
+                                  const std::string& lifecycle_event,
+                                  const std::string& config_path_hint) {
+    json metadata = {
+        {"status", "complete"},
+        {"last_event", lifecycle_event},
+        {"config_source", config_path_hint.empty() ? "host-defaults" : "config-file"},
+        {"transient_handles_persisted", "not-persisted"},
+        {"transient_state_rebuilt", "rebuilt"},
+        {"binding", {
+            {"kind", "embedded_imported_agentc_runtime"},
+            {"module_name", "agentc"},
+            {"runtime_library", std::filesystem::path(artifacts.runtime_library_path).filename().string()},
+            {"extensions_library", std::filesystem::path(artifacts.extensions_library_path).filename().string()}
+        }}
+    };
+    if (!config_path_hint.empty()) {
+        metadata["config_path_hint"] = config_path_hint;
+    }
+    return metadata;
 }
 
 std::string runtime_bootstrap_script_for_artifacts(const VmRuntimeImportArtifacts& artifacts) {
@@ -170,7 +208,107 @@ CPtr<agentc::ListreeValue> execute_vm_value_query_or_throw(
     return result;
 }
 
+
+void merge_object(json& dst, const json& src) {
+    if (!dst.is_object() || !src.is_object()) {
+        return;
+    }
+    for (auto it = src.begin(); it != src.end(); ++it) {
+        dst[it.key()] = it.value();
+    }
+}
+
+json normalized_conversation(const json& root,
+                             const std::string& fallback_system_prompt) {
+    json conversation = {
+        {"system_prompt", fallback_system_prompt},
+        {"messages", json::array()},
+        {"last_prompt", nullptr},
+        {"last_response", nullptr},
+        {"assistant_text", ""}
+    };
+
+    if (root.is_object() && root.contains("conversation") && root["conversation"].is_object()) {
+        merge_object(conversation, root["conversation"]);
+    } else if (root.is_object()) {
+        if (root.contains("system_prompt") && root["system_prompt"].is_string()) {
+            conversation["system_prompt"] = root["system_prompt"];
+        }
+        if (root.contains("messages") && root["messages"].is_array()) {
+            conversation["messages"] = root["messages"];
+        }
+    }
+
+    if (!conversation.contains("messages") || !conversation["messages"].is_array()) {
+        conversation["messages"] = json::array();
+    }
+    if (!conversation.contains("assistant_text") || !conversation["assistant_text"].is_string()) {
+        conversation["assistant_text"] = "";
+    }
+    if (!conversation.contains("system_prompt") || !conversation["system_prompt"].is_string()) {
+        conversation["system_prompt"] = fallback_system_prompt;
+    }
+
+    return conversation;
+}
+
 } // namespace
+
+nlohmann::json make_default_agent_root(const std::string& system_prompt,
+                                       const std::string& default_provider,
+                                       const std::string& default_model) {
+    return json{
+        {"conversation", {
+            {"system_prompt", system_prompt},
+            {"messages", json::array()},
+            {"last_prompt", nullptr},
+            {"last_response", nullptr},
+            {"assistant_text", ""}
+        }},
+        {"memory", {
+            {"entries", json::array()}
+        }},
+        {"policy", {
+            {"allow_tools", "false"}
+        }},
+        {"runtime", {
+            {"default_provider", default_provider},
+            {"default_model", default_model}
+        }},
+        {"loop", {
+            {"status", "ready"},
+            {"last_prompt", nullptr}
+        }}
+    };
+}
+
+nlohmann::json normalize_agent_root(const nlohmann::json& value,
+                                    const std::string& fallback_system_prompt,
+                                    const std::string& fallback_provider,
+                                    const std::string& fallback_model) {
+    json root = make_default_agent_root(fallback_system_prompt, fallback_provider, fallback_model);
+
+    if (!value.is_object()) {
+        return root;
+    }
+
+    root["conversation"] = normalized_conversation(value, fallback_system_prompt);
+
+    if (value.contains("memory") && value["memory"].is_object()) {
+        merge_object(root["memory"], value["memory"]);
+    }
+    if (value.contains("policy") && value["policy"].is_object()) {
+        merge_object(root["policy"], value["policy"]);
+    }
+    if (value.contains("runtime") && value["runtime"].is_object()) {
+        merge_object(root["runtime"], value["runtime"]);
+    }
+    if (value.contains("loop") && value["loop"].is_object()) {
+        merge_object(root["loop"], value["loop"]);
+    }
+
+    return root;
+}
 
 VmRuntimeImportArtifacts discover_vm_runtime_import_artifacts() {
     const auto cwd = std::filesystem::current_path();
@@ -257,6 +395,43 @@ json run_vm_agent_root_turn_via_imported_runtime(agentc::edict::EdictVM& vm,
     const auto response = call_runtime_from_vm_or_throw(vm, runtime_config, request, artifacts);
     apply_runtime_response_to_vm_agent_root(vm, prompt, response);
     return response;
+}
+
+void rehydrate_vm_runtime_state(agentc::edict::EdictVM& vm,
+                                const std::string& fallback_system_prompt,
+                                const json& base_runtime_config,
+                                const VmRuntimeImportArtifacts& artifacts,
+                                const std::string& lifecycle_event,
+                                const std::string& config_path_hint) {
+    auto root = json_from_value_or_throw(vm.getCursor().getValue(), "embedded vm root before runtime rehydration");
+    root.erase("__vm_runtime_response");
+    root.erase("vm_runtime_config");
+    root.erase("vm_runtime_request");
+    root.erase("vm_runtime_handle");
+
+    root = normalize_agent_root(
+        root,
+        fallback_system_prompt,
+        config_default_or(base_runtime_config, "default_provider", "google"),
+        config_default_or(base_runtime_config, "default_model", "gemini-2.5-flash"));
+
+    if (!root.contains("runtime") || !root["runtime"].is_object()) {
+        root["runtime"] = json::object();
+    }
+    auto& runtime = root["runtime"];
+    if (!runtime.contains("default_provider") || !runtime["default_provider"].is_string()) {
+        runtime["default_provider"] = config_default_or(base_runtime_config, "default_provider", "google");
+    }
+    if (!runtime.contains("default_model") || !runtime["default_model"].is_string()) {
+        runtime["default_model"] = config_default_or(base_runtime_config, "default_model", "gemini-2.5-flash");
+    }
+    runtime["rehydration"] = runtime_rehydration_metadata(
+        base_runtime_config,
+        artifacts,
+        lifecycle_event,
+        config_path_hint);
+
+    replace_vm_root_from_json_or_throw(vm, root, "rehydrated embedded vm root");
 }
 
 std::string reply_text_from_vm_agent_root(agentc::edict::EdictVM& vm) {

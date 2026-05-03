@@ -1,8 +1,0 @@
-#pragma once
-
-#include "runtime/core/provider_registry.h"
-
-#include <string>
-
-void register_provider(const std::string& api, StreamFn fn);
-StreamFn get_provider(const std::string& api);

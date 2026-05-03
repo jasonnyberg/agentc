@@ -1,5 +1,5 @@
 #include "socket_server.h"
-#include "runtime/persistence/agent_root_state.h"
+
 #include "runtime/persistence/agent_root_vm_ops.h"
 #include "runtime/persistence/session_state_store.h"
 #include "../edict/edict_vm.h"
@@ -113,19 +113,6 @@ static CPtr<agentc::ListreeValue> materialize_root_value_or_throw(const json& ro
     return value;
 }
 
-static json root_json_from_vm_or_throw(agentc::edict::EdictVM& vm) {
-    auto root = vm.getCursor().getValue();
-    if (!root) {
-        throw std::runtime_error("embedded VM has null root");
-    }
-    return json::parse(agentc::toJson(root));
-}
-
-static void replace_vm_root_or_throw(agentc::edict::EdictVM& vm, const json& root) {
-    vm.setCursor(materialize_root_value_or_throw(root));
-    vm.reset();
-}
-
 } // namespace
 
 int main(int argc, char** argv) {
@@ -141,9 +128,11 @@ int main(int argc, char** argv) {
 
         agentc::runtime::SessionStateStore session_store(options.state_base, options.session_name);
         CPtr<agentc::ListreeValue> initial_root_value;
+        bool restored_root = false;
         if (session_store.exists()) {
             std::string error;
             if (session_store.loadRoot(initial_root_value, &error)) {
+                restored_root = true;
                 std::printf("Restored persisted agent root from %s/%s\n",
                             options.state_base.c_str(), options.session_name.c_str());
             } else {
@@ -155,9 +144,13 @@ int main(int argc, char** argv) {
                 agentc::runtime::make_default_agent_root(options.system_prompt, options.provider, options.model));
         }
         agentc::edict::EdictVM embedded_vm(initial_root_value);
-        json normalized_root = agentc::runtime::normalize_agent_root(
-            root_json_from_vm_or_throw(embedded_vm), options.system_prompt, options.provider, options.model);
-        replace_vm_root_or_throw(embedded_vm, normalized_root);
+        agentc::runtime::rehydrate_vm_runtime_state(
+            embedded_vm,
+            options.system_prompt,
+            base_runtime_config,
+            runtime_import_artifacts,
+            restored_root ? "startup-restored" : "startup-fresh",
+            config_path);
 
         asio::io_context io_context;
         unlink(options.socket_path.c_str());
@@ -184,7 +177,15 @@ int main(int argc, char** argv) {
                 if (input == "reset-session") {
                     const auto reset_root = agentc::runtime::make_default_agent_root(
                         options.system_prompt, options.provider, options.model);
-                    replace_vm_root_or_throw(embedded_vm, reset_root);
+                    embedded_vm.setCursor(materialize_root_value_or_throw(reset_root));
+                    embedded_vm.reset();
+                    agentc::runtime::rehydrate_vm_runtime_state(
+                        embedded_vm,
+                        options.system_prompt,
+                        base_runtime_config,
+                        runtime_import_artifacts,
+                        "session-reset",
+                        config_path);
                     session_store.clear();
                     if (!safe_write(socket, "Agent: session reset.\n> ")) break;
                     continue;

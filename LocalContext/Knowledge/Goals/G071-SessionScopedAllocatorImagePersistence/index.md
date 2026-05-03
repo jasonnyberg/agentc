@@ -171,5 +171,9 @@ Phase 5 target: agent persistence becomes a thin consumer of the substrate, not 
 - Added durable regression coverage proving the thinner bootstrap path is real rather than merely theoretical: `cpp-agent/tests/session_state_store_test.cpp` now validates that `bootstrap.json` omits slab enumeration and that a full canonical root restore still succeeds after deleting `manifest.json` entirely.
 - Validation: `ctest -R cpp_agent_tests --output-on-failure` passes, and `cpp-agent/tests/run_cpp_agent_tests_with_timeout.sh` passes across the full gtest suite.
 
+### 2026-05-02
+- Fed the new substrate back upward into the first explicit durable-vs-transient restore contract slice: `cpp-agent/runtime/persistence/agent_root_vm_ops.*` now exposes `rehydrate_vm_runtime_state(...)`, startup/reset now stamp only declarative runtime/import rehydration metadata into the VM-owned root, and durable regression coverage now proves persisted roots keep that metadata while excluding transient runtime-call scratch keys.
+- This work does not change the lower-level session-image format directly, but it is the first concrete consumer-side proof that the substrate can carry durable declarative rehydration metadata above allocator/root restore without pretending transient runtime handles themselves are durable state.
+
 ## Next Action
-Now that a thin bootstrap/root record exists and slab discovery no longer depends entirely on manifest slab lists, pivot to the remaining authority/rehydration gap above the substrate: define and implement the durable-vs-transient restore contract so runtime/import state is rebuilt explicitly after native session-image restore.
+Now that a thin bootstrap/root record exists and the first explicit durable-vs-transient restore contract slice is in place, pivot back to the remaining startup/reset ownership cleanup and helper-surface reduction above the substrate: tighten `cpp-agent/main.cpp` so the embedded VM/root is more clearly the sole live owner, then continue trimming compatibility-only host helper paths.

@@ -1,6 +1,6 @@
 #include "openai_provider.h"
 
-#include "../../../ai_types.h"
+#include "../../core/ai_types.h"
 #include "../../core/provider_registry.h"
 #include "../../common/credentials.h"
 #include "../../common/http_client.h"

@@ -1,9 +1,11 @@
 #include <gtest/gtest.h>
 
-#include "../runtime/persistence/agent_root_state.h"
+#include "../runtime/persistence/agent_root_vm_ops.h"
+#include "../runtime/persistence/agent_root_vm_ops.h"
 #include "../runtime/persistence/session_image_store.h"
 #include "../runtime/persistence/session_state_store.h"
 #include "../../core/alloc.h"
+#include "../../edict/edict_vm.h"
 
 #include <cstdio>
 #include <filesystem>
@@ -12,7 +14,26 @@
 #include <map>
 #include <nlohmann/json.hpp>
 
+#ifndef TEST_SOURCE_DIR
+#define TEST_SOURCE_DIR "."
+#endif
+#ifndef TEST_BUILD_DIR
+#define TEST_BUILD_DIR "."
+#endif
+
 namespace {
+
+agentc::runtime::VmRuntimeImportArtifacts mockRuntimeArtifacts() {
+    const std::filesystem::path sourceRoot(TEST_SOURCE_DIR);
+    const std::filesystem::path buildRoot(TEST_BUILD_DIR);
+    return agentc::runtime::VmRuntimeImportArtifacts{
+        .extensions_library_path = (buildRoot / "extensions" / "libagentc_extensions.so").string(),
+        .extensions_header_path = (sourceRoot / "extensions" / "agentc_stdlib.h").string(),
+        .runtime_library_path = (buildRoot / "cpp-agent" / "libagent_runtime_mock.so").string(),
+        .runtime_header_path = (sourceRoot / "cpp-agent" / "include" / "agentc_runtime" / "agentc_runtime.h").string(),
+        .agentc_module_path = (sourceRoot / "cpp-agent" / "edict" / "modules" / "agentc.edict").string(),
+    };
+}
 
 template <typename T>
 agentc::runtime::SessionImageAllocatorManifest makeTestAllocatorManifest(
@@ -230,6 +251,47 @@ TEST(SessionStateStoreTest, WritesSessionBootstrapAndCanRestoreWithoutManifest) 
     EXPECT_EQ(restored["conversation"]["messages"][1]["text"].get<std::string>(), "bootstrap second message");
     EXPECT_EQ(restored["memory"]["summary"].get<std::string>(),
               "bootstrap restore should not depend on manifest presence");
+
+    store.clear();
+}
+
+TEST(SessionStateStoreTest, PersistsDeclarativeRuntimeRehydrationMetadataWithoutTransientHandles) {
+    const auto root = (std::filesystem::temp_directory_path() / "agentc_runtime_rehydration_persistence_test").string();
+    agentc::runtime::SessionStateStore store(root, "runtime-rehydration");
+    store.clear();
+
+    auto root_json = agentc::runtime::make_default_agent_root("persist runtime metadata", "google", "gemini-2.5-flash");
+    root_json["conversation"]["messages"] = nlohmann::json::array({
+        nlohmann::json{{"role", "user"}, {"text", "hello"}},
+        nlohmann::json{{"role", "assistant"}, {"text", "world"}}
+    });
+    std::string error;
+    nlohmann::json persisted_root;
+    {
+        auto vm_root = agentc::fromJson(root_json.dump());
+        ASSERT_TRUE(vm_root);
+        agentc::edict::EdictVM vm(vm_root);
+        agentc::runtime::rehydrate_vm_runtime_state(
+            vm,
+            "persist runtime metadata",
+            nlohmann::json{{"default_provider", "mock"}, {"default_model", "mock-model"}},
+            mockRuntimeArtifacts(),
+            "startup-restored",
+            "agentc-config.json");
+        persisted_root = nlohmann::json::parse(agentc::toJson(vm.getCursor().getValue()));
+    }
+
+    ASSERT_TRUE(store.save(persisted_root, &error)) << error;
+
+    nlohmann::json restored;
+    ASSERT_TRUE(store.load(restored, &error)) << error;
+    ASSERT_TRUE(restored["runtime"]["rehydration"].is_object());
+    EXPECT_EQ(restored["runtime"]["rehydration"]["last_event"].get<std::string>(), "startup-restored");
+    EXPECT_EQ(restored["runtime"]["rehydration"]["binding"]["module_name"].get<std::string>(), "agentc");
+    EXPECT_EQ(restored["runtime"]["rehydration"]["transient_handles_persisted"].get<std::string>(),
+              "not-persisted");
+    EXPECT_FALSE(restored.contains("__vm_runtime_response"));
+    EXPECT_FALSE(restored.contains("vm_runtime_handle"));
 
     store.clear();
 }

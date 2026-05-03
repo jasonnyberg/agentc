@@ -21,7 +21,6 @@ add_library(agent_runtime SHARED
     runtime/common/credentials.cpp
     runtime/common/http_client.cpp
     runtime/common/sse_parser.cpp
-    runtime/persistence/agent_root_state.cpp
     runtime/persistence/session_image_store.cpp
     runtime/persistence/session_state_store.cpp
     runtime/providers/google/google_provider.cpp
@@ -57,10 +56,6 @@ target_include_directories(cpp-agent PRIVATE
 target_link_libraries(cpp-agent PRIVATE libedict agent_runtime CURL::libcurl)
 target_compile_options(cpp-agent PRIVATE -Wall -Wextra -Wno-unused-parameter -DASIO_STANDALONE)
 
-add_executable(hello_gemini hello_gemini.cpp)
-target_link_libraries(hello_gemini PRIVATE CURL::libcurl)
-target_include_directories(hello_gemini PRIVATE ${nlohmann_json_SOURCE_DIR})
-target_compile_options(hello_gemini PRIVATE -Wall -Wextra)
 
 add_library(agent_runtime_mock SHARED
     tests/mock_runtime/mock_runtime.cpp
@@ -80,7 +75,6 @@ add_executable(cpp_agent_tests
     tests/edict_hello_loop_test.cpp
     tests/edict_stateful_loop_test.cpp
     tests/edict_agent_root_test.cpp
-    tests/agent_root_state_test.cpp
     tests/agent_root_vm_ops_test.cpp
     tests/embedded_vm_root_restore_test.cpp
     tests/session_state_store_test.cpp

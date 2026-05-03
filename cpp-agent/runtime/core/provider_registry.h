@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../../ai_types.h"
+#include "ai_types.h"
 
 #include <string>
 

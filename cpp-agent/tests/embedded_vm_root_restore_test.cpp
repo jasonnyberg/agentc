@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "../runtime/persistence/agent_root_state.h"
+#include "../runtime/persistence/agent_root_vm_ops.h"
 #include "../runtime/persistence/session_state_store.h"
 #include "../../edict/edict_vm.h"
 
