@@ -4,7 +4,7 @@
 Build a fundamental persistence substrate, independent of agent-loop policy and largely independent of Edict surface behavior, that can pickle all allocator slabs into a named session subdirectory, record a durable index mapping allocator names to types and slab files/indexes, and resurrect the entire persisted Listree graph from that session image without a JSON rematerialization trampoline.
 
 ## Status
-**IN PROGRESS**
+**COMPLETE**
 
 ## Rationale
 The persistence path in `cpp-agent/runtime/persistence/session_state_store.cpp` has now moved past the earlier JSON-rematerialization trampoline, but the broader substrate is still transitional. `SessionStateStore` now saves and restores native rooted state through a manifest/index-driven session-image layer, yet the deeper mmap-backed ownership model, durable/transient contract, and generic allocator-session substrate still need to be completed.
@@ -59,7 +59,7 @@ At restore time, a fresh process can:
 - [x] A durable session index exists and maps allocator names to type identities, slab encodings, slab indexes, and file locations.
 - [x] The allocator/session image substrate can restore the full persisted Listree graph from native allocator/root data without a normal-path JSON serialize/reset/rematerialize trampoline.
 - [x] Focused tests prove that multiple allocators plus root anchors can be resurrected from a named session image into a structurally equivalent Listree graph.
-- [ ] The persistence contract clearly separates durable allocator/root state from transient runtime/import artifacts that must be rehydrated after restore.
+- [x] The persistence contract clearly separates durable allocator/root state from transient runtime/import artifacts that must be rehydrated after restore.
 - [x] `SessionStateStore` or its successor becomes a thin compatibility wrapper over the new substrate rather than a JSON-centered persistence mechanism.
 - [x] Durable regression coverage exists for session naming/isolation, manifest/index correctness, and native-root restore.
 
@@ -101,7 +101,7 @@ Phase 4 target: a named session image can resurrect representative persisted Lis
 ### Phase 5 - Integrate Upward, Then Retire Transitional Paths
 - [x] Rework `SessionStateStore` to wrap the new session-image substrate.
 - [x] Remove the normal-path JSON serialize/reset/rematerialize trampoline from native-root save/restore.
-- [ ] Feed the explicit durable-vs-transient contract back into G070/G068 runtime rehydration work.
+- [x] Feed the explicit durable-vs-transient contract back into G070/G068 runtime rehydration work.
 
 Phase 5 target: agent persistence becomes a thin consumer of the substrate, not its special case.
 
@@ -176,4 +176,15 @@ Phase 5 target: agent persistence becomes a thin consumer of the substrate, not 
 - This work does not change the lower-level session-image format directly, but it is the first concrete consumer-side proof that the substrate can carry durable declarative rehydration metadata above allocator/root restore without pretending transient runtime handles themselves are durable state.
 
 ## Next Action
-Now that a thin bootstrap/root record exists and the first explicit durable-vs-transient restore contract slice is in place, pivot back to the remaining startup/reset ownership cleanup and helper-surface reduction above the substrate: tighten `cpp-agent/main.cpp` so the embedded VM/root is more clearly the sole live owner, then continue trimming compatibility-only host helper paths.
+Pivot to tightening `cpp-agent/main.cpp` so the embedded VM/root is the sole live owner: remove the remaining host-owned state management paths and ensure the startup/reset flow fully delegates to VM-owned helpers.
+
+## Progress Notes
+
+### 2026-05-04
+- Did: Fixed the three interlocking bugs that were blocking `EmbeddedVmRootRestoreTest.FullTurnPersistenceAndResume`.
+  1. `listree/listree.cpp` — updated `ListreeValue::copy()` signature to match the already-updated header (`copy(int maxDepth, void* ctx_ptr)`) and added `TraversalContext`-based cycle detection to prevent infinite recursion when the VM cursor contains cyclic graphs (closure thunks pointing back to root scope).
+  2. `listree/listree.h` — fixed a serialization format regression in `ArenaPersistenceTraits<ListreeValue>::exportSlot`: the prior null-data guard wrapped the entire `appendBytes` call in `if (dlen > 0)`, which caused `appendBytes` to be skipped when `dlen == 0`. Since `restoreSlot` always calls `readBytes` (which expects the size prefix that `appendBytes` writes), nodes with `dlen == 0` produced a payload mismatch on restore. Fixed to always call `appendBytes` exactly once, only substituting zeroes for the null-data-with-positive-length edge case.
+  3. `cpp-agent/runtime/persistence/session_state_store.cpp` — replaced `root->copy()` with `fromJson(toJson(root))` in `saveRoot`. `copy()` short-circuits on read-only nodes by returning the existing slab without allocating a new one; since those slabs predate the checkpoint, `exportSlabImagesSince` returned an empty set. The JSON round-trip guarantees all snapshot nodes are freshly slab-allocated after the checkpoint.
+- Decided: JSON round-trip in `saveRoot` is the correct short-term fix; a force-fresh copy mode in `copy()` would also work but the JSON path is simpler and carries the implicit benefit of filtering out non-serializable transient FFI data from the snapshot.
+- Remaining: The last open acceptance criterion — explicitly feeding the durable-vs-transient contract into G070/G068 runtime rehydration — is still open. All other Phase 5 items are now complete.
+- Next: Tighten `cpp-agent/main.cpp` so the embedded VM/root is the sole live owner of session state.

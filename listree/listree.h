@@ -273,7 +273,7 @@ public:
         flags = static_cast<LtvFlags>(static_cast<int>(flags) & ~static_cast<int>(f));
     }
     CPtr<ListreeValue> duplicate() const;
-    CPtr<ListreeValue> copy(int maxDepth = -1) const;
+    CPtr<ListreeValue> copy(int maxDepth = -1, void* ctx = nullptr) const;
     void forEachList(const std::function<void(CPtr<ListreeValueRef>&)>& callback, bool forward = true);
     void forEachTree(const std::function<void(const std::string&, CPtr<ListreeItem>&)>& callback, bool forward = true);
     void traverse(const std::function<void(CPtr<ListreeValue>)>& callback, TraversalOptions options = {}, std::shared_ptr<TraversalContext> context = nullptr);
@@ -427,10 +427,18 @@ struct ArenaPersistenceTraits<agentc::ListreeValue, void> {
         arena_persistence_detail::appendPod(payload, exportFlags);
         size_t dlen = value.getLength();
         arena_persistence_detail::appendPod(payload, dlen);
-        // pinnedCount is std::atomic<int>; extract the raw value before serializing.
+                                                                        // pinnedCount is std::atomic<int>; extract the raw value before serializing.
         int pc = value.pinnedCount.load(std::memory_order_relaxed);
         arena_persistence_detail::appendPod(payload, pc);
-        arena_persistence_detail::appendBytes(payload, value.getData(), dlen);
+        const void* data_ptr = value.getData();
+        if (dlen > 0 && !data_ptr) {
+            // dlen > 0 but null data pointer: write zeroes to avoid UB in appendBytes.
+            std::string zeros(dlen, '\0');
+            arena_persistence_detail::appendBytes(payload, zeros.data(), dlen);
+        } else {
+            // Normal case: always call appendBytes so restoreSlot's readBytes finds its size prefix.
+            arena_persistence_detail::appendBytes(payload, data_ptr, dlen);
+        }
         return true;
     }
 

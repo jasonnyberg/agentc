@@ -172,6 +172,7 @@ json call_runtime_from_vm_or_throw(agentc::edict::EdictVM& /*vm*/,
         throw std::runtime_error("call_runtime_from_vm_or_throw failed inside embedded VM: " + output.str());
     }
 
+    printf("ENV: %s\n", agentc::toJson(env).c_str());
     auto responseItem = env->find("__vm_runtime_response", false);
     if (!responseItem || !responseItem->getValue(false, false)) {
         throw std::runtime_error("call_runtime_from_vm_or_throw did not materialize __vm_runtime_response");

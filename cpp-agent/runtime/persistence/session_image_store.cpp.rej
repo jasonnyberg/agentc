@@ -1,0 +1,10 @@
+--- session_image_store.cpp
++++ session_image_store.cpp
+@@ -102,6 +102,7 @@
+ }
+ 
+ bool SessionImageStore::saveManifest(const SessionImageManifest& manifest, std::string* error) const {
++    std::filesystem::create_directories(base_path_ / session_name_);
+     const std::string path = (base_path_ / session_name_ / "manifest.json").string();
+     std::ofstream out(path);
+     if (!out.good()) {

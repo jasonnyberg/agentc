@@ -315,7 +315,19 @@ bool SessionStateStore::saveRoot(CPtr<agentc::ListreeValue> root, std::string* e
     std::vector<ArenaSlabImage> tree_images;
 
     try {
-        snapshot_root = root->copy();
+        // Force a full fresh-allocation copy via JSON round-trip so that all
+        // nodes are newly slab-allocated AFTER the checkpoint.  root->copy()
+        // short-circuits on read-only nodes (returning existing slabs) which
+        // would make exportSlabImagesSince return an empty set.
+        {
+            const std::string json_str = agentc::toJson(root);
+            if (json_str.empty()) {
+                rollback_snapshot();
+                if (error) *error = "failed to serialize agent root to JSON for snapshot";
+                return false;
+            }
+            snapshot_root = agentc::fromJson(json_str);
+        }
         if (!snapshot_root) {
             rollback_snapshot();
             if (error) *error = "failed to create native snapshot root";

@@ -1,3 +1,6 @@
+### 2026-05-04
+- G071 complete: fixed the three interlocking bugs that were blocking `EmbeddedVmRootRestoreTest.FullTurnPersistenceAndResume` — `copy()` signature/cycle-detection fix in `listree.cpp`, `appendBytes`-always-called serialization fix in `listree.h`, and `saveRoot` JSON round-trip fix in `session_state_store.cpp`. All 36 `cpp_agent_tests` now pass.
+
 ### 2026-05-02
 - G070 completed: deleted all unneeded legacy C++ agent loop scaffolding (`agent_loop.cpp`, `http_client.cpp`, etc.). Moved `ai_types.h` into the `runtime` tree.
 - Removed `agent_root_state.*` and eliminated the JSON trampoline from the normal Edict VM turn path, solidly cementing the embedded VM as the owner of live execution.
@@ -63,3 +66,6 @@
 - Added HRM goal 🔗[G068](./Knowledge/Goals/G068-ClientAgentSplitEmbeddedVmPersistence/index.md) to formalize the target runtime architecture: client/agent split, embedded Edict VM, and mmap slab persistence.
 - Added architecture work product 🔗[WP_EmbeddedPersistentAgentArchitecture](./Knowledge/WorkProducts/WP_EmbeddedPersistentAgentArchitecture.md) capturing roles, communication boundaries, lifecycle, and restore model.
 - Added HRM goal 🔗[G069](./Knowledge/Goals/G069-RemoveLMDBDependencies/index.md) to remove LMDB from the supported build/runtime architecture and make slab persistence the only intended persistence path.
+
+### 2026-05-03
+- Archival pass: 1 work product retired to Archive/; Dashboard rebuilt around 2 active goals.

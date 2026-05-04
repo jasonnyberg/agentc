@@ -282,8 +282,8 @@ CPtr<ListreeValue> ListreeValue::get(bool pop, bool fromEnd) {
     if (pop) list->remove(fromEnd);
     return value;
 }
-CPtr<ListreeValue> ListreeValue::duplicate() const { return copy(-1); }
-CPtr<ListreeValue> ListreeValue::copy(int maxDepth) const {
+CPtr<ListreeValue> ListreeValue::duplicate() const { return copy(-1, nullptr); }
+CPtr<ListreeValue> ListreeValue::copy(int maxDepth, void* ctx_ptr) const {
     // Short-circuit: a read-only node is permanently immutable and safe to
     // share between VMs/threads.  Return a CPtr retain (O(1)) rather than
     // allocating a deep copy of the subtree.
@@ -296,6 +296,26 @@ CPtr<ListreeValue> ListreeValue::copy(int maxDepth) const {
             // to normal copy.
         }
     }
+
+    // Cycle detection: reuse or create a TraversalContext for this traversal.
+    std::shared_ptr<TraversalContext> ctx;
+    if (ctx_ptr) {
+        ctx = *static_cast<std::shared_ptr<TraversalContext>*>(ctx_ptr);
+    } else {
+        ctx = std::make_shared<TraversalContext>();
+    }
+
+    SlabId my_sid(0, 0);
+    bool have_sid = false;
+    try {
+        my_sid = Allocator<ListreeValue>::getAllocator().getSlabId(this);
+        have_sid = true;
+        if (ctx->is_recursive(my_sid)) {
+            // Already on the call stack — cycle detected; return null to break it.
+            return CPtr<ListreeValue>();
+        }
+    } catch (...) {}
+
     CPtr<ListreeValue> res;
     {
         // Normalize flags for copy: strip SlabBlob/Immediate/Free and use Duplicate
@@ -310,14 +330,33 @@ CPtr<ListreeValue> ListreeValue::copy(int maxDepth) const {
         res = CPtr<ListreeValue>(sid);
     }
     if (maxDepth == 0) return res;
+
+    if (have_sid) ctx->mark_recursive(my_sid);
+
     int nextDepth = (maxDepth > 0) ? maxDepth - 1 : -1;
+    void* next_ctx = &ctx;
     if (isListMode() && list) {
-        list->forEach([&](CPtr<ListreeValueRef>& ref) { if (ref && ref->getValue()) { CPtr<ListreeValue> childCopy = ref->getValue()->copy(nextDepth); res->put(childCopy, false); } });
+        list->forEach([&](CPtr<ListreeValueRef>& ref) {
+            if (ref && ref->getValue()) {
+                CPtr<ListreeValue> childCopy = ref->getValue()->copy(nextDepth, next_ctx);
+                if (childCopy) res->put(childCopy, false);
+            }
+        });
     } else if (!isListMode() && tree) {
         tree->forEach([&](const std::string& name, CPtr<ListreeItem>& item) {
-            if (item) { CPtr<ListreeItem> copyItem = res->find(name, true); item->forEachValue([&](CPtr<ListreeValue>& val) { if (val) { CPtr<ListreeValue> valCopy = val->copy(nextDepth); copyItem->addValue(valCopy, false); } }); }
+            if (item) {
+                CPtr<ListreeItem> copyItem = res->find(name, true);
+                item->forEachValue([&](CPtr<ListreeValue>& val) {
+                    if (val) {
+                        CPtr<ListreeValue> valCopy = val->copy(nextDepth, next_ctx);
+                        if (valCopy) copyItem->addValue(valCopy, false);
+                    }
+                });
+            }
         });
     }
+
+    if (have_sid) ctx->unmark_recursive(my_sid);
     return res;
 }
 void ListreeValue::forEachList(const std::function<void(CPtr<ListreeValueRef>&)>& callback, bool forward) { if (isListMode() && list) list->forEach(callback, forward); }

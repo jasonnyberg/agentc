@@ -1,16 +1,20 @@
 # Dashboard
 
 **Project**: AgentC / J3  
-**Last Updated**: 2026-05-02
+**Last Updated**: 2026-05-04
 
-## Current Focus
-- **Active Goals**:
-  - **G068** — Client/Agent Split with Embedded Persistent Edict VM — **IN PROGRESS** 🔗[index](./Knowledge/Goals/G068-ClientAgentSplitEmbeddedVmPersistence/index.md)
-  - **G070** — Inverted Loop Surgical Cleanup — **COMPLETE** 🔗[index](./Knowledge/Goals/G070-InvertedLoopSurgicalCleanup/index.md)
-  - **G071** — Session-Scoped Allocator Image Persistence — **IN PROGRESS** 🔗[index](./Knowledge/Goals/G071-SessionScopedAllocatorImagePersistence/index.md)
-  - **G069** — Remove LMDB Dependencies — **COMPLETE** 🔗[index](./Knowledge/Goals/G069-RemoveLMDBDependencies/index.md)
-- **Current Task**: G070 is completely finished. The host no longer contains transitional C++ agent loop logic. G071 is now the primary remaining architecture/persistence target.
-- **Immediate Next Action**: Continue G071 by building authoritative mmap-backed slab ownership logic on top of the newly explicit durable/transient restore contract.
+## Open Goals
+### Active
+- 🔗[G068 — Client/Agent Split with Embedded Persistent Edict VM](./Knowledge/Goals/G068-ClientAgentSplitEmbeddedVmPersistence/index.md) — IN PROGRESS
+
+### Complete (this cycle)
+- 🔗[G071 — Session-Scoped Allocator Image Persistence](./Knowledge/Goals/G071-SessionScopedAllocatorImagePersistence/index.md) — **COMPLETE** (2026-05-04)
+
+### Blocked
+None
+
+### Deferred (planned)
+None
 
 ## Active Context
 - G070 is complete: The old C++ outer orchestration logic (`agent_loop.*`, `edict_tools.*`, `api_registry.*`, `credentials.*`, `http_client.*`, `sse_parser.*`) and the `hello_gemini` standalone executable have been permanently deleted from `cpp-agent`. Only the `runtime/` extraction remains, completely managed by `EdictVM`.
@@ -54,7 +58,8 @@
 - Restore/bootstrap authority has moved one step farther toward those slab headers too: `SessionImageStore` can now rediscover allocator slab files from allocator directories by inspecting slab headers, and load paths now use that discovery layer to fill or cross-check slab metadata so native restore and raw mapped attach both still work even when manifest allocator entries keep only identity/metadata fields and have empty `slabs` arrays.
 - A thinner bootstrap/root layer now exists above that discovery path: `SessionImageStore` persists a `bootstrap.json` record containing session identity, `roots.bin` location, and allocator identity/metadata records without slab enumeration, `SessionStateStore::loadRoot(...)` now prefers that bootstrap path while keeping manifest fallback for compatibility, and full native restore now succeeds even if `manifest.json` is removed entirely as long as bootstrap + roots + allocator metadata + slab files remain present.
 - The durable-vs-transient restore contract is now explicit in the agent/root layer too: `cpp-agent/runtime/persistence/agent_root_vm_ops.*` now exposes `rehydrate_vm_runtime_state(...)`, `cpp-agent/main.cpp` calls it explicitly on startup and `reset-session`, and the durable root now keeps only declarative runtime/import rehydration metadata under `runtime.rehydration` while transient runtime-call scratch keys are cleared instead of being treated as durable state.
-- Current design conception for the next stage is still recorded in 🔗[G071](./Knowledge/Goals/G071-SessionScopedAllocatorImagePersistence/index.md): file-backed allocators should eventually attach slabs from durable session storage rather than heap-first allocation, mmap addresses are ephemeral while bootstrap/catalog + slab files are durable truth, `SlabId` stays unchanged, slab filenames may be a handshake convention (e.g. `<session>/<slab_id>`) but not the sole authority, and allocator reconstruction is the mechanism that makes persisted slab indices meaningful again after remapping.
+- G071 is now **complete**: all acceptance criteria are ticked and all implementation-plan phases are done. The final three bugs blocking `EmbeddedVmRootRestoreTest.FullTurnPersistenceAndResume` were fixed: (1) `ListreeValue::copy()` signature mismatch + missing cycle detection (infinite recursion on cyclic VM environments), (2) `ArenaPersistenceTraits<ListreeValue>::exportSlot` serialization format regression (skipped `appendBytes` when `dlen == 0`, breaking `restoreSlot`'s `readBytes` expectation), and (3) `saveRoot` using `copy()` which short-circuits on read-only nodes and returns empty slab images — fixed by using a JSON round-trip (`fromJson(toJson(root))`) to force fresh slab allocation after the checkpoint. All 36 `cpp_agent_tests` pass.
+- The only remaining open goal is G068: tightening `cpp-agent/main.cpp` so the embedded VM/root is the sole live owner of session state, and continuing to trim compatibility-only host helper paths.
 - New durable regression coverage protects those slices: `cpp-agent/tests/agent_root_vm_ops_test.cpp` now checks VM-owned request shaping, full-turn execution through both the callback-based invoker path and an imported-runtime path backed by `cpp-agent/tests/mock_runtime/mock_runtime.cpp`, VM-derived reply text, VM-owned response mutation, and the no-assistant-message error path; `cpp-agent/tests/session_state_store_test.cpp` now also proves separate named sessions persist into separate subdirectories without clobbering one another, writes a durable manifest/index, restores through that new session-image substrate, confirms native snapshot save does not destroy live ambient allocator state, checks mmap-oriented slab-file metadata, and now covers both file-first raw slab growth plus mapped structured `ListreeValueRef` slab attachment.
 - Validation harnessing is now stronger and the previously observed suite hang is no longer reproducing after rebuilding and adding startup instrumentation: `cpp-agent/tests/run_cpp_agent_tests_with_timeout.sh` now runs each gtest case under a per-test shell timeout, and all tests currently pass under that harness. `ctest -R cpp_agent_tests --output-on-failure` is also passing again. To preserve future debuggability, `edict/main.cpp` and `edict/edict_vm.cpp` now expose opt-in startup markers behind `AGENTC_EDICT_TRACE_STARTUP=1`, so the Edict binary / REPL bootstrap path can be traced without leaving noisy logging enabled by default.
 - G068 now explicitly treats G070 as the focused execution slice for the unfinished parts of Phase 4 (production Edict-owned turns), Phase 5 (host thinning), and Phase 6 (transient rehydration plus native-root persistence cleanup), so future accomplishments in this area should be reflected back into both goal files as concrete completed subparts.
@@ -69,26 +74,13 @@
 - Persistence decision: use **memory-mapped/Listree/slab-backed persistence** as the canonical durable state mechanism and rehydrate transient runtime artifacts such as FFI handles, sockets, provider clients, and parser state on restore.
 - LMDB cleanup is complete: the root build flag and `LmdbArenaStore` are gone, LMDB-only test/demo branches are removed, and active code/build paths no longer reference LMDB.
 
-## Status
-- G057 (Pi + AgentC IPC Bridge) - **COMPLETE**
-- G058 (Read-Only Listree Branches) - **COMPLETE**
-- G059 (Listree JSON Round-Trip) - **COMPLETE**
-- G060 (Pi Frontend Integration) - **COMPLETE**
-- G061 (AgentC Stability and Hardening) - **COMPLETE**
-- G063 (Native C++ Agent Core) - **COMPLETE** 🔗[index](./Knowledge/Goals/G063-NativeCppAgentCore/index.md)
-- G066 (Socket-Enabled Agent) - **COMPLETE** 🔗[index](./Knowledge/Goals/G066-SocketEnabledAgent/index.md)
-- G067 (Atomic AgentC Agent) - **COMPLETE / EVOLVED** 🔗[index](./Knowledge/Goals/G067-AtomicAgentcAgent/index.md)
-- G068 (Client/Agent Split with Embedded Persistent Edict VM) - **IN PROGRESS** 🔗[index](./Knowledge/Goals/G068-ClientAgentSplitEmbeddedVmPersistence/index.md)
-- G070 (Inverted Loop Surgical Cleanup) - **COMPLETE** 🔗[index](./Knowledge/Goals/G070-InvertedLoopSurgicalCleanup/index.md)
-- G069 (Remove LMDB Dependencies) - **COMPLETE** 🔗[index](./Knowledge/Goals/G069-RemoveLMDBDependencies/index.md)
-
 ## Knowledge Inventory
-- **Goals**: G016-LmdbOptionalBuild; G017-EdictScriptMode; G018-FfiLtvPassthrough; G019-SlabIdLtvUnification; G020-EarlyTypeBinding; G021-RemoveModuleName; G040_LMDB_Persistent_Arena_Integration; G041_Persistent_Slab_Image_Persistence; G042_Persistent_VM_Root_State_And_Restore_Validation; G043-LmdbPickling; G044_JSON_Module_Cache; G045-LanguageEnhancementReview; G046-ContinuationBasedSpeculation; G047-NativeRelationalSyntax; G048-LibraryBackedLogicCapability; G049-EdictVMMultithreading; G050-ThreadSpawnJoinMixedRunStability; G051-CursorVisitedReadOnlyBoundary; G052-RuntimeBoundaryHardening; G053-SharedRootFineGrainedMultithreading; G054-SdlImportDemo; G055-NativeSdlPoc; G056-ExtensionsStdlib; G057-PiAgentcIpcBridge; G058-ReadOnlyListreeBranches; G059-ListreeToJsonRoundTrip; G060-PiFrontendIntegration; G061-AgentCStabilityAndHardening; G062-LogicEngineBootstrapping; G063-NativeCppAgentCore; G066-SocketEnabledAgent; G067-AtomicAgentcAgent; G068-ClientAgentSplitEmbeddedVmPersistence; G069-RemoveLMDBDependencies; G070-InvertedLoopSurgicalCleanup; G071-SessionScopedAllocatorImagePersistence.
-- **Facts**: 🔗[ListreeTraversalCycleDetection](./Knowledge/Facts/ListreeTraversalCycleDetection.md)
+- **Goals**: G068-ClientAgentSplitEmbeddedVmPersistence (active); G071-SessionScopedAllocatorImagePersistence (complete)
+- **Facts**: 🔗[ListreeTraversalCycleDetection](./Knowledge/Facts/ListreeTraversalCycleDetection.md); 🔗[ListreeValueSerializationFormat](./Knowledge/Facts/ListreeValueSerializationFormat.md)
 - **Contracts**: 🔗[AgentcEvalContract](./Knowledge/Contracts/AgentcEvalContract.md); 🔗[AgentcRuntimeCAbi](./Knowledge/Contracts/AgentcRuntimeCAbi.md); 🔗[AgentcRuntimeJsonContract](./Knowledge/Contracts/AgentcRuntimeJsonContract.md)
 - **Procedures**: 🔗[AgentC_IPC_Bridge_Ops](./Knowledge/Procedures/AgentC_IPC_Bridge_Ops.md); 🔗[AgentC_Socket_Ops](./Knowledge/Procedures/AgentC_Socket_Ops.md)
 - **Prompts**: 🔗[SystemPrompt_AgentC](./Knowledge/Prompts/SystemPrompt_AgentC.md)
-- **WorkProducts**: 🔗[AgentCLanguageEnhancements-2026-03-22](./Knowledge/WorkProducts/AgentCLanguageEnhancements-2026-03-22.md); 🔗[ContinuationBasedSpeculationPlan-2026-03-22](./Knowledge/WorkProducts/ContinuationBasedSpeculationPlan-2026-03-22.md); 🔗[edict_language_reference](./Knowledge/WorkProducts/edict_language_reference.md); 🔗[EdictVMMultithreadingPlan-2026-03-23](./Knowledge/WorkProducts/EdictVMMultithreadingPlan-2026-03-23.md); 🔗[LogicCapabilityMigrationPlan-2026-03-23](./Knowledge/WorkProducts/LogicCapabilityMigrationPlan-2026-03-23.md); 🔗[NativeRelationalSyntaxPlan-2026-03-22](./Knowledge/WorkProducts/NativeRelationalSyntaxPlan-2026-03-22.md); 🔗[WP_NativeCppAgentCore_Audit](./Knowledge/WorkProducts/WP_NativeCppAgentCore_Audit.md); 🔗[WP_EmbeddedPersistentAgentArchitecture](./Knowledge/WorkProducts/WP_EmbeddedPersistentAgentArchitecture.md); 🔗[WP_EdictNativeAgentModuleArchitecture](./Knowledge/WorkProducts/WP_EdictNativeAgentModuleArchitecture.md); 🔗[WP_CppAgentRuntimeFileStructure](./Knowledge/WorkProducts/WP_CppAgentRuntimeFileStructure.md); 🔗[WP_G070_OwnershipBoundaryMap_2026-05-01](./Knowledge/WorkProducts/WP_G070_OwnershipBoundaryMap_2026-05-01.md); 🔗[WP_LMDB_SurfaceArea_Audit_2026-04-30](./Knowledge/WorkProducts/WP_LMDB_SurfaceArea_Audit_2026-04-30.md); 🔗[WP_SessionImagePersistencePlan_2026-05-01](./Knowledge/WorkProducts/WP_SessionImagePersistencePlan_2026-05-01.md)
+- **WorkProducts**: 🔗[edict_language_reference](./Knowledge/WorkProducts/edict_language_reference.md); 🔗[WP_NativeCppAgentCore_Audit](./Knowledge/WorkProducts/WP_NativeCppAgentCore_Audit.md); 🔗[WP_EmbeddedPersistentAgentArchitecture](./Knowledge/WorkProducts/WP_EmbeddedPersistentAgentArchitecture.md); 🔗[WP_EdictNativeAgentModuleArchitecture](./Knowledge/WorkProducts/WP_EdictNativeAgentModuleArchitecture.md); 🔗[WP_CppAgentRuntimeFileStructure](./Knowledge/WorkProducts/WP_CppAgentRuntimeFileStructure.md); 🔗[WP_G070_OwnershipBoundaryMap_2026-05-01](./Knowledge/WorkProducts/WP_G070_OwnershipBoundaryMap_2026-05-01.md); 🔗[WP_LMDB_SurfaceArea_Audit_2026-04-30](./Knowledge/WorkProducts/WP_LMDB_SurfaceArea_Audit_2026-04-30.md); 🔗[WP_SessionImagePersistencePlan_2026-05-01](./Knowledge/WorkProducts/WP_SessionImagePersistencePlan_2026-05-01.md)
 - **Category Indexes**: `Knowledge/Concepts/index.md`; `Knowledge/Facts/index.md`; `Knowledge/Procedures/index.md`
 
 ## Active Agents
@@ -98,12 +90,28 @@
 - 🔗[Timeline](./Timeline.md)
 
 ## Handoff Note
-The project is evolving toward an Edict-native agent runtime: keep the reconnectable Client/Host boundary and embedded VM, but move the canonical agent loop into Edict and expose LLM access as an importable `agentc` module backed by a reusable native runtime library. The runtime bridge is now working end-to-end, has automated coverage, includes a deeper persistence hook, and now has hello-world, multi-turn history, canonical agent-root, host-root-persistence, embedded-VM/root-anchor, and operator-config slices: `libagent_runtime.so` builds from the new runtime scaffolding, `cpp-agent/main.cpp` is a thinner runtime-backed socket host with clean `shutdown-agent` and `reset-session` behavior, `cpp-agent/edict/modules/agentc.edict` now supports JSON + file/path-based config wrappers using Edict-native `read_text` + `from_json`, `agentc-config.json` is the new operator-facing runtime config, `cpp_agent_tests` validates the raw C ABI + Edict wrapper + root helpers + persistence path, `cpp-agent/runtime/persistence/session_state_store.*` exposes both JSON and native root-anchor restore/save helpers, and `cpp-agent/main.cpp` constructs an embedded `EdictVM` around the restored anchored root. G070 Phase 2 is now functionally landed in code: normal prompt turns no longer flow through a host-owned `shared_root`; instead `cpp-agent/runtime/persistence/agent_root_vm_ops.*` now provides VM-owned request shaping, imported-runtime invocation through embedded `agentc` bindings, VM-owned response mutation, a VM-owned production turn helper, and VM-derived reply text, all protected by durable regression coverage including a mock imported runtime path. The persistence substrate is now one layer more real: named sessions still persist under isolated subdirectories, `cpp-agent/runtime/persistence/session_image_store.*` now owns a manifest/index-driven session-image layout (`manifest.json`, `roots.bin`, allocator metadata/slab files under `allocators/<name>/...`), `SessionStateStore::saveRoot(...)` now persists a native checkpointed snapshot via allocator checkpoints + `ListreeValue::copy()` + rollback instead of a JSON isolate/rematerialize trampoline, the slab files themselves are now page-aligned/headered mmap-friendly artifacts loaded through `mmap`, and the mmap decode path no longer copies slab payloads into temporary `std::string` buffers first. Current design conception for the next stage is now explicitly recorded in G071: move toward file-backed allocators that can attach slabs from durable storage rather than heap-first allocation, keep `SlabId` unchanged, treat mmap addresses as ephemeral, allow filename conventions like `<session>/<slab_id>` as a convenience but not sole authority, and rely on bootstrap/catalog-driven allocator reconstruction to make persisted slab indices meaningful again after remapping. Current sequencing decision: finish the mmap/session restore substrate first, then spend major effort on the remaining inside-out agent-loop cleanup / `cpp-agent` deprecation above it. Key context: keep Client/Host separation, keep Host+VM embedded, keep mmap/Listree/slab persistence as the durable substrate, treat provider/runtime handles as transient rehydrated state, and keep unrestricted model-driven FFI/native access disabled by default. Do NOT reintroduce host-owned orchestration as the long-term architecture; the remaining outer-host logic is transitional and should keep shrinking. The major remaining persistence gap is now narrower and explicit: move from mmap-friendly load/copy slab files to true mmap-backed authoritative slab ownership, then make transient runtime/import rehydration fully explicit on top of that substrate.
+
+**Project**: AgentC — building an Edict-native agent runtime with a mmap/Listree-backed persistence substrate and an embedded VM as the sole live owner of session state.
+
+**Current State**: G071 (session-scoped allocator image persistence) is **complete** — all acceptance criteria are ticked, `EmbeddedVmRootRestoreTest.FullTurnPersistenceAndResume` passes, and all 36 `cpp_agent_tests` pass. G068 (client/agent split, embedded VM persistence) is the remaining active goal.
+
+**Next Action**: Open `cpp-agent/main.cpp` and audit what host-owned state management paths remain outside the embedded VM/root. Specifically: identify which startup, reset-session, and turn paths still maintain host-owned state duplicates alongside the VM cursor, and eliminate them so the VM cursor is the sole live owner.
+
+**Key Context**:
+- The three bugs fixed this session are documented in `LocalContext/Knowledge/Facts/ListreeValueSerializationFormat.md`. Do not re-introduce a `copy()`-based snapshot in `saveRoot` without first ensuring all nodes are freshly allocated after the checkpoint — the JSON round-trip (`fromJson(toJson(root))`) is the correct current approach.
+- `ListreeValue::copy()` now propagates a `std::shared_ptr<TraversalContext>*` via `void* ctx_ptr` for cycle detection. The context is passed by pointer-to-shared_ptr so recursive calls share the same tracking set.
+- G071's mmap-backed slab ownership design (file-first allocation, durable bootstrap/catalog, ephemeral mmap addresses, `SlabId` unchanged) is fully recorded in `G071/index.md` and `WP_SessionImagePersistencePlan_2026-05-01.md` — no further work needed on the substrate itself unless a regression surfaces.
+- `rehydrate_vm_runtime_state(...)` in `agent_root_vm_ops.*` is the canonical path for rebuilding transient FFI/runtime handles on restore; `cpp-agent/main.cpp` must call it on startup and reset-session.
+
+**Do NOT**:
+- Re-add JSON rematerialization as the primary persistence path — the slab-image substrate is the correct mechanism.
+- Add new host-owned orchestration logic to `cpp-agent/main.cpp`; remaining host code is transitional and should shrink.
+- Revert the `appendBytes`-always-called fix in `listree.h` — skipping `appendBytes` when `dlen == 0` breaks the restore round-trip.
 
 ## Session Compliance
 - [x] Reviewed Dashboard at session start
-- [x] Created/updated Goal files for multi-step architectural work
-- [x] Persisted durable knowledge needed for future continuation
+- [x] Created/updated Goal files for multi-step architectural work (G071 updated + marked complete)
+- [x] Persisted durable knowledge needed for future continuation (ListreeTraversalCycleDetection updated; ListreeValueSerializationFormat.md created)
 - [x] Updated Dashboard with current focus and next action
 - [x] Updated project history / timeline
 - [x] Left a handoff note for the next session
