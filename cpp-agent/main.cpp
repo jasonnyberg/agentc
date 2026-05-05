@@ -127,6 +127,9 @@ int main(int argc, char** argv) {
         const auto runtime_import_artifacts = agentc::runtime::discover_vm_runtime_import_artifacts();
 
         agentc::runtime::SessionStateStore session_store(options.state_base, options.session_name);
+        // Wire all Listree/slab allocators to file-backed storage in this
+        // session's directory.  Must happen before any ListreeValue allocations.
+        session_store.configureFileBackedAllocators();
         CPtr<agentc::ListreeValue> initial_root_value;
         bool restored_root = false;
         if (session_store.exists()) {
@@ -177,6 +180,8 @@ int main(int argc, char** argv) {
                 if (input == "reset-session") {
                     const auto reset_root = agentc::runtime::make_default_agent_root(
                         options.system_prompt, options.provider, options.model);
+                    session_store.clear();
+                    session_store.configureFileBackedAllocators();
                     embedded_vm.setCursor(materialize_root_value_or_throw(reset_root));
                     embedded_vm.reset();
                     agentc::runtime::rehydrate_vm_runtime_state(

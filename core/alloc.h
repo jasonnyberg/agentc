@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -287,25 +288,30 @@ private:
 class BlobAllocator {
 private:
     static constexpr size_t kBlobSlabBytes = 65536;
+    // Size of the header prepended to file-backed blob slab files.
+    // Layout: [sizeof(size_t) count][kBlobSlabBytes data]
+    static constexpr size_t kBlobSlabFileBytes = sizeof(size_t) + kBlobSlabBytes;
 
     struct BlobSlab {
-        size_t count;
-        char* bytes;
+        size_t  count = 0;
+        size_t* mappedCount = nullptr; // non-null for file-backed: points into mmap'd header
+        char*   bytes = nullptr;
         std::shared_ptr<void> mappedRegion;
-        bool mappedBacking;
+        bool    mappedBacking = false;
         BlobSlab()
-            : count(0),
-              bytes(static_cast<char*>(malloc(kBlobSlabBytes))),
-              mappedBacking(false) {}
-        BlobSlab(char* mappedBytes, std::shared_ptr<void> mappedRegionIn)
-            : count(0),
+            : bytes(static_cast<char*>(malloc(kBlobSlabBytes))) {}
+        // File-backed: mapped region layout is [size_t count][kBlobSlabBytes data]
+        BlobSlab(size_t* mappedCountPtr, char* mappedBytes, std::shared_ptr<void> region)
+            : count(*mappedCountPtr),  // restore count from file
+              mappedCount(mappedCountPtr),
               bytes(mappedBytes),
-              mappedRegion(std::move(mappedRegionIn)),
+              mappedRegion(std::move(region)),
               mappedBacking(true) {}
-        ~BlobSlab() {
-            if (!mappedBacking) {
-                free(bytes);
-            }
+        ~BlobSlab() { if (!mappedBacking) free(bytes); }
+
+        void setCount(size_t v) {
+            count = v;
+            if (mappedCount) *mappedCount = v;
         }
     };
 
@@ -341,23 +347,25 @@ private:
             if (fd < 0) {
                 throw std::runtime_error("failed to open blob mmap slab backing file");
             }
-            if (::ftruncate(fd, static_cast<off_t>(kBlobSlabBytes)) != 0) {
+            // File layout: [size_t count][kBlobSlabBytes data]
+            if (::ftruncate(fd, static_cast<off_t>(kBlobSlabFileBytes)) != 0) {
                 ::close(fd);
                 throw std::runtime_error("failed to size blob mmap slab backing file");
             }
-            void* mapped = ::mmap(nullptr, kBlobSlabBytes, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+            void* mapped = ::mmap(nullptr, kBlobSlabFileBytes, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
             ::close(fd);
             if (mapped == MAP_FAILED) {
                 throw std::runtime_error("failed to mmap blob slab backing file");
             }
             std::shared_ptr<void> region(mapped, [](void* ptr) {
                 if (ptr && ptr != MAP_FAILED) {
-                    ::msync(ptr, kBlobSlabBytes, MS_SYNC);
-                    ::munmap(ptr, kBlobSlabBytes);
+                    ::msync(ptr, kBlobSlabFileBytes, MS_SYNC);
+                    ::munmap(ptr, kBlobSlabFileBytes);
                 }
             });
-            char* mappedBytes = static_cast<char*>(region.get());
-            return new BlobSlab(mappedBytes, std::move(region));
+            size_t* mappedCount = static_cast<size_t*>(mapped);
+            char* mappedBytes = static_cast<char*>(mapped) + sizeof(size_t);
+            return new BlobSlab(mappedCount, mappedBytes, std::move(region));
         }
         (void)slabIndex;
         return new BlobSlab();
@@ -395,7 +403,7 @@ public:
                 SlabId id(i, static_cast<uint16_t>(slabs[i]->count));
                 if (data) memcpy(&slabs[i]->bytes[slabs[i]->count], data, length);
                 else memset(&slabs[i]->bytes[slabs[i]->count], 0, length);
-                slabs[i]->count += length;
+                slabs[i]->setCount(slabs[i]->count + length);
                 return id;
             }
         }
@@ -435,10 +443,10 @@ public:
         checkpointStack.pop_back();
         
         for (int i = watermark.first + 1; i < NUM_SLABS; ++i) {
-            if (slabs[i]) slabs[i]->count = 0;
+            if (slabs[i]) slabs[i]->setCount(0);
         }
         if (slabs[watermark.first]) {
-            slabs[watermark.first]->count = watermark.second;
+            slabs[watermark.first]->setCount(watermark.second);
         }
         return true;
     }
@@ -480,6 +488,7 @@ public:
                                       std::string filePrefix = std::string()) {
         mmapBackingDirectory_ = std::move(directory);
         mmapBackingFilePrefix_ = std::move(filePrefix);
+        backingPolicy_ = ArenaSlabBackingPolicy::MmapFile;
     }
 
     std::string slabBackingPath(uint16_t slabIndex) const {
@@ -493,12 +502,48 @@ public:
         return slabIndex < NUM_SLABS && slabs[slabIndex] && slabs[slabIndex]->mappedBacking;
     }
 
+    // ---- File-backed persistence helpers ----
+
+    // Re-attach blob slab files created by createOwnedSlab (MmapFile policy).
+    // Scans the configured directory.  count is read directly from the file header.
+    bool reattachFileBackedBlobSlabs(std::string* error = nullptr) {
+        if (backingPolicy_ != ArenaSlabBackingPolicy::MmapFile || mmapBackingDirectory_.empty()) {
+            if (error) *error = "blob allocator is not configured for mmap file backing";
+            return false;
+        }
+        for (uint16_t si = 0; si < NUM_SLABS; ++si) {
+            const auto path = mmapBackingPathForSlab(si);
+            if (!std::filesystem::exists(path)) continue;
+            const int fd = ::open(path.c_str(), O_RDWR, 0);
+            if (fd < 0) {
+                if (error) *error = "failed to open blob slab backing file: " + path;
+                return false;
+            }
+            void* mapped = ::mmap(nullptr, kBlobSlabFileBytes, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+            ::close(fd);
+            if (mapped == MAP_FAILED) {
+                if (error) *error = "failed to mmap blob slab file: " + path;
+                return false;
+            }
+            std::shared_ptr<void> region(mapped, [](void* ptr) {
+                if (ptr && ptr != MAP_FAILED) {
+                    ::msync(ptr, kBlobSlabFileBytes, MS_SYNC);
+                    ::munmap(ptr, kBlobSlabFileBytes);
+                }
+            });
+            size_t* mappedCount = static_cast<size_t*>(mapped);
+            char* mappedBytes   = static_cast<char*>(mapped) + sizeof(size_t);
+            slabs[si] = new BlobSlab(mappedCount, mappedBytes, std::move(region));
+        }
+        return true;
+    }
+
     bool flushMappedSlabs() const {
         for (int slabIndex = 0; slabIndex < NUM_SLABS; ++slabIndex) {
-            if (!slabs[slabIndex] || !slabs[slabIndex]->mappedBacking || !slabs[slabIndex]->bytes) {
-                continue;
-            }
-            if (::msync(slabs[slabIndex]->bytes, kBlobSlabBytes, MS_SYNC) != 0) {
+            if (!slabs[slabIndex] || !slabs[slabIndex]->mappedBacking) continue;
+            if (!slabs[slabIndex]->mappedRegion) continue;
+            if (::msync(slabs[slabIndex]->mappedRegion.get(),
+                        kBlobSlabFileBytes, MS_SYNC) != 0) {
                 return false;
             }
         }
@@ -529,33 +574,48 @@ private:
     mutable std::recursive_mutex mutex_;
 
     struct Slab {
-        size_t count;
-        std::vector<size_t> inUse;
-        T *items;
-        std::shared_ptr<void> mappedRegion;
-        bool mappedBacking;
-        // Fix initialization order to match declaration order
+        size_t count = 0;
+        std::unique_ptr<size_t[]> ownedInUse; // non-null when inUse is heap-allocated
+        // Raw pointer into either ownedInUse (heap) or the mapped region (file-backed).
+        // All inUse[offset] accesses work identically for both cases.
+        size_t* inUse;
+        T* items;                              // heap or mapped
+        std::shared_ptr<void> mappedRegion;   // non-null when any part is mmap-backed
+        size_t mappedBytes = 0;               // total size of mappedRegion (for msync)
+        bool mappedBacking = false;
+
+        // Heap-backed slab.
         Slab()
-            : count(0),
-              inUse(SLAB_SIZE, 0),
-              items(static_cast<T*>(calloc(SLAB_SIZE, sizeof(T)))),
-              mappedBacking(false) {}
-        Slab(size_t initialCount,
-             std::vector<size_t> initialInUse,
-             T* mappedItems,
-             std::shared_ptr<void> mappedRegionIn,
-             size_t mappedSize)
+            : ownedInUse(new size_t[SLAB_SIZE]{}),
+              inUse(ownedInUse.get()),
+              items(static_cast<T*>(calloc(SLAB_SIZE, sizeof(T)))) {}
+
+        // Native file-backed slab: both inUse and items live in the mapped region.
+        // File layout: [SLAB_SIZE * sizeof(size_t) inUse][SLAB_SIZE * sizeof(T) items]
+        Slab(size_t* mappedInUse, T* mappedItems,
+             std::shared_ptr<void> region, size_t totalBytes)
+            : inUse(mappedInUse), items(mappedItems),
+              mappedRegion(std::move(region)), mappedBytes(totalBytes),
+              mappedBacking(true) {}
+
+        // Legacy attach slab: items are mmap-backed, inUse is copied from caller data.
+        // Used by attachMappedRawSlabs / attachMappedStructuredSlabs.
+        Slab(size_t initialCount, const std::vector<size_t>& initialInUse,
+             T* mappedItems, std::shared_ptr<void> region, size_t itemBytes)
             : count(initialCount),
-              inUse(std::move(initialInUse)),
+              ownedInUse(new size_t[SLAB_SIZE]{}),
+              inUse(ownedInUse.get()),
               items(mappedItems),
-              mappedRegion(std::move(mappedRegionIn)),
+              mappedRegion(std::move(region)), mappedBytes(itemBytes),
               mappedBacking(true) {
-            (void)mappedSize;
+            std::copy_n(initialInUse.data(),
+                        std::min(initialInUse.size(), static_cast<size_t>(SLAB_SIZE)),
+                        ownedInUse.get());
         }
+
         ~Slab() {
-            if (!mappedBacking) {
-                free(items);
-            }
+            if (!mappedBacking) free(items);
+            // ownedInUse unique_ptr auto-frees when non-null.
         }
     };
 
@@ -633,28 +693,36 @@ private:
                 throw std::runtime_error("failed to create mmap slab backing directory");
             }
             const auto path = mmapBackingPathForSlab(slabIndex);
-            const size_t bytes = SLAB_SIZE * sizeof(T);
             const int fd = ::open(path.c_str(), O_RDWR | O_CREAT | O_TRUNC, 0644);
             if (fd < 0) {
                 throw std::runtime_error("failed to open mmap slab backing file");
             }
-            if (::ftruncate(fd, static_cast<off_t>(bytes)) != 0) {
+            // File layout: [SLAB_SIZE * sizeof(size_t) inUse][SLAB_SIZE * sizeof(T) items]
+            // Both inUse and items live in the same mmap'd region so a single
+            // msync covers all per-slot tracking and object data.
+            const size_t inUseBytes = SLAB_SIZE * sizeof(size_t);
+            const size_t itemBytes  = SLAB_SIZE * sizeof(T);
+            const size_t totalBytes = inUseBytes + itemBytes;
+            if (::ftruncate(fd, static_cast<off_t>(totalBytes)) != 0) {
                 ::close(fd);
                 throw std::runtime_error("failed to size mmap slab backing file");
             }
-            void* mapped = ::mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+            void* mapped = ::mmap(nullptr, totalBytes, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
             ::close(fd);
             if (mapped == MAP_FAILED) {
                 throw std::runtime_error("failed to mmap slab backing file");
             }
-            std::shared_ptr<void> region(mapped, [bytes](void* ptr) {
+            std::shared_ptr<void> region(mapped, [totalBytes](void* ptr) {
                 if (ptr && ptr != MAP_FAILED) {
-                    ::msync(ptr, bytes, MS_SYNC);
-                    ::munmap(ptr, bytes);
+                    ::msync(ptr, totalBytes, MS_SYNC);
+                    ::munmap(ptr, totalBytes);
                 }
             });
-            T* mappedItems = reinterpret_cast<T*>(region.get());
-            return new Slab(0, std::vector<size_t>(SLAB_SIZE, 0), mappedItems, std::move(region), bytes);
+            size_t* mappedInUse = static_cast<size_t*>(mapped);
+            T* mappedItems = reinterpret_cast<T*>(static_cast<char*>(mapped) + inUseBytes);
+            // Zero the inUse region (items are a new slab, all slots free).
+            std::memset(mappedInUse, 0, inUseBytes);
+            return new Slab(mappedInUse, mappedItems, std::move(region), totalBytes);
         }
         (void)slabIndex;
         return new Slab();
@@ -723,13 +791,13 @@ private:
                     ArenaWatermarkResetTraits<T>::resetTransient(slabs[slabIndex]->items[offset]);
                 }
             }
-            std::fill(slabs[slabIndex]->inUse.begin(), slabs[slabIndex]->inUse.end(), 0);
+            std::fill(slabs[slabIndex]->inUse, slabs[slabIndex]->inUse + SLAB_SIZE, size_t{0});
             slabs[slabIndex]->count = 0;
         }
 
         if (!watermark) {
             if (slabs[0]) {
-                std::fill(slabs[0]->inUse.begin() + 1, slabs[0]->inUse.end(), 0);
+                std::fill(slabs[0]->inUse + 1, slabs[0]->inUse + SLAB_SIZE, size_t{0});
                 slabs[0]->count = refs(SlabId(0, 0)) > 0 ? 1 : 0;
             }
             return;
@@ -742,7 +810,7 @@ private:
                     ArenaWatermarkResetTraits<T>::resetTransient(slabs[watermark.first]->items[offset]);
                 }
             }
-            std::fill(slabs[watermark.first]->inUse.begin() + start, slabs[watermark.first]->inUse.end(), 0);
+            std::fill(slabs[watermark.first]->inUse + start, slabs[watermark.first]->inUse + SLAB_SIZE, size_t{0});
             slabs[watermark.first]->count = start;
         }
     }
@@ -869,6 +937,7 @@ public:
         std::lock_guard<std::recursive_mutex> lock(mutex_);
         mmapBackingDirectory_ = std::move(directory);
         mmapBackingFilePrefix_ = std::move(filePrefix);
+        backingPolicy_ = ArenaSlabBackingPolicy::MmapFile;
     }
 
     std::string slabBackingPath(uint16_t slabIndex) const {
@@ -884,13 +953,56 @@ public:
         return slabIndex < NUM_SLABS && slabs[slabIndex] && slabs[slabIndex]->mappedBacking;
     }
 
+    // ---- File-backed persistence helpers ----
+
+    // Re-attach existing slab files created by createOwnedSlab() (MmapFile policy).
+    // Scans the configured backing directory for slab files, mmaps each one, and
+    // binds it as a live slab.  No inUse input needed: the inUse array is the
+    // first SLAB_SIZE*sizeof(size_t) bytes of the file.
+    bool reattachFileBackedSlabs(std::string* error = nullptr) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        if (backingPolicy_ != ArenaSlabBackingPolicy::MmapFile || mmapBackingDirectory_.empty()) {
+            if (error) *error = "allocator is not configured for mmap file backing";
+            return false;
+        }
+        const size_t inUseBytes  = SLAB_SIZE * sizeof(size_t);
+        const size_t itemBytes   = SLAB_SIZE * sizeof(T);
+        const size_t totalBytes  = inUseBytes + itemBytes;
+        for (uint16_t si = 0; si < NUM_SLABS; ++si) {
+            const auto path = mmapBackingPathForSlab(si);
+            if (!std::filesystem::exists(path)) continue;
+            const int fd = ::open(path.c_str(), O_RDWR, 0);
+            if (fd < 0) {
+                if (error) *error = "failed to open slab backing file: " + path;
+                return false;
+            }
+            void* mapped = ::mmap(nullptr, totalBytes, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+            ::close(fd);
+            if (mapped == MAP_FAILED) {
+                if (error) *error = "failed to mmap slab file: " + path;
+                return false;
+            }
+            std::shared_ptr<void> region(mapped, [totalBytes](void* ptr) {
+                if (ptr && ptr != MAP_FAILED) {
+                    ::msync(ptr, totalBytes, MS_SYNC);
+                    ::munmap(ptr, totalBytes);
+                }
+            });
+            size_t* mappedInUse = static_cast<size_t*>(mapped);
+            T* mappedItems = reinterpret_cast<T*>(static_cast<char*>(mapped) + inUseBytes);
+            slabs[si] = new Slab(mappedInUse, mappedItems, std::move(region), totalBytes);
+        }
+        return true;
+    }
+
     bool flushMappedSlabs() const {
         std::lock_guard<std::recursive_mutex> lock(mutex_);
         for (size_t slabIndex = 0; slabIndex < NUM_SLABS; ++slabIndex) {
-            if (!slabs[slabIndex] || !slabs[slabIndex]->mappedBacking || !slabs[slabIndex]->items) {
-                continue;
-            }
-            if (::msync(slabs[slabIndex]->items, SLAB_SIZE * sizeof(T), MS_SYNC) != 0) {
+            if (!slabs[slabIndex] || !slabs[slabIndex]->mappedBacking) continue;
+            if (!slabs[slabIndex]->mappedRegion) continue;
+            // msync the full mapped region (covers both inUse and items).
+            if (::msync(slabs[slabIndex]->mappedRegion.get(),
+                        slabs[slabIndex]->mappedBytes, MS_SYNC) != 0) {
                 return false;
             }
         }
@@ -1010,7 +1122,7 @@ public:
             ArenaSlabImage image;
             image.slabIndex = static_cast<uint16_t>(slabIndex);
             image.count = static_cast<uint32_t>(slabs[slabIndex]->count);
-            image.inUse = slabs[slabIndex]->inUse;
+            image.inUse.assign(slabs[slabIndex]->inUse, slabs[slabIndex]->inUse + SLAB_SIZE);
             image.encoding = ArenaPersistenceTraits<T>::encoding;
             if constexpr (ArenaPersistenceTraits<T>::encoding == ArenaSlabEncoding::RawBytes) {
                 image.bytes.resize(SLAB_SIZE * sizeof(T));
@@ -1058,7 +1170,8 @@ public:
             }
 
             bool hasUserSlot = false;
-            std::vector<size_t> filtered_in_use = slabs[slabIndex]->inUse;
+            std::vector<size_t> filtered_in_use(slabs[slabIndex]->inUse,
+                                                slabs[slabIndex]->inUse + SLAB_SIZE);
             for (size_t offset = 0; offset < SLAB_SIZE; ++offset) {
                 SlabId sid(static_cast<uint16_t>(slabIndex), static_cast<uint16_t>(offset));
                 if (!isAfterWatermark(sid)) {
@@ -1117,7 +1230,7 @@ public:
 
             slabs[image.slabIndex] = new Slab();
             slabs[image.slabIndex]->count = image.count;
-            slabs[image.slabIndex]->inUse = image.inUse;
+            std::copy_n(image.inUse.data(), SLAB_SIZE, slabs[image.slabIndex]->inUse);
             if constexpr (ArenaPersistenceTraits<T>::encoding == ArenaSlabEncoding::RawBytes) {
                 if (image.bytes.size() != SLAB_SIZE * sizeof(T)) {
                     return false;
@@ -1245,6 +1358,24 @@ public:
         mmapBackingFilePrefix_.clear();
         SlabId sentinel = allocRaw();
         (void)sentinel;
+        allocationLog.clear();
+        checkpointStack.clear();
+        checkpointWatermarks.clear();
+        checkpointAppendOnly.clear();
+        lastRollbackUsedFastPath = false;
+        lastRollbackUsedStrictFastPath = false;
+    }
+
+    // Like resetForTests() but does NOT pre-create slab[0] with heap backing.
+    // Use this before configuring file-backed slabs so that the first
+    // reattachFileBackedSlabs() call can create slab[0] from the saved file
+    // rather than finding a pre-existing heap-backed slab there.
+    void resetHeapStateOnly() {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        clearAllSlabs();
+        backingPolicy_ = ArenaSlabBackingPolicy::Heap;
+        mmapBackingDirectory_.clear();
+        mmapBackingFilePrefix_.clear();
         allocationLog.clear();
         checkpointStack.clear();
         checkpointWatermarks.clear();

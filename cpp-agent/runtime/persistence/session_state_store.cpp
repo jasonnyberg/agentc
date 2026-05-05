@@ -14,6 +14,18 @@
 namespace agentc::runtime {
 namespace {
 
+// Allocator directory names inside the session image.
+constexpr const char* kAllocatorNameValue = "value";
+constexpr const char* kAllocatorNameRef   = "ref";
+constexpr const char* kAllocatorNameNode  = "node";
+constexpr const char* kAllocatorNameItem  = "item";
+constexpr const char* kAllocatorNameTree  = "tree";
+constexpr const char* kAllocatorNameBlob  = "blob";
+
+std::string slabDirPath(const std::string& session_dir, const char* allocName) {
+    return (std::filesystem::path(session_dir) / "allocators" / allocName).string();
+}
+
 void resetStructuredListreeAllocators() {
     Allocator<agentc::ListreeValue>::getAllocator().resetForTests();
     Allocator<agentc::ListreeValueRef>::getAllocator().resetForTests();
@@ -205,11 +217,31 @@ SessionStateStore::SessionStateStore(std::string root_path, std::string session_
     : root_path_(std::move(root_path)),
       session_name_(sanitize_session_name(std::move(session_name))) {}
 
+void SessionStateStore::configureFileBackedAllocators() {
+    file_backed_ = true;
+    const std::string session_dir =
+        (std::filesystem::path(root_path_) / session_name_).string();
+
+    auto configure = [&](auto& allocator, const char* name, const char* prefix) {
+        allocator.configureMmapFileBackedSlabs(slabDirPath(session_dir, name), prefix);
+    };
+
+    configure(Allocator<agentc::ListreeValue>::getAllocator(),        kAllocatorNameValue, "slab");
+    configure(Allocator<agentc::ListreeValueRef>::getAllocator(),     kAllocatorNameRef,   "slab");
+    configure(Allocator<CLL<agentc::ListreeValueRef>>::getAllocator(), kAllocatorNameNode, "slab");
+    configure(Allocator<agentc::ListreeItem>::getAllocator(),         kAllocatorNameItem,  "slab");
+    configure(Allocator<AATree<agentc::ListreeItem>>::getAllocator(),  kAllocatorNameTree, "slab");
+    BlobAllocator::getAllocator().configureMmapFileBackedSlabs(
+        slabDirPath(session_dir, kAllocatorNameBlob), "blob");
+}
+
+
 bool SessionStateStore::exists() const {
     return sessionImageStore().exists();
 }
 
 bool SessionStateStore::loadRoot(CPtr<agentc::ListreeValue>& out, std::string* error) const {
+    if (file_backed_) return loadRootFileBacked(out, error);
     auto image_store = sessionImageStore();
     if (!image_store.exists()) {
         if (error) *error = "session state does not exist";
@@ -269,6 +301,7 @@ bool SessionStateStore::loadRoot(CPtr<agentc::ListreeValue>& out, std::string* e
 }
 
 bool SessionStateStore::saveRoot(CPtr<agentc::ListreeValue> root, std::string* error) const {
+    if (file_backed_) return saveRootFileBacked(root, error);
     if (!root) {
         if (error) *error = "cannot save null session root";
         return false;
@@ -407,6 +440,107 @@ bool SessionStateStore::saveRoot(CPtr<agentc::ListreeValue> root, std::string* e
         return false;
     }
 
+    return true;
+}
+
+bool SessionStateStore::saveRootFileBacked(CPtr<agentc::ListreeValue> root,
+                                            std::string* error) const {
+    if (!root) {
+        if (error) *error = "cannot save null session root";
+        return false;
+    }
+
+    // 1. Flush all live mmap'd slab files to disk.
+    //    inUse arrays are already in the files (written on every alloc/free),
+    //    so a single msync makes the entire allocator state durable.
+    Allocator<agentc::ListreeValue>::getAllocator().flushMappedSlabs();
+    Allocator<agentc::ListreeValueRef>::getAllocator().flushMappedSlabs();
+    Allocator<CLL<agentc::ListreeValueRef>>::getAllocator().flushMappedSlabs();
+    Allocator<agentc::ListreeItem>::getAllocator().flushMappedSlabs();
+    Allocator<AATree<agentc::ListreeItem>>::getAllocator().flushMappedSlabs();
+    BlobAllocator::getAllocator().flushMappedSlabs();
+
+    // 2. Write root anchor and bootstrap — the slab files are already the
+    //    authoritative persisted state.
+    auto image_store = sessionImageStore();
+    const SlabId root_sid = root.getSlabId();
+
+    SessionImageBootstrap bootstrap;
+    bootstrap.session    = image_store.sessionName();
+    bootstrap.roots_file = "roots.bin";
+    for (const char* name : {kAllocatorNameValue, kAllocatorNameRef,
+                              kAllocatorNameNode,  kAllocatorNameItem,
+                              kAllocatorNameTree,  kAllocatorNameBlob}) {
+        SessionImageBootstrapAllocator ba;
+        ba.name          = name;
+        ba.encoding      = "file_backed_native";
+        ba.metadata_file = std::string("allocators/") + name + "/meta.bin"; // placeholder
+        bootstrap.allocators.push_back(std::move(ba));
+    }
+
+    std::string root_err;
+    if (!image_store.saveRootState(bootstrap.roots_file,
+                                   makeRootState("session", root_sid), &root_err) ||
+        !image_store.saveBootstrap(bootstrap, &root_err)) {
+        if (error) *error = "failed to write root anchor/bootstrap: " + root_err;
+        return false;
+    }
+    return true;
+}
+
+bool SessionStateStore::loadRootFileBacked(CPtr<agentc::ListreeValue>& out,
+                                            std::string* error) const {
+    auto image_store = sessionImageStore();
+    if (!image_store.exists()) {
+        if (error) *error = "session state does not exist";
+        return false;
+    }
+
+    // Reset all heap-side allocator state without pre-creating a heap-backed
+    // slab[0] sentinel.  The sentinel lives at slab[0][0] in the saved files
+    // and will be restored by reattachFileBackedSlabs.
+    Allocator<agentc::ListreeValue>::getAllocator().resetHeapStateOnly();
+    Allocator<agentc::ListreeValueRef>::getAllocator().resetHeapStateOnly();
+    Allocator<CLL<agentc::ListreeValueRef>>::getAllocator().resetHeapStateOnly();
+    Allocator<agentc::ListreeItem>::getAllocator().resetHeapStateOnly();
+    Allocator<AATree<agentc::ListreeItem>>::getAllocator().resetHeapStateOnly();
+    BlobAllocator::getAllocator().clearAllSlabs();
+    // Reconfigure file-backed backing (resetHeapStateOnly cleared it).
+    const_cast<SessionStateStore*>(this)->configureFileBackedAllocators();
+
+    // Re-attach slab files.  inUse arrays are read directly from the file
+    // header region — no separate metadata file needed.
+    std::string attach_err;
+    if (!Allocator<agentc::ListreeValue>::getAllocator().reattachFileBackedSlabs(&attach_err) ||
+        !Allocator<agentc::ListreeValueRef>::getAllocator().reattachFileBackedSlabs(&attach_err) ||
+        !Allocator<CLL<agentc::ListreeValueRef>>::getAllocator().reattachFileBackedSlabs(&attach_err) ||
+        !Allocator<agentc::ListreeItem>::getAllocator().reattachFileBackedSlabs(&attach_err) ||
+        !Allocator<AATree<agentc::ListreeItem>>::getAllocator().reattachFileBackedSlabs(&attach_err)) {
+        if (error) *error = "failed to reattach slab files: " + attach_err;
+        return false;
+    }
+    if (!BlobAllocator::getAllocator().reattachFileBackedBlobSlabs(&attach_err)) {
+        if (error) *error = "failed to reattach blob slab files: " + attach_err;
+        return false;
+    }
+
+    // Look up the root anchor.
+    ArenaRootState root_state;
+    SessionImageBootstrap bootstrap;
+    if (!image_store.loadBootstrap(bootstrap, error)) return false;
+    if (!image_store.loadRootState(bootstrap.roots_file, root_state, error)) return false;
+
+    const SlabId root_sid = findAnchor(root_state, "session");
+    if (root_sid == SlabId{}) {
+        if (error) *error = "missing session root anchor";
+        return false;
+    }
+
+    out = CPtr<agentc::ListreeValue>(root_sid);
+    if (!out) {
+        if (error) *error = "restored session root is null";
+        return false;
+    }
     return true;
 }
 

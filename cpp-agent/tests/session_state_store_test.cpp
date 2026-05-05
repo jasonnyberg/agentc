@@ -365,7 +365,7 @@ TEST(SessionStateStoreTest, CanAllocateRawSlabsFileFirstWithMmapBackingPolicy) {
     ASSERT_FALSE(slab1_path.empty());
     EXPECT_FALSE(std::filesystem::exists(slab0_path));
     EXPECT_TRUE(std::filesystem::exists(slab1_path));
-    EXPECT_EQ(std::filesystem::file_size(slab1_path), static_cast<uint64_t>(SLAB_SIZE * sizeof(uint64_t)));
+    EXPECT_EQ(std::filesystem::file_size(slab1_path), static_cast<uint64_t>(SLAB_SIZE * (sizeof(size_t) + sizeof(uint64_t))));
 
     const SlabId first_file_backed_sid = saved_ids[SLAB_SIZE - 1];
     ASSERT_EQ(first_file_backed_sid.first, 1);
@@ -377,7 +377,9 @@ TEST(SessionStateStoreTest, CanAllocateRawSlabsFileFirstWithMmapBackingPolicy) {
 
     std::ifstream slab1_in(slab1_path, std::ios::binary);
     ASSERT_TRUE(slab1_in.good());
-    slab1_in.seekg(static_cast<std::streamoff>(first_file_backed_sid.second * sizeof(uint64_t)), std::ios::beg);
+    slab1_in.seekg(static_cast<std::streamoff>(
+        SLAB_SIZE * sizeof(size_t) +              // skip the inUse prefix
+        first_file_backed_sid.second * sizeof(uint64_t)), std::ios::beg);
     uint64_t persisted_value = 0;
     slab1_in.read(reinterpret_cast<char*>(&persisted_value), sizeof(persisted_value));
     ASSERT_TRUE(slab1_in.good());
@@ -413,7 +415,7 @@ TEST(SessionStateStoreTest, CanAllocateStructuredListreeValueSlabsFileFirstWithM
     ASSERT_FALSE(slab1_path.empty());
     EXPECT_FALSE(std::filesystem::exists(slab0_path));
     EXPECT_TRUE(std::filesystem::exists(slab1_path));
-    EXPECT_EQ(std::filesystem::file_size(slab1_path), static_cast<uint64_t>(SLAB_SIZE * sizeof(agentc::ListreeValue)));
+    EXPECT_EQ(std::filesystem::file_size(slab1_path), static_cast<uint64_t>(SLAB_SIZE * (sizeof(size_t) + sizeof(agentc::ListreeValue))));
 
     const SlabId first_file_backed_sid = saved_ids[SLAB_SIZE - 1];
     ASSERT_EQ(first_file_backed_sid.first, 1);
@@ -458,7 +460,7 @@ TEST(SessionStateStoreTest, CanAllocateStructuredListreeValueRefSlabsFileFirstWi
     ASSERT_FALSE(slab1_path.empty());
     EXPECT_FALSE(std::filesystem::exists(slab0_path));
     EXPECT_TRUE(std::filesystem::exists(slab1_path));
-    EXPECT_EQ(std::filesystem::file_size(slab1_path), static_cast<uint64_t>(SLAB_SIZE * sizeof(agentc::ListreeValueRef)));
+    EXPECT_EQ(std::filesystem::file_size(slab1_path), static_cast<uint64_t>(SLAB_SIZE * (sizeof(size_t) + sizeof(agentc::ListreeValueRef))));
 
     const SlabId first_file_backed_sid = saved_ids[SLAB_SIZE - 1];
     ASSERT_EQ(first_file_backed_sid.first, 1);
@@ -504,8 +506,8 @@ TEST(SessionStateStoreTest, CanAllocateBlobSlabsFileFirstWithMmapBackingPolicy) 
     ASSERT_FALSE(slab1_path.empty());
     EXPECT_TRUE(std::filesystem::exists(slab0_path));
     EXPECT_TRUE(std::filesystem::exists(slab1_path));
-    EXPECT_EQ(std::filesystem::file_size(slab0_path), 65536u);
-    EXPECT_EQ(std::filesystem::file_size(slab1_path), 65536u);
+    EXPECT_EQ(std::filesystem::file_size(slab0_path), sizeof(size_t) + 65536u);
+    EXPECT_EQ(std::filesystem::file_size(slab1_path), sizeof(size_t) + 65536u);
 
     auto* blob_ptr = static_cast<const char*>(blob_allocator.getPointer(second));
     ASSERT_NE(blob_ptr, nullptr);
@@ -514,7 +516,7 @@ TEST(SessionStateStoreTest, CanAllocateBlobSlabsFileFirstWithMmapBackingPolicy) 
 
     std::ifstream slab1_in(slab1_path, std::ios::binary);
     ASSERT_TRUE(slab1_in.good());
-    slab1_in.seekg(static_cast<std::streamoff>(second.second), std::ios::beg);
+    slab1_in.seekg(static_cast<std::streamoff>(sizeof(size_t) + second.second), std::ios::beg);
     std::string persisted(small_payload.size(), '\0');
     slab1_in.read(persisted.data(), static_cast<std::streamsize>(persisted.size()));
     ASSERT_TRUE(slab1_in.good());
@@ -704,7 +706,7 @@ TEST(SessionStateStoreTest, CanAllocateStructuredCllSlabsFileFirstWithMmapBackin
     ASSERT_FALSE(slab1_path.empty());
     EXPECT_FALSE(std::filesystem::exists(slab0_path));
     EXPECT_TRUE(std::filesystem::exists(slab1_path));
-    EXPECT_EQ(std::filesystem::file_size(slab1_path), static_cast<uint64_t>(SLAB_SIZE * sizeof(CLL<agentc::ListreeValueRef>)));
+    EXPECT_EQ(std::filesystem::file_size(slab1_path), static_cast<uint64_t>(SLAB_SIZE * (sizeof(size_t) + sizeof(CLL<agentc::ListreeValueRef>))));
 
     const SlabId first_file_backed_sid = saved_ids[SLAB_SIZE - 1];
     ASSERT_EQ(first_file_backed_sid.first, 1);
@@ -752,7 +754,7 @@ TEST(SessionStateStoreTest, CanAllocateStructuredListreeItemSlabsFileFirstWithMm
     ASSERT_FALSE(slab1_path.empty());
     EXPECT_FALSE(std::filesystem::exists(slab0_path));
     EXPECT_TRUE(std::filesystem::exists(slab1_path));
-    EXPECT_EQ(std::filesystem::file_size(slab1_path), static_cast<uint64_t>(SLAB_SIZE * sizeof(agentc::ListreeItem)));
+    EXPECT_EQ(std::filesystem::file_size(slab1_path), static_cast<uint64_t>(SLAB_SIZE * (sizeof(size_t) + sizeof(agentc::ListreeItem))));
 
     const SlabId first_file_backed_sid = saved_ids[SLAB_SIZE - 1];
     ASSERT_EQ(first_file_backed_sid.first, 1);
@@ -813,7 +815,7 @@ TEST(SessionStateStoreTest, CanAllocateStructuredAATreeSlabsFileFirstWithMmapBac
     ASSERT_FALSE(slab1_path.empty());
     EXPECT_FALSE(std::filesystem::exists(slab0_path));
     EXPECT_TRUE(std::filesystem::exists(slab1_path));
-    EXPECT_EQ(std::filesystem::file_size(slab1_path), static_cast<uint64_t>(SLAB_SIZE * sizeof(AATree<agentc::ListreeItem>)));
+    EXPECT_EQ(std::filesystem::file_size(slab1_path), static_cast<uint64_t>(SLAB_SIZE * (sizeof(size_t) + sizeof(AATree<agentc::ListreeItem>))));
 
     EXPECT_EQ(child_node->name, "child");
     ASSERT_TRUE(child_node->data);
