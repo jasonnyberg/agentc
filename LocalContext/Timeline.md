@@ -1,5 +1,7 @@
 ### 2026-05-04
 - G071 complete: fixed the three interlocking bugs that were blocking `EmbeddedVmRootRestoreTest.FullTurnPersistenceAndResume` — `copy()` signature/cycle-detection fix in `listree.cpp`, `appendBytes`-always-called serialization fix in `listree.h`, and `saveRoot` JSON round-trip fix in `session_state_store.cpp`. All 36 `cpp_agent_tests` now pass.
+- Switched to full file-backed allocators for slab storage: inUse arrays now live inside mmap'd slab files alongside item bytes, `configureMmapFileBackedSlabs` auto-enables MmapFile policy, `saveRoot` is now flush+anchor (no copy/serialize), `loadRoot` scans slab directories and reattaches files directly. Removed legacy `session_image_mmap_raw_v1` and `session_image_mmap_structured_attach_v1` formats and all associated code. Fixed `O_CREAT|O_TRUNC` → `O_CREAT|O_EXCL` in `createOwnedSlab` to assert the invariant that a new slab file never collides with an existing one.
+- Created 🔗[G072 - Direct Slab Restore Without Full Library Re-import](./Knowledge/Goals/G072-DirectSlabRestoreWithoutReimport/index.md) to investigate bypassing the normalize+reimport cycle on restore by treating Cartographer binding trees as durable and only re-resolving process-local symbol addresses.
 
 ### 2026-05-02
 - G070 completed: deleted all unneeded legacy C++ agent loop scaffolding (`agent_loop.cpp`, `http_client.cpp`, etc.). Moved `ai_types.h` into the `runtime` tree.

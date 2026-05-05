@@ -7,6 +7,9 @@
 ### Active
 - 🔗[G068 — Client/Agent Split with Embedded Persistent Edict VM](./Knowledge/Goals/G068-ClientAgentSplitEmbeddedVmPersistence/index.md) — IN PROGRESS
 
+### Investigation
+- 🔗[G072 — Direct Slab Restore Without Full Library Re-import](./Knowledge/Goals/G072-DirectSlabRestoreWithoutReimport/index.md) — INVESTIGATION
+
 ### Complete (this cycle)
 - 🔗[G071 — Session-Scoped Allocator Image Persistence](./Knowledge/Goals/G071-SessionScopedAllocatorImagePersistence/index.md) — **COMPLETE** (2026-05-04)
 
@@ -75,7 +78,7 @@ None
 - LMDB cleanup is complete: the root build flag and `LmdbArenaStore` are gone, LMDB-only test/demo branches are removed, and active code/build paths no longer reference LMDB.
 
 ## Knowledge Inventory
-- **Goals**: G068-ClientAgentSplitEmbeddedVmPersistence (active); G071-SessionScopedAllocatorImagePersistence (complete)
+- **Goals**: G068-ClientAgentSplitEmbeddedVmPersistence (active); G071-SessionScopedAllocatorImagePersistence (complete); G072-DirectSlabRestoreWithoutReimport (investigation)
 - **Facts**: 🔗[ListreeTraversalCycleDetection](./Knowledge/Facts/ListreeTraversalCycleDetection.md); 🔗[ListreeValueSerializationFormat](./Knowledge/Facts/ListreeValueSerializationFormat.md)
 - **Contracts**: 🔗[AgentcEvalContract](./Knowledge/Contracts/AgentcEvalContract.md); 🔗[AgentcRuntimeCAbi](./Knowledge/Contracts/AgentcRuntimeCAbi.md); 🔗[AgentcRuntimeJsonContract](./Knowledge/Contracts/AgentcRuntimeJsonContract.md)
 - **Procedures**: 🔗[AgentC_IPC_Bridge_Ops](./Knowledge/Procedures/AgentC_IPC_Bridge_Ops.md); 🔗[AgentC_Socket_Ops](./Knowledge/Procedures/AgentC_Socket_Ops.md)

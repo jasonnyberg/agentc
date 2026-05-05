@@ -181,11 +181,6 @@ struct ArenaPersistenceTraits<CLL<T>, void> {
 };
 
 template<typename T>
-struct ArenaMmapStructuredAttachTraits<CLL<T>, void> {
-    static constexpr bool supported = true;
-};
-
-template<typename T>
 struct ArenaWatermarkResetTraits<CLL<T>, void> {
     static constexpr bool strictEligible = true;
 
@@ -194,11 +189,6 @@ struct ArenaWatermarkResetTraits<CLL<T>, void> {
         if (node.lnk[1]) node.lnk[1].modrefs(-1);
         if (node.data) node.data.modrefs(-1);
     }
-};
-
-template<typename T>
-struct ArenaMmapStructuredAttachTraits<AATree<T>, void> {
-    static constexpr bool supported = true;
 };
 
 template<typename T>

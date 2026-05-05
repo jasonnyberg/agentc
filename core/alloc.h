@@ -91,27 +91,6 @@ struct ArenaSlabImage {
     std::vector<ArenaStructuredSlot> structuredSlots;
 };
 
-struct ArenaMappedRawSlabAttachment {
-    uint16_t slabIndex = 0;
-    uint32_t count = 0;
-    std::vector<size_t> inUse;
-    std::shared_ptr<void> mappedRegion;
-    size_t mappedRegionSize = 0;
-    std::byte* items = nullptr;
-    size_t itemsSizeBytes = 0;
-};
-
-struct ArenaMappedStructuredSlabAttachment {
-    uint16_t slabIndex = 0;
-    uint32_t count = 0;
-    std::vector<size_t> inUse;
-    std::vector<ArenaStructuredSlot> structuredSlots;
-    std::shared_ptr<void> mappedRegion;
-    size_t mappedRegionSize = 0;
-    std::byte* items = nullptr;
-    size_t itemsSizeBytes = 0;
-};
-
 enum class ArenaSlabBackingPolicy : uint8_t {
     Heap = 0,
     MmapFile = 1,
@@ -217,11 +196,6 @@ template<typename T, typename Enable = void>
 struct ArenaWatermarkResetTraits {
     static constexpr bool strictEligible = std::is_trivially_destructible_v<T>;
     static void resetTransient(T&) {}
-};
-
-template<typename T, typename Enable = void>
-struct ArenaMmapStructuredAttachTraits {
-    static constexpr bool supported = false;
 };
 
 template<typename T>
@@ -343,9 +317,12 @@ private:
                 throw std::runtime_error("failed to create blob mmap slab backing directory");
             }
             const auto path = mmapBackingPathForSlab(slabIndex);
-            const int fd = ::open(path.c_str(), O_RDWR | O_CREAT | O_TRUNC, 0644);
+            // O_EXCL: a slab file must not already exist at this index.  If it
+            // does, something has gone wrong with restore (an attached slab should
+            // have prevented this call).
+            const int fd = ::open(path.c_str(), O_RDWR | O_CREAT | O_EXCL, 0644);
             if (fd < 0) {
-                throw std::runtime_error("failed to open blob mmap slab backing file");
+                throw std::runtime_error("failed to create blob mmap slab backing file (already exists?): " + path);
             }
             // File layout: [size_t count][kBlobSlabBytes data]
             if (::ftruncate(fd, static_cast<off_t>(kBlobSlabFileBytes)) != 0) {
@@ -598,21 +575,6 @@ private:
               mappedRegion(std::move(region)), mappedBytes(totalBytes),
               mappedBacking(true) {}
 
-        // Legacy attach slab: items are mmap-backed, inUse is copied from caller data.
-        // Used by attachMappedRawSlabs / attachMappedStructuredSlabs.
-        Slab(size_t initialCount, const std::vector<size_t>& initialInUse,
-             T* mappedItems, std::shared_ptr<void> region, size_t itemBytes)
-            : count(initialCount),
-              ownedInUse(new size_t[SLAB_SIZE]{}),
-              inUse(ownedInUse.get()),
-              items(mappedItems),
-              mappedRegion(std::move(region)), mappedBytes(itemBytes),
-              mappedBacking(true) {
-            std::copy_n(initialInUse.data(),
-                        std::min(initialInUse.size(), static_cast<size_t>(SLAB_SIZE)),
-                        ownedInUse.get());
-        }
-
         ~Slab() {
             if (!mappedBacking) free(items);
             // ownedInUse unique_ptr auto-frees when non-null.
@@ -693,9 +655,12 @@ private:
                 throw std::runtime_error("failed to create mmap slab backing directory");
             }
             const auto path = mmapBackingPathForSlab(slabIndex);
-            const int fd = ::open(path.c_str(), O_RDWR | O_CREAT | O_TRUNC, 0644);
+            // O_EXCL: a slab file must not already exist at this index.  If it
+            // does, something has gone wrong with restore (an attached slab should
+            // have prevented this call).
+            const int fd = ::open(path.c_str(), O_RDWR | O_CREAT | O_EXCL, 0644);
             if (fd < 0) {
-                throw std::runtime_error("failed to open mmap slab backing file");
+                throw std::runtime_error("failed to create mmap slab backing file (already exists?): " + path);
             }
             // File layout: [SLAB_SIZE * sizeof(size_t) inUse][SLAB_SIZE * sizeof(T) items]
             // Both inUse and items live in the same mmap'd region so a single
@@ -1263,92 +1228,6 @@ public:
         return true;
     }
 
-    bool attachMappedRawSlabs(const std::vector<ArenaMappedRawSlabAttachment>& attachments) {
-        std::lock_guard<std::recursive_mutex> lock(mutex_);
-        if constexpr (!ArenaPersistenceTraits<T>::supported || ArenaPersistenceTraits<T>::encoding != ArenaSlabEncoding::RawBytes) {
-            return false;
-        }
-
-        clearSlabsOnly();
-
-        for (const auto& attachment : attachments) {
-            if (attachment.slabIndex >= NUM_SLABS ||
-                attachment.inUse.size() != SLAB_SIZE ||
-                attachment.count > SLAB_SIZE ||
-                attachment.items == nullptr ||
-                attachment.itemsSizeBytes != SLAB_SIZE * sizeof(T) ||
-                attachment.mappedRegion == nullptr) {
-                return false;
-            }
-
-            slabs[attachment.slabIndex] = new Slab(
-                attachment.count,
-                attachment.inUse,
-                reinterpret_cast<T*>(attachment.items),
-                attachment.mappedRegion,
-                attachment.mappedRegionSize);
-        }
-
-        if (!slabs[0]) {
-            SlabId nullSentinel = allocRaw();
-            (void)nullSentinel;
-            allocationLog.clear();
-        }
-        return true;
-    }
-
-    bool attachMappedStructuredSlabs(const std::vector<ArenaMappedStructuredSlabAttachment>& attachments) {
-        std::lock_guard<std::recursive_mutex> lock(mutex_);
-        if constexpr (!ArenaMmapStructuredAttachTraits<T>::supported) {
-            return false;
-        }
-
-        clearSlabsOnly();
-
-        for (const auto& attachment : attachments) {
-            if (attachment.slabIndex >= NUM_SLABS ||
-                attachment.inUse.size() != SLAB_SIZE ||
-                attachment.count > SLAB_SIZE ||
-                attachment.items == nullptr ||
-                attachment.itemsSizeBytes != SLAB_SIZE * sizeof(T) ||
-                attachment.mappedRegion == nullptr) {
-                return false;
-            }
-
-            auto* slab = new Slab(
-                attachment.count,
-                attachment.inUse,
-                reinterpret_cast<T*>(attachment.items),
-                attachment.mappedRegion,
-                attachment.mappedRegionSize);
-            std::vector<bool> restored(SLAB_SIZE, false);
-            for (const auto& slot : attachment.structuredSlots) {
-                if (slot.offset >= SLAB_SIZE || attachment.inUse[slot.offset] == 0 || restored[slot.offset]) {
-                    delete slab;
-                    return false;
-                }
-                if (!ArenaPersistenceTraits<T>::restoreSlot(&slab->items[slot.offset], slot.payload)) {
-                    delete slab;
-                    return false;
-                }
-                restored[slot.offset] = true;
-            }
-            for (size_t offset = 0; offset < SLAB_SIZE; ++offset) {
-                if (attachment.inUse[offset] > 0 && !restored[offset]) {
-                    delete slab;
-                    return false;
-                }
-            }
-            slabs[attachment.slabIndex] = slab;
-        }
-
-        if (!slabs[0]) {
-            SlabId nullSentinel = allocRaw();
-            (void)nullSentinel;
-            allocationLog.clear();
-        }
-        return true;
-    }
 
     void resetForTests() {
         std::lock_guard<std::recursive_mutex> lock(mutex_);

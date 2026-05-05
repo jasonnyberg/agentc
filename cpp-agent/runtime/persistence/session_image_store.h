@@ -89,18 +89,9 @@ public:
     bool saveAllocatorSlabs(SessionImageAllocatorManifest& allocator,
                             const std::vector<ArenaSlabImage>& slabs,
                             std::string* error = nullptr) const;
-    bool saveAllocatorAttachableStructuredSlabs(SessionImageAllocatorManifest& allocator,
-                                                const std::vector<ArenaSlabImage>& slabs,
-                                                std::string* error = nullptr) const;
     bool loadAllocatorSlabs(const SessionImageAllocatorManifest& allocator,
                             std::vector<ArenaSlabImage>& slabs,
                             std::string* error = nullptr) const;
-    bool loadAllocatorMappedRawSlabs(const SessionImageAllocatorManifest& allocator,
-                                     std::vector<ArenaMappedRawSlabAttachment>& slabs,
-                                     std::string* error = nullptr) const;
-    bool loadAllocatorMappedStructuredSlabs(const SessionImageAllocatorManifest& allocator,
-                                            std::vector<ArenaMappedStructuredSlabAttachment>& slabs,
-                                            std::string* error = nullptr) const;
 
     bool saveRootState(const std::string& roots_file,
                        const ArenaRootState& root_state,

@@ -29,10 +29,6 @@ std::string sanitize_session_name(std::string value) {
 
 constexpr const char* kSessionImageMmapSlabFormat = "session_image_mmap_v1";
 constexpr uint32_t kSessionImageMmapSlabVersion = 1;
-constexpr const char* kSessionImageMmapRawSlabFormat = "session_image_mmap_raw_v1";
-constexpr uint32_t kSessionImageMmapRawSlabVersion = 1;
-constexpr const char* kSessionImageMmapStructuredAttachSlabFormat = "session_image_mmap_structured_attach_v1";
-constexpr uint32_t kSessionImageMmapStructuredAttachSlabVersion = 1;
 constexpr size_t kAllocatorIdentityBytes = 64;
 
 struct SessionImageMmapSlabHeader {
@@ -40,36 +36,6 @@ struct SessionImageMmapSlabHeader {
     uint32_t version = kSessionImageMmapSlabVersion;
     uint32_t payload_offset_bytes = 0;
     uint32_t payload_size_bytes = 0;
-    uint16_t slab_index = 0;
-    uint8_t encoding = 0;
-    uint8_t reserved = 0;
-    char allocator_name[kAllocatorIdentityBytes] = {};
-    char allocator_type[kAllocatorIdentityBytes] = {};
-};
-
-struct SessionImageMmapRawSlabHeader {
-    char magic[8];
-    uint32_t version = kSessionImageMmapRawSlabVersion;
-    uint32_t in_use_offset_bytes = 0;
-    uint32_t in_use_entry_count = 0;
-    uint32_t items_offset_bytes = 0;
-    uint32_t items_size_bytes = 0;
-    uint32_t count = 0;
-    uint32_t item_size_bytes = 0;
-    uint16_t slab_index = 0;
-    uint8_t encoding = 0;
-    uint8_t reserved = 0;
-    char allocator_name[kAllocatorIdentityBytes] = {};
-    char allocator_type[kAllocatorIdentityBytes] = {};
-};
-
-struct SessionImageMmapStructuredAttachSlabHeader {
-    char magic[8];
-    uint32_t version = kSessionImageMmapStructuredAttachSlabVersion;
-    uint32_t payload_offset_bytes = 0;
-    uint32_t payload_size_bytes = 0;
-    uint32_t items_offset_bytes = 0;
-    uint32_t items_size_bytes = 0;
     uint16_t slab_index = 0;
     uint8_t encoding = 0;
     uint8_t reserved = 0;
@@ -94,26 +60,8 @@ std::array<char, 8> slabMagicBytes() {
     return {'A', 'S', 'L', 'A', 'B', 'V', '1', '\0'};
 }
 
-std::array<char, 8> rawSlabMagicBytes() {
-    return {'A', 'R', 'A', 'W', 'S', 'V', '1', '\0'};
-}
-
-std::array<char, 8> structuredAttachSlabMagicBytes() {
-    return {'A', 'S', 'T', 'R', 'V', '1', '\0', '\0'};
-}
-
 bool hasExpectedSlabMagic(const SessionImageMmapSlabHeader& header) {
     const auto magic = slabMagicBytes();
-    return std::memcmp(header.magic, magic.data(), magic.size()) == 0;
-}
-
-bool hasExpectedRawSlabMagic(const SessionImageMmapRawSlabHeader& header) {
-    const auto magic = rawSlabMagicBytes();
-    return std::memcmp(header.magic, magic.data(), magic.size()) == 0;
-}
-
-bool hasExpectedStructuredAttachSlabMagic(const SessionImageMmapStructuredAttachSlabHeader& header) {
-    const auto magic = structuredAttachSlabMagicBytes();
     return std::memcmp(header.magic, magic.data(), magic.size()) == 0;
 }
 
@@ -172,73 +120,6 @@ std::string encodeMmapFriendlySlabFile(const SessionImageAllocatorManifest& allo
     return file_bytes;
 }
 
-std::string encodeMmapAttachableRawSlabFile(const SessionImageAllocatorManifest& allocator,
-                                            const ArenaSlabImage& slab,
-                                            SessionImageSlabFile& slab_file) {
-    SessionImageMmapRawSlabHeader header;
-    const auto magic = rawSlabMagicBytes();
-    std::memcpy(header.magic, magic.data(), magic.size());
-    header.version = kSessionImageMmapRawSlabVersion;
-    header.slab_index = slab.slabIndex;
-    header.encoding = static_cast<uint8_t>(slab.encoding);
-    header.count = slab.count;
-    header.in_use_entry_count = static_cast<uint32_t>(slab.inUse.size());
-    setAllocatorIdentity(header.allocator_name, allocator.name);
-    setAllocatorIdentity(header.allocator_type, allocator.type);
-    header.item_size_bytes = slab.inUse.empty() ? 0u : static_cast<uint32_t>(slab.bytes.size() / slab.inUse.size());
-    header.in_use_offset_bytes = static_cast<uint32_t>(alignUp(sizeof(SessionImageMmapRawSlabHeader), alignof(size_t)));
-    header.items_offset_bytes = static_cast<uint32_t>(alignUp(header.in_use_offset_bytes + slab.inUse.size() * sizeof(size_t), systemPageSize()));
-    header.items_size_bytes = static_cast<uint32_t>(slab.bytes.size());
-
-    std::string file_bytes(header.items_offset_bytes + slab.bytes.size(), '\0');
-    std::memcpy(file_bytes.data(), &header, sizeof(header));
-    if (!slab.inUse.empty()) {
-        std::memcpy(file_bytes.data() + header.in_use_offset_bytes,
-                    slab.inUse.data(),
-                    slab.inUse.size() * sizeof(size_t));
-    }
-    if (!slab.bytes.empty()) {
-        std::memcpy(file_bytes.data() + header.items_offset_bytes,
-                    slab.bytes.data(),
-                    slab.bytes.size());
-    }
-
-    slab_file.format = kSessionImageMmapRawSlabFormat;
-    slab_file.payload_offset_bytes = header.items_offset_bytes;
-    slab_file.payload_size_bytes = header.items_size_bytes;
-    return file_bytes;
-}
-
-std::string encodeMmapAttachableStructuredSlabFile(const SessionImageAllocatorManifest& allocator,
-                                                   const ArenaSlabImage& slab,
-                                                   size_t item_size_bytes,
-                                                   SessionImageSlabFile& slab_file) {
-    const std::string payload = serializeArenaSlabImage(slab);
-    SessionImageMmapStructuredAttachSlabHeader header;
-    const auto magic = structuredAttachSlabMagicBytes();
-    std::memcpy(header.magic, magic.data(), magic.size());
-    header.version = kSessionImageMmapStructuredAttachSlabVersion;
-    header.payload_offset_bytes = static_cast<uint32_t>(alignUp(sizeof(SessionImageMmapStructuredAttachSlabHeader), systemPageSize()));
-    header.payload_size_bytes = static_cast<uint32_t>(payload.size());
-    header.items_offset_bytes = static_cast<uint32_t>(alignUp(header.payload_offset_bytes + payload.size(), systemPageSize()));
-    header.items_size_bytes = static_cast<uint32_t>(SLAB_SIZE * item_size_bytes);
-    header.slab_index = slab.slabIndex;
-    header.encoding = static_cast<uint8_t>(slab.encoding);
-    setAllocatorIdentity(header.allocator_name, allocator.name);
-    setAllocatorIdentity(header.allocator_type, allocator.type);
-
-    std::string file_bytes(header.items_offset_bytes + header.items_size_bytes, '\0');
-    std::memcpy(file_bytes.data(), &header, sizeof(header));
-    if (!payload.empty()) {
-        std::memcpy(file_bytes.data() + header.payload_offset_bytes, payload.data(), payload.size());
-    }
-
-    slab_file.format = kSessionImageMmapStructuredAttachSlabFormat;
-    slab_file.payload_offset_bytes = header.payload_offset_bytes;
-    slab_file.payload_size_bytes = header.payload_size_bytes;
-    return file_bytes;
-}
-
 bool decodeMmapFriendlySlabPayload(const void* mapped_data,
                                    size_t mapped_size,
                                    const SessionImageAllocatorManifest& allocator,
@@ -281,259 +162,6 @@ bool decodeMmapFriendlySlabPayload(const void* mapped_data,
     return deserializeArenaSlabImage(std::string_view(payload, header.payload_size_bytes), slab);
 }
 
-bool decodeMmapAttachableRawSlab(const void* mapped_data,
-                                 size_t mapped_size,
-                                 const SessionImageAllocatorManifest& allocator,
-                                 const SessionImageSlabFile& slab_file,
-                                 ArenaSlabImage& slab,
-                                 std::string* error) {
-    if (mapped_size < sizeof(SessionImageMmapRawSlabHeader)) {
-        if (error) *error = "raw mmap slab file is smaller than header";
-        return false;
-    }
-
-    SessionImageMmapRawSlabHeader header;
-    std::memcpy(&header, mapped_data, sizeof(header));
-    if (!hasExpectedRawSlabMagic(header) || header.version != kSessionImageMmapRawSlabVersion) {
-        if (error) *error = "raw mmap slab file has invalid header";
-        return false;
-    }
-    if (!validateAllocatorIdentity(header, allocator, error)) {
-        return false;
-    }
-    if (header.encoding != static_cast<uint8_t>(ArenaSlabEncoding::RawBytes)) {
-        if (error) *error = "raw mmap slab file does not declare raw-byte encoding";
-        return false;
-    }
-    if (header.slab_index != slab_file.index) {
-        if (error) *error = "raw mmap slab file index does not match manifest";
-        return false;
-    }
-    if (header.in_use_offset_bytes > mapped_size ||
-        header.in_use_entry_count > (mapped_size - header.in_use_offset_bytes) / sizeof(size_t) ||
-        header.items_offset_bytes > mapped_size ||
-        header.items_size_bytes > mapped_size - header.items_offset_bytes) {
-        if (error) *error = "raw mmap slab file ranges are invalid";
-        return false;
-    }
-    if (slab_file.payload_offset_bytes != 0 && slab_file.payload_offset_bytes != header.items_offset_bytes) {
-        if (error) *error = "raw mmap slab manifest payload offset does not match header";
-        return false;
-    }
-    if (slab_file.payload_size_bytes != 0 && slab_file.payload_size_bytes != header.items_size_bytes) {
-        if (error) *error = "raw mmap slab manifest payload size does not match header";
-        return false;
-    }
-
-    slab = {};
-    slab.slabIndex = header.slab_index;
-    slab.count = header.count;
-    slab.encoding = ArenaSlabEncoding::RawBytes;
-    slab.inUse.resize(header.in_use_entry_count);
-    if (header.in_use_entry_count > 0) {
-        std::memcpy(slab.inUse.data(),
-                    static_cast<const char*>(mapped_data) + header.in_use_offset_bytes,
-                    header.in_use_entry_count * sizeof(size_t));
-    }
-    slab.bytes.resize(header.items_size_bytes);
-    if (header.items_size_bytes > 0) {
-        std::memcpy(slab.bytes.data(),
-                    static_cast<const char*>(mapped_data) + header.items_offset_bytes,
-                    header.items_size_bytes);
-    }
-    return true;
-}
-
-bool decodeMmapAttachableStructuredSlab(const void* mapped_data,
-                                        size_t mapped_size,
-                                        const SessionImageAllocatorManifest& allocator,
-                                        const SessionImageSlabFile& slab_file,
-                                        ArenaSlabImage& slab,
-                                        std::string* error) {
-    if (mapped_size < sizeof(SessionImageMmapStructuredAttachSlabHeader)) {
-        if (error) *error = "structured attach mmap slab file is smaller than header";
-        return false;
-    }
-
-    SessionImageMmapStructuredAttachSlabHeader header;
-    std::memcpy(&header, mapped_data, sizeof(header));
-    if (!hasExpectedStructuredAttachSlabMagic(header) || header.version != kSessionImageMmapStructuredAttachSlabVersion) {
-        if (error) *error = "structured attach mmap slab file has invalid header";
-        return false;
-    }
-    if (!validateAllocatorIdentity(header, allocator, error)) {
-        return false;
-    }
-    if (header.encoding != static_cast<uint8_t>(ArenaSlabEncoding::Structured)) {
-        if (error) *error = "structured attach mmap slab file does not declare structured encoding";
-        return false;
-    }
-    if (header.slab_index != slab_file.index) {
-        if (error) *error = "structured attach mmap slab file index does not match manifest";
-        return false;
-    }
-    if (header.payload_offset_bytes > mapped_size ||
-        header.payload_size_bytes > mapped_size - header.payload_offset_bytes ||
-        header.items_offset_bytes > mapped_size ||
-        header.items_size_bytes > mapped_size - header.items_offset_bytes) {
-        if (error) *error = "structured attach mmap slab file ranges are invalid";
-        return false;
-    }
-    if (slab_file.payload_offset_bytes != 0 && slab_file.payload_offset_bytes != header.payload_offset_bytes) {
-        if (error) *error = "structured attach mmap slab manifest payload offset does not match header";
-        return false;
-    }
-    if (slab_file.payload_size_bytes != 0 && slab_file.payload_size_bytes != header.payload_size_bytes) {
-        if (error) *error = "structured attach mmap slab manifest payload size does not match header";
-        return false;
-    }
-
-    const auto* payload = static_cast<const char*>(mapped_data) + header.payload_offset_bytes;
-    if (!deserializeArenaSlabImage(std::string_view(payload, header.payload_size_bytes), slab)) {
-        if (error) *error = "failed to decode structured attach slab payload";
-        return false;
-    }
-    if (slab.encoding != ArenaSlabEncoding::Structured || slab.slabIndex != slab_file.index) {
-        if (error) *error = "decoded structured attach slab payload is inconsistent with header";
-        return false;
-    }
-    return true;
-}
-
-bool mapMmapAttachableStructuredSlab(const void* mapped_data,
-                                     size_t mapped_size,
-                                     const SessionImageAllocatorManifest& allocator,
-                                     const SessionImageSlabFile& slab_file,
-                                     size_t expected_item_size_bytes,
-                                     const std::shared_ptr<void>& mapped_region,
-                                     ArenaMappedStructuredSlabAttachment& attachment,
-                                     std::string* error) {
-    if (mapped_size < sizeof(SessionImageMmapStructuredAttachSlabHeader)) {
-        if (error) *error = "structured attach mmap slab file is smaller than header";
-        return false;
-    }
-
-    SessionImageMmapStructuredAttachSlabHeader header;
-    std::memcpy(&header, mapped_data, sizeof(header));
-    if (!hasExpectedStructuredAttachSlabMagic(header) || header.version != kSessionImageMmapStructuredAttachSlabVersion) {
-        if (error) *error = "structured attach mmap slab file has invalid header";
-        return false;
-    }
-    if (!validateAllocatorIdentity(header, allocator, error)) {
-        return false;
-    }
-    if (header.encoding != static_cast<uint8_t>(ArenaSlabEncoding::Structured)) {
-        if (error) *error = "structured attach mmap slab file does not declare structured encoding";
-        return false;
-    }
-    if (header.slab_index != slab_file.index) {
-        if (error) *error = "structured attach mmap slab file index does not match manifest";
-        return false;
-    }
-    if (header.items_size_bytes != expected_item_size_bytes * static_cast<uint64_t>(SLAB_SIZE) ||
-        header.payload_offset_bytes > mapped_size ||
-        header.payload_size_bytes > mapped_size - header.payload_offset_bytes ||
-        header.items_offset_bytes > mapped_size ||
-        header.items_size_bytes > mapped_size - header.items_offset_bytes) {
-        if (error) *error = "structured attach mmap slab file ranges are invalid";
-        return false;
-    }
-    if (slab_file.payload_offset_bytes != 0 && slab_file.payload_offset_bytes != header.payload_offset_bytes) {
-        if (error) *error = "structured attach mmap slab manifest payload offset does not match header";
-        return false;
-    }
-    if (slab_file.payload_size_bytes != 0 && slab_file.payload_size_bytes != header.payload_size_bytes) {
-        if (error) *error = "structured attach mmap slab manifest payload size does not match header";
-        return false;
-    }
-
-    ArenaSlabImage slab;
-    const auto* payload = static_cast<const char*>(mapped_data) + header.payload_offset_bytes;
-    if (!deserializeArenaSlabImage(std::string_view(payload, header.payload_size_bytes), slab)) {
-        if (error) *error = "failed to decode structured attach slab payload";
-        return false;
-    }
-    if (slab.encoding != ArenaSlabEncoding::Structured || slab.slabIndex != slab_file.index || slab.inUse.size() != SLAB_SIZE) {
-        if (error) *error = "decoded structured attach slab payload is inconsistent";
-        return false;
-    }
-
-    attachment = {};
-    attachment.slabIndex = slab.slabIndex;
-    attachment.count = slab.count;
-    attachment.inUse = std::move(slab.inUse);
-    attachment.structuredSlots = std::move(slab.structuredSlots);
-    attachment.mappedRegion = mapped_region;
-    attachment.mappedRegionSize = mapped_size;
-    attachment.items = reinterpret_cast<std::byte*>(static_cast<char*>(mapped_region.get()) + header.items_offset_bytes);
-    attachment.itemsSizeBytes = header.items_size_bytes;
-    return true;
-}
-
-bool mapMmapAttachableRawSlab(const void* mapped_data,
-                              size_t mapped_size,
-                              const SessionImageAllocatorManifest& allocator,
-                              const SessionImageSlabFile& slab_file,
-                              size_t expected_item_size_bytes,
-                              const std::shared_ptr<void>& mapped_region,
-                              ArenaMappedRawSlabAttachment& slab,
-                              std::string* error) {
-    if (mapped_size < sizeof(SessionImageMmapRawSlabHeader)) {
-        if (error) *error = "raw mmap slab file is smaller than header";
-        return false;
-    }
-
-    SessionImageMmapRawSlabHeader header;
-    std::memcpy(&header, mapped_data, sizeof(header));
-    if (!hasExpectedRawSlabMagic(header) || header.version != kSessionImageMmapRawSlabVersion) {
-        if (error) *error = "raw mmap slab file has invalid header";
-        return false;
-    }
-    if (!validateAllocatorIdentity(header, allocator, error)) {
-        return false;
-    }
-    if (header.encoding != static_cast<uint8_t>(ArenaSlabEncoding::RawBytes)) {
-        if (error) *error = "raw mmap slab file does not declare raw-byte encoding";
-        return false;
-    }
-    if (header.slab_index != slab_file.index) {
-        if (error) *error = "raw mmap slab file index does not match manifest";
-        return false;
-    }
-    if (header.in_use_entry_count != SLAB_SIZE || header.item_size_bytes != expected_item_size_bytes) {
-        if (error) *error = "raw mmap slab file does not match allocator item geometry";
-        return false;
-    }
-    if (header.in_use_offset_bytes > mapped_size ||
-        header.in_use_entry_count > (mapped_size - header.in_use_offset_bytes) / sizeof(size_t) ||
-        header.items_offset_bytes > mapped_size ||
-        header.items_size_bytes != expected_item_size_bytes * static_cast<uint64_t>(SLAB_SIZE) ||
-        header.items_size_bytes > mapped_size - header.items_offset_bytes) {
-        if (error) *error = "raw mmap slab file ranges are invalid";
-        return false;
-    }
-    if (slab_file.payload_offset_bytes != 0 && slab_file.payload_offset_bytes != header.items_offset_bytes) {
-        if (error) *error = "raw mmap slab manifest payload offset does not match header";
-        return false;
-    }
-    if (slab_file.payload_size_bytes != 0 && slab_file.payload_size_bytes != header.items_size_bytes) {
-        if (error) *error = "raw mmap slab manifest payload size does not match header";
-        return false;
-    }
-
-    slab = {};
-    slab.slabIndex = header.slab_index;
-    slab.count = header.count;
-    slab.inUse.resize(header.in_use_entry_count);
-    std::memcpy(slab.inUse.data(),
-                static_cast<const char*>(mapped_data) + header.in_use_offset_bytes,
-                header.in_use_entry_count * sizeof(size_t));
-    slab.mappedRegion = mapped_region;
-    slab.mappedRegionSize = mapped_size;
-    slab.items = reinterpret_cast<std::byte*>(static_cast<char*>(mapped_region.get()) + header.items_offset_bytes);
-    slab.itemsSizeBytes = header.items_size_bytes;
-    return true;
-}
 
 nlohmann::json slabFileToJson(const SessionImageSlabFile& slab) {
     return nlohmann::json{
@@ -1008,37 +636,8 @@ bool SessionImageStore::saveAllocatorSlabs(SessionImageAllocatorManifest& alloca
             return false;
         }
         SessionImageSlabFile& slab_file = allocator.slabs[i];
-        const std::string encoded = slabs[i].encoding == ArenaSlabEncoding::RawBytes
-            ? encodeMmapAttachableRawSlabFile(allocator, slabs[i], slab_file)
-            : encodeMmapFriendlySlabFile(allocator, slabs[i], slab_file);
+        const std::string encoded = encodeMmapFriendlySlabFile(allocator, slabs[i], slab_file);
         if (!writeBinaryFile(slab_file.file, encoded, error)) {
-            return false;
-        }
-    }
-    return true;
-}
-
-bool SessionImageStore::saveAllocatorAttachableStructuredSlabs(SessionImageAllocatorManifest& allocator,
-                                                               const std::vector<ArenaSlabImage>& slabs,
-                                                               std::string* error) const {
-    if (allocator.slabs.size() != slabs.size()) {
-        if (error) *error = "allocator manifest slab count does not match image count";
-        return false;
-    }
-
-    for (size_t i = 0; i < slabs.size(); ++i) {
-        if (allocator.slabs[i].index != slabs[i].slabIndex) {
-            if (error) *error = "allocator manifest slab index does not match image";
-            return false;
-        }
-        if (slabs[i].encoding != ArenaSlabEncoding::Structured) {
-            if (error) *error = "attachable structured slab save requires structured images";
-            return false;
-        }
-        SessionImageSlabFile& slab_file = allocator.slabs[i];
-        if (!writeBinaryFile(slab_file.file,
-                             encodeMmapAttachableStructuredSlabFile(allocator, slabs[i], allocator.item_size_bytes, slab_file),
-                             error)) {
             return false;
         }
     }
@@ -1057,16 +656,13 @@ bool SessionImageStore::loadAllocatorSlabs(const SessionImageAllocatorManifest& 
     slabs.reserve(slab_files.size());
     for (const auto& slab_file : slab_files) {
         ArenaSlabImage slab;
-        if (slab_file.format == kSessionImageMmapSlabFormat ||
-            slab_file.format == kSessionImageMmapRawSlabFormat ||
-            slab_file.format == kSessionImageMmapStructuredAttachSlabFormat) {
+        if (slab_file.format == kSessionImageMmapSlabFormat) {
             const auto path = resolveRelativePath(slab_file.file);
             const int fd = ::open(path.c_str(), O_RDONLY);
             if (fd < 0) {
                 if (error) *error = "failed to open mmap slab file for read";
                 return false;
             }
-
             const auto file_size = std::filesystem::file_size(path);
             void* mapped = ::mmap(nullptr, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
             ::close(fd);
@@ -1074,156 +670,20 @@ bool SessionImageStore::loadAllocatorSlabs(const SessionImageAllocatorManifest& 
                 if (error) *error = "failed to mmap slab file";
                 return false;
             }
-
-            const bool ok = slab_file.format == kSessionImageMmapRawSlabFormat
-                ? decodeMmapAttachableRawSlab(mapped, static_cast<size_t>(file_size), allocator, slab_file, slab, error)
-                : (slab_file.format == kSessionImageMmapStructuredAttachSlabFormat
-                    ? decodeMmapAttachableStructuredSlab(mapped, static_cast<size_t>(file_size), allocator, slab_file, slab, error)
-                    : decodeMmapFriendlySlabPayload(mapped, static_cast<size_t>(file_size), allocator, slab_file, slab, error));
+            const bool ok = decodeMmapFriendlySlabPayload(
+                mapped, static_cast<size_t>(file_size), allocator, slab_file, slab, error);
             ::munmap(mapped, file_size);
-            if (!ok) {
-                return false;
-            }
+            if (!ok) return false;
         } else {
             std::string text;
-            if (!readBinaryFile(slab_file.file, text, error)) {
-                return false;
-            }
+            if (!readBinaryFile(slab_file.file, text, error)) return false;
             if (!deserializeArenaSlabImage(text, slab)) {
-                if (slab_file.format.empty()) {
-                    const auto path = resolveRelativePath(slab_file.file);
-                    const int fd = ::open(path.c_str(), O_RDONLY);
-                    if (fd < 0) {
-                        if (error) *error = "failed to open slab file for compatibility mmap read";
-                        return false;
-                    }
-                    const auto file_size = std::filesystem::file_size(path);
-                    void* mapped = ::mmap(nullptr, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
-                    ::close(fd);
-                    if (mapped == MAP_FAILED) {
-                        if (error) *error = "failed to mmap slab file";
-                        return false;
-                    }
-                    const bool ok = decodeMmapFriendlySlabPayload(mapped, static_cast<size_t>(file_size), allocator, slab_file, slab, error);
-                    ::munmap(mapped, file_size);
-                    if (!ok) {
-                        if (error) *error = "failed to decode allocator slab image";
-                        return false;
-                    }
-                } else {
-                    if (error) *error = "failed to decode allocator slab image";
-                    return false;
-                }
+                if (error) *error = "failed to decode allocator slab image";
+                return false;
             }
         }
         if (slab.slabIndex != slab_file.index) {
             if (error) *error = "allocator slab file index does not match decoded image";
-            return false;
-        }
-        slabs.push_back(std::move(slab));
-    }
-    return true;
-}
-
-bool SessionImageStore::loadAllocatorMappedRawSlabs(const SessionImageAllocatorManifest& allocator,
-                                                    std::vector<ArenaMappedRawSlabAttachment>& slabs,
-                                                    std::string* error) const {
-    std::vector<SessionImageSlabFile> slab_files;
-    if (!resolveAllocatorSlabsForLoad(*this, allocator, slab_files, error)) {
-        return false;
-    }
-
-    slabs.clear();
-    slabs.reserve(slab_files.size());
-    for (const auto& slab_file : slab_files) {
-        if (slab_file.format != kSessionImageMmapRawSlabFormat) {
-            if (error) *error = "allocator slab is not in raw mmap-attachable format";
-            return false;
-        }
-
-        const auto path = resolveRelativePath(slab_file.file);
-        const int fd = ::open(path.c_str(), O_RDWR);
-        if (fd < 0) {
-            if (error) *error = "failed to open raw mmap slab file for attach";
-            return false;
-        }
-
-        const auto file_size = std::filesystem::file_size(path);
-        void* mapped = ::mmap(nullptr, file_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
-        ::close(fd);
-        if (mapped == MAP_FAILED) {
-            if (error) *error = "failed to mmap raw slab file for attach";
-            return false;
-        }
-
-        std::shared_ptr<void> mapped_region(mapped, [file_size](void* ptr) {
-            if (ptr && ptr != MAP_FAILED) {
-                ::munmap(ptr, file_size);
-            }
-        });
-
-        ArenaMappedRawSlabAttachment slab;
-        if (!mapMmapAttachableRawSlab(mapped_region.get(),
-                                      static_cast<size_t>(file_size),
-                                      allocator,
-                                      slab_file,
-                                      allocator.item_size_bytes,
-                                      mapped_region,
-                                      slab,
-                                      error)) {
-            return false;
-        }
-        slabs.push_back(std::move(slab));
-    }
-    return true;
-}
-
-bool SessionImageStore::loadAllocatorMappedStructuredSlabs(const SessionImageAllocatorManifest& allocator,
-                                                           std::vector<ArenaMappedStructuredSlabAttachment>& slabs,
-                                                           std::string* error) const {
-    std::vector<SessionImageSlabFile> slab_files;
-    if (!resolveAllocatorSlabsForLoad(*this, allocator, slab_files, error)) {
-        return false;
-    }
-
-    slabs.clear();
-    slabs.reserve(slab_files.size());
-    for (const auto& slab_file : slab_files) {
-        if (slab_file.format != kSessionImageMmapStructuredAttachSlabFormat) {
-            if (error) *error = "allocator slab is not in structured mmap-attachable format";
-            return false;
-        }
-
-        const auto path = resolveRelativePath(slab_file.file);
-        const int fd = ::open(path.c_str(), O_RDWR);
-        if (fd < 0) {
-            if (error) *error = "failed to open structured mmap slab file for attach";
-            return false;
-        }
-
-        const auto file_size = std::filesystem::file_size(path);
-        void* mapped = ::mmap(nullptr, file_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
-        ::close(fd);
-        if (mapped == MAP_FAILED) {
-            if (error) *error = "failed to mmap structured slab file for attach";
-            return false;
-        }
-
-        std::shared_ptr<void> mapped_region(mapped, [file_size](void* ptr) {
-            if (ptr && ptr != MAP_FAILED) {
-                ::munmap(ptr, file_size);
-            }
-        });
-
-        ArenaMappedStructuredSlabAttachment slab;
-        if (!mapMmapAttachableStructuredSlab(mapped_region.get(),
-                                             static_cast<size_t>(file_size),
-                                             allocator,
-                                             slab_file,
-                                             allocator.item_size_bytes,
-                                             mapped_region,
-                                             slab,
-                                             error)) {
             return false;
         }
         slabs.push_back(std::move(slab));
@@ -1271,37 +731,6 @@ bool SessionImageStore::inspectSlabFile(const std::string& relative_path,
         info.payload_offset_bytes = common_header.payload_offset_bytes;
         info.payload_size_bytes = common_header.payload_size_bytes;
         return finalize(true);
-    }
-
-    if (static_cast<size_t>(file_size) >= sizeof(SessionImageMmapRawSlabHeader)) {
-        SessionImageMmapRawSlabHeader raw_header;
-        std::memcpy(&raw_header, mapped, sizeof(raw_header));
-        if (hasExpectedRawSlabMagic(raw_header) && raw_header.version == kSessionImageMmapRawSlabVersion) {
-            info.index = raw_header.slab_index;
-            info.format = kSessionImageMmapRawSlabFormat;
-            info.allocator_name = readAllocatorIdentity(raw_header.allocator_name);
-            info.allocator_type = readAllocatorIdentity(raw_header.allocator_type);
-            info.encoding = static_cast<ArenaSlabEncoding>(raw_header.encoding);
-            info.payload_offset_bytes = raw_header.items_offset_bytes;
-            info.payload_size_bytes = raw_header.items_size_bytes;
-            return finalize(true);
-        }
-    }
-
-    if (static_cast<size_t>(file_size) >= sizeof(SessionImageMmapStructuredAttachSlabHeader)) {
-        SessionImageMmapStructuredAttachSlabHeader structured_header;
-        std::memcpy(&structured_header, mapped, sizeof(structured_header));
-        if (hasExpectedStructuredAttachSlabMagic(structured_header) &&
-            structured_header.version == kSessionImageMmapStructuredAttachSlabVersion) {
-            info.index = structured_header.slab_index;
-            info.format = kSessionImageMmapStructuredAttachSlabFormat;
-            info.allocator_name = readAllocatorIdentity(structured_header.allocator_name);
-            info.allocator_type = readAllocatorIdentity(structured_header.allocator_type);
-            info.encoding = static_cast<ArenaSlabEncoding>(structured_header.encoding);
-            info.payload_offset_bytes = structured_header.payload_offset_bytes;
-            info.payload_size_bytes = structured_header.payload_size_bytes;
-            return finalize(true);
-        }
     }
 
     if (error) *error = "unrecognized slab header format";
