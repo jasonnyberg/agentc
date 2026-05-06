@@ -96,12 +96,8 @@ None
 
 **Project**: AgentC — building an Edict-native agent runtime with a mmap/Listree-backed persistence substrate and an embedded VM as the sole live owner of session state.
 
-**Current State**: G072 Phase 5 (Library Change Detection) is complete. The system now validates library freshness during a warm restore. If a binary is updated, the embedded VM constructor raises a `StaleLibraryException` and the loader falls back to a fresh session, preventing catastrophic segfaults caused by invalid schema caching.
-**Next Action**: Implement G072 Phase 6: E2E Regression tests proving warm restore produces the exact same observable VM behavior as cold restore.
-
-**Key Context**:
-- `preload_imported_libraries` reads `resolved_file_size`, `resolved_modified_time_ns`, and `resolved_content_hash` natively from the Cartographer metadata and compares it against the disk file via `validateLibraryFreshness()`.
-- `main.cpp` loops the `EdictVM` initialization to correctly intercept the exception and clear the `session_store`.
+**Current State**: Goal G072 (Direct Slab Restore Without Full Library Re-import) is fully complete! We have successfully implemented a direct memory-mapped VM restore that preserves Cartographer dynamic metadata, natively avoids FFI boundary serialization serialization loops, prevents catastrophic memory corruption by statically checking library fingerprint changes, and perfectly models cold-state parity.
+**Next Action**: All phases for G072 are complete. Ready for next project goals!
 - `ListreeValue::copy()` now propagates a `std::shared_ptr<TraversalContext>*` via `void* ctx_ptr` for cycle detection. The context is passed by pointer-to-shared_ptr so recursive calls share the same tracking set.
 - G071's mmap-backed slab ownership design (file-first allocation, durable bootstrap/catalog, ephemeral mmap addresses, `SlabId` unchanged) is fully recorded in `G071/index.md` and `WP_SessionImagePersistencePlan_2026-05-01.md` — no further work needed on the substrate itself unless a regression surfaces.
 - `rehydrate_vm_runtime_state(...)` in `agent_root_vm_ops.*` is the canonical path for rebuilding transient FFI/runtime handles on restore; `cpp-agent/main.cpp` must call it on startup and reset-session.

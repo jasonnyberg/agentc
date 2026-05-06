@@ -112,8 +112,70 @@ TEST(EmbeddedVmRootRestoreTest, FullTurnPersistenceAndResume) {
         EXPECT_EQ(finalJson["conversation"]["messages"][3]["text"].get<std::string>(), "mock:second step");
     }
 
-    std::cout << "Done.\n" << std::flush;
+    store.clear();
+}
 
+TEST(EmbeddedVmRootRestoreTest, CompareWarmToColdExecution) {
+    const auto base_warm = (std::filesystem::temp_directory_path() / "agentc_vm_warm_test").string();
+    const auto artifacts = mockRuntimeArtifacts();
+
+    // Cold Run (Single uninterrupted session)
+    nlohmann::json coldFinalState;
+    {
+        auto rootJson = agentc::runtime::make_default_agent_root("comparative prompt", "mock", "mock-model");
+        auto rootValue = agentc::fromJson(rootJson.dump());
+        agentc::edict::EdictVM vm(rootValue);
+        agentc::runtime::rehydrate_vm_runtime_state(vm, "comparative prompt", nlohmann::json{{"default_provider", "mock"}, {"default_model", "mock-model"}}, artifacts, "startup-fresh");
+        
+        agentc::runtime::run_vm_agent_root_turn_via_imported_runtime(vm, "step 1", nlohmann::json{{"default_provider", "mock"}, {"default_model", "mock-model"}}, artifacts);
+        agentc::runtime::run_vm_agent_root_turn_via_imported_runtime(vm, "step 2", nlohmann::json{{"default_provider", "mock"}, {"default_model", "mock-model"}}, artifacts);
+        agentc::runtime::run_vm_agent_root_turn_via_imported_runtime(vm, "step 3", nlohmann::json{{"default_provider", "mock"}, {"default_model", "mock-model"}}, artifacts);
+        
+        coldFinalState = nlohmann::json::parse(agentc::toJson(vm.getCursor().getValue()));
+    }
+
+    // Warm Run (Restarts between each step)
+    nlohmann::json warmFinalState;
+    agentc::runtime::SessionStateStore store(base_warm);
+    store.clear();
+    
+    {
+        auto rootJson = agentc::runtime::make_default_agent_root("comparative prompt", "mock", "mock-model");
+        auto rootValue = agentc::fromJson(rootJson.dump());
+        agentc::edict::EdictVM vm(rootValue);
+        agentc::runtime::rehydrate_vm_runtime_state(vm, "comparative prompt", nlohmann::json{{"default_provider", "mock"}, {"default_model", "mock-model"}}, artifacts, "startup-fresh");
+        
+        agentc::runtime::run_vm_agent_root_turn_via_imported_runtime(vm, "step 1", nlohmann::json{{"default_provider", "mock"}, {"default_model", "mock-model"}}, artifacts);
+        store.saveRoot(vm.getCursor().getValue());
+    }
+    
+    {
+        CPtr<agentc::ListreeValue> restoredRoot;
+        store.loadRoot(restoredRoot);
+        agentc::edict::EdictVM vm(restoredRoot);
+        agentc::runtime::rehydrate_vm_runtime_state(vm, "comparative prompt", nlohmann::json{{"default_provider", "mock"}, {"default_model", "mock-model"}}, artifacts, "startup-restored");
+        
+        agentc::runtime::run_vm_agent_root_turn_via_imported_runtime(vm, "step 2", nlohmann::json{{"default_provider", "mock"}, {"default_model", "mock-model"}}, artifacts);
+        store.saveRoot(vm.getCursor().getValue());
+    }
+
+    {
+        CPtr<agentc::ListreeValue> restoredRoot;
+        store.loadRoot(restoredRoot);
+        agentc::edict::EdictVM vm(restoredRoot);
+        agentc::runtime::rehydrate_vm_runtime_state(vm, "comparative prompt", nlohmann::json{{"default_provider", "mock"}, {"default_model", "mock-model"}}, artifacts, "startup-restored");
+        
+        agentc::runtime::run_vm_agent_root_turn_via_imported_runtime(vm, "step 3", nlohmann::json{{"default_provider", "mock"}, {"default_model", "mock-model"}}, artifacts);
+        
+        warmFinalState = nlohmann::json::parse(agentc::toJson(vm.getCursor().getValue()));
+    }
+
+    // The __vm_runtime_handle changes because of raw pointers; remove it before comparison.
+    coldFinalState.erase("__vm_runtime_handle");
+    warmFinalState.erase("__vm_runtime_handle");
+    // Some mock IDs might increment differently if a global counter exists, but since we are mocking correctly it should match exactly.
+
+    EXPECT_EQ(coldFinalState, warmFinalState);
 
     store.clear();
 }

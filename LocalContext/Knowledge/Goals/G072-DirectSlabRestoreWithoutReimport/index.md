@@ -40,7 +40,7 @@ This means the saved slab data for all the import/binding trees is loaded, then 
 - [x] Implement a prototype warm-restore path and validate it against `EmbeddedVmRootRestoreTest.FullTurnPersistenceAndResume` (Implemented `preload_imported_libraries` and in-place Listree mutation for `rehydrate_vm_runtime_state`)
 - [x] Implement Phase 2/3: Durable Binding Import and Direct Execution (removing the side-channel REPL for `call_runtime_from_vm_or_throw`)
 - [x] Implement library-change detection and fall-back to cold restore when needed
-- [ ] Add regression tests proving warm restore produces the same observable VM behaviour as cold restore
+- [x] Add regression tests proving warm restore produces the same observable VM behaviour as cold restore
 
 ## Related Goals
 - 🔗[G068 - Client/Agent Split with Embedded Persistent Edict VM](../G068-ClientAgentSplitEmbeddedVmPersistence/index.md)

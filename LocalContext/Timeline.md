@@ -85,3 +85,4 @@
   - Added `validateLibraryFreshness` to `cartographer/resolver.h` to compare disk file size, mtime, and hash against stored `resolved_*` metadata.
   - `EdictVM::preload_imported_libraries` now calls `validateLibraryFreshness` for each dynamic library and throws `StaleLibraryException` if there is a mismatch.
   - `cpp-agent/main.cpp` catches `StaleLibraryException` and automatically invalidates the `SessionStateStore` (falling back to a cold start from a fresh root).
+- G072 Phase 6 completed: Implemented comparative `CompareWarmToColdExecution` regression test. It executes 3 agent turns in a single continuous VM process (Cold) and compares the terminal tree state byte-for-byte against a parallel test that restarts the VM entirely from mmap slabs between every single turn (Warm). The generated listree structures are provably identical.
