@@ -245,7 +245,20 @@ Phase 7 progress: `demo_agentc_runtime_edict.sh`, `demo_inverted_*`, and `demo_r
 
 ## Progress Notes
 
-### 2026-04-30
+### 2026-05-04
+- Did: Solidified the mmap-backed slab persistence substrate to its intended final form.
+  - `Slab` struct refactored: `inUse` is now a raw `size_t*` (heap or mmap'd) rather than `std::vector`; `BlobSlab` gains a `mappedCount*` pointer. New file layout embeds the inUse array at the start of each slab file — `[SLAB_SIZE×sizeof(size_t) inUse][SLAB_SIZE×sizeof(T) items]` for structured allocators, `[sizeof(size_t) count][65536 bytes data]` for blob slabs.
+  - `configureMmapFileBackedSlabs` now auto-enables `MmapFile` policy — no separate `setSlabBackingPolicy` call needed.
+  - `saveRoot` (file-backed path) is now: flush all slab mappings + write root anchor + write bootstrap. No copy, no serialize, no rollback, no separate inuse.bin files.
+  - `loadRoot` (file-backed path) is now: reset heap state + reconfigure + scan directories + `reattachFileBackedSlabs` (reads inUse from file header, no external metadata input).
+  - Removed the entire legacy attach layer: `ArenaMappedRawSlabAttachment`, `ArenaMappedStructuredSlabAttachment`, `ArenaMmapStructuredAttachTraits`, `attachMappedRawSlabs`, `attachMappedStructuredSlabs`, `session_image_mmap_raw_v1` and `session_image_mmap_structured_attach_v1` formats, all associated encode/decode functions and three legacy tests.
+  - Fixed `O_CREAT|O_TRUNC` → `O_CREAT|O_EXCL` in `createOwnedSlab` to assert the invariant that a new slab file never collides with an existing attached one.
+  - All 33 remaining `cpp_agent_tests` pass.
+- Decided: `O_EXCL` is the right guard — it converts a silent-data-destruction footgun into an explicit assertion failure at the cost of zero normal-operation behaviour change.
+- Decided: individual slab files are fixed size (set at creation by `ftruncate`, never resized); the number of slab files may grow with long conversation histories but should be stable for bounded state.
+- Created 🔗[G072 - Direct Slab Restore Without Full Library Re-import](../G072-DirectSlabRestoreWithoutReimport/index.md) to investigate bypassing `normalize_agent_root + fromJson` on restore by treating Cartographer binding trees as durable and only re-resolving process-local symbol addresses. Key insight captured in G072: `dlopen` cost is shared between warm and cold restore paths; the delta is schema-parse + tree-construction (cold) vs. N×`dlsym` (warm).
+- Remaining in G068: tighten `cpp-agent/main.cpp` host ownership, G068 Ph.6 transient-rehydration (blocked on G072 answer), Copilot provider migration, policy gates.
+- Next: Continue the test debugging for `AgentRootVmOpsTest.RehydratesTransientRuntimeStateExplicitlyOnStartup` assertion failure and implement G072 Phase 2/3 (Durable Binding Import and Direct Execution).
 - Did: Reframed the target runtime around an Edict-native agent loop and documented the architecture in 🔗[WP_EdictNativeAgentModuleArchitecture](../../WorkProducts/WP_EdictNativeAgentModuleArchitecture.md).
 - Decided: The canonical LLM interface should be an importable `agentc` Edict module/capability backed by a reusable native runtime library, while the long-lived host keeps transport/lifecycle duties and the VM owns orchestration/policy.
 - Remaining: Define the concrete runtime ABI, normalized request/response contract, extraction map from current `cpp-agent` code, and the first Edict module/builtin surface.
@@ -383,4 +396,4 @@ Phase 7 progress: `demo_agentc_runtime_edict.sh`, `demo_inverted_*`, and `demo_r
 - Next: Continue 🔗[G070](../G070-InvertedLoopSurgicalCleanup/index.md) with the next cleanup layer after Phase 2 while using 🔗[G071](../G071-SessionScopedAllocatorImagePersistence/index.md) as the execution vehicle for the mmap-oriented persistence substrate beneath it.
 
 ## Next Action
-Continue 🔗[G070 Inverted Loop Surgical Cleanup](../G070-InvertedLoopSurgicalCleanup/index.md) after Phase 2 while using 🔗[G071 Session-Scoped Allocator Image Persistence](../G071-SessionScopedAllocatorImagePersistence/index.md) to harden the session-image slab layout toward mmap-backed authoritative ownership and to make transient runtime/import rehydration explicit on top of that native-root persistence path.
+Start the G072 investigation: read Cartographer source to determine exactly how resolved function addresses are stored in the Listree tree (raw pointer blob vs. string representation). The answer determines whether the G068 Phase 6 transient-rehydration item can be resolved via warm restore (patch N addresses) or requires a different approach.

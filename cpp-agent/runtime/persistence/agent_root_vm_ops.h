@@ -46,11 +46,6 @@ nlohmann::json make_default_agent_root(const std::string& system_prompt,
                                        const std::string& default_provider,
                                        const std::string& default_model);
 
-nlohmann::json normalize_agent_root(const nlohmann::json& value,
-                                    const std::string& fallback_system_prompt,
-                                    const std::string& fallback_provider,
-                                    const std::string& fallback_model);
-
 nlohmann::json run_vm_agent_root_turn(agentc::edict::EdictVM& vm,
                                       const std::string& prompt,
                                       const VmAgentRuntimeInvoker& runtime_invoker);

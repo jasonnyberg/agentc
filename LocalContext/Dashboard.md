@@ -96,12 +96,12 @@ None
 
 **Project**: AgentC — building an Edict-native agent runtime with a mmap/Listree-backed persistence substrate and an embedded VM as the sole live owner of session state.
 
-**Current State**: G071 (session-scoped allocator image persistence) is **complete** — all acceptance criteria are ticked, `EmbeddedVmRootRestoreTest.FullTurnPersistenceAndResume` passes, and all 36 `cpp_agent_tests` pass. G068 (client/agent split, embedded VM persistence) is the remaining active goal.
-
-**Next Action**: Open `cpp-agent/main.cpp` and audit what host-owned state management paths remain outside the embedded VM/root. Specifically: identify which startup, reset-session, and turn paths still maintain host-owned state duplicates alongside the VM cursor, and eliminate them so the VM cursor is the sole live owner.
+**Current State**: G072 Phase 1 (Non-destructive Rehydration) and Phase 4 (Library Handle Preloading) are implemented. `rehydrate_vm_runtime_state` now correctly updates the root in-place, preserving `__cartographer` and `@ext` bindings across restarts.
+**Next Action**: Implement G072 Phase 2/3: Durable Binding Import and Direct Execution (removing the side-channel REPL for `call_runtime_from_vm_or_throw` to ensure bindings actually enter the main VM's durable slab).
 
 **Key Context**:
-- The three bugs fixed this session are documented in `LocalContext/Knowledge/Facts/ListreeValueSerializationFormat.md`. Do not re-introduce a `copy()`-based snapshot in `saveRoot` without first ensuring all nodes are freshly allocated after the checkpoint — the JSON round-trip (`fromJson(toJson(root))`) is the correct current approach.
+- `preload_imported_libraries` runs in the `EdictVM` constructor, parsing `__cartographer` nodes and calling `dlopen()` so Cartographer dynamic dispatch (`dlsym`) works with new ASLR offsets without needing raw pointer patching.
+- `rehydrate_vm_runtime_state` is now fully non-destructive; the legacy `normalize_agent_root` and `replace_vm_root_from_json_or_throw` have been removed.
 - `ListreeValue::copy()` now propagates a `std::shared_ptr<TraversalContext>*` via `void* ctx_ptr` for cycle detection. The context is passed by pointer-to-shared_ptr so recursive calls share the same tracking set.
 - G071's mmap-backed slab ownership design (file-first allocation, durable bootstrap/catalog, ephemeral mmap addresses, `SlabId` unchanged) is fully recorded in `G071/index.md` and `WP_SessionImagePersistencePlan_2026-05-01.md` — no further work needed on the substrate itself unless a regression surfaces.
 - `rehydrate_vm_runtime_state(...)` in `agent_root_vm_ops.*` is the canonical path for rebuilding transient FFI/runtime handles on restore; `cpp-agent/main.cpp` must call it on startup and reset-session.

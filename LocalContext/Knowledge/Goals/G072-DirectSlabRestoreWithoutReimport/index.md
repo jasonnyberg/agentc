@@ -1,7 +1,7 @@
 # Goal: G072 - Direct Slab Restore Without Full Library Re-import
 
 ## Status
-**INVESTIGATION**
+**IN PROGRESS**
 
 ## Goal
 Determine whether a restored VM session can resume directly from slab data — bypassing the current `normalize_agent_root` + `fromJson` + full re-import cycle — by treating the persisted Cartographer/FFI binding trees as durable and only re-resolving the process-local symbol addresses that have changed since the last session.
@@ -16,63 +16,32 @@ The current restore path (`loadRoot` + `rehydrate_vm_runtime_state`) discards al
 
 This means the saved slab data for all the import/binding trees is loaded, then immediately freed, then rebuilt from scratch on every session. This is wasteful and also means slab slots churn heavily across sessions instead of reaching a stable layout.
 
-**The hypothesis**: the binding trees (Cartographer schema, resolved function metadata, type definitions) are *structurally* durable — they describe facts about a library that do not change between process restarts as long as the library binary has not changed. Only the process-local symbol addresses (raw function pointer values resolved by `dlsym`) are stale after restart. Re-resolving those addresses is a much smaller operation than a full re-import.
+## Investigation Findings
 
-## Key Questions to Investigate
+1. **Cartographer Pointers**: Cartographer dynamically dispatches FFI calls. `ffi->invoke` uses `dlsym(h, funcName.c_str())` from a transient `handles_` map. The `"resolver_address"` string in the Listree is purely metadata. No raw pointers are stored for standard FFI calls!
+2. **Process-Local State**: The only process-local states are `closureValue` nodes (created by `op_CLOSURE`) which hold raw `void*` pointers for ephemeral callback thunks, and the transient C++ `FFI::handles_` map.
+3. **Warm Restore Mechanism**: A "warm restore" does not need to walk the tree to patch addresses because there are no addresses to patch! We only need to ensure libraries are re-`dlopen`ed. An existing helper `preload_imported_libraries` reads `__cartographer.library` tags to restore the `dlopen` handles.
+4. **Current Architectural Blockers**: 
+   - `rehydrate_vm_runtime_state` destructively dumps the VM root to JSON via `normalize_agent_root`, destroying non-standard keys.
+   - `call_runtime_from_vm_or_throw` spins up a side-channel REPL for the `agentc_call !` on every turn, so the `@ext` and `@runtimeffi` bindings never actually make it into the main VM's persistent slab.
 
-### 1. Where are resolved symbol addresses stored in the slab?
-- The JSON dump shows `"resolver_address":"0x7F959EB822B6"` etc. as string values in the Listree tree. Are these the actual pointers used for dispatch, or are they metadata-only strings?
-- What is the actual callable representation that Cartographer uses to invoke a resolved function? Is it stored as an immediate pointer value in a `ListreeValue` (raw bytes in the inUse/items region of the slab), as a blob-allocated buffer, or only in the string representation?
-- Are there any other process-local opaque handles stored in the slab (dlopen handles, file descriptors, thread-local state, etc.)?
+## Implementation Plan
 
-### 2. Are the addresses the only non-portable state?
-- Library load addresses change between process restarts due to ASLR (unless the loader places the library at the same VA by coincidence or if `ASLR` is disabled / `noaslr` is set).
-- Is it possible to load a library at a fixed address to make addresses stable? (Not desirable in production, but clarifies the scope of the problem.)
-- Are there any other fields in the resolved binding tree that are process-local rather than structurally durable?
-
-### 3. What is the minimal re-resolution step?
-- The cost of `dlopen` is **shared** between the warm and cold restore paths — cold restore also calls `dlopen` as part of the Cartographer import pipeline. It should not be counted as a cost of the warm path.
-- The incremental cost delta between warm and cold restore is therefore: schema-parse + full binding-tree construction (cold) vs. N × `dlsym` calls (warm). Since `dlsym` is a hash-table lookup, warm restore should be strictly cheaper for any library that has not changed.
-- If only function pointer values need to be updated, the re-resolution step is: for each resolved symbol record in the slab, call `dlsym(handle_from_dlopen, symbol_name)` and write the new address into the appropriate slab slot.
-- Can this be done as a targeted slab walk (find all ListreeValue nodes that hold a function pointer) without re-running the full Cartographer import pipeline?
-- What does Cartographer's internal representation look like for a resolved symbol? Is there a known field offset or flag that identifies "this value is a function pointer"?
-
-### 4. Feasibility of a "warm restore" path
-- A warm restore would:
-  1. `reattachFileBackedSlabs` — map existing files (as now)
-  2. Walk the slab tree looking for stale address fields
-  3. Re-`dlopen` each library (if not already loaded) and `dlsym` each symbol name
-  4. Patch the address fields in-place
-  5. Resume directly from the restored root, including all import trees
-- This preserves full slab stability: no slot churn, no slab growth, layout converges after session 1.
-
-### 5. Library change detection
-- If the library binary has changed (new version, recompile), the symbol addresses would change AND the schemas might change. A warm restore in this case is unsafe.
-- Feasibility of detecting library changes: compare stored library path + mtime/inode/hash against current file at restore time.
-- If library has changed, fall back to full re-import (current cold-restore path).
-
-## Desired End State
-
-A restore sequence that:
-1. Attaches slab files directly
-2. Detects whether each imported library is unchanged (by path + mtime or content hash)
-3. If unchanged: re-resolves symbol addresses in-place (fast path)
-4. If changed: falls back to full re-import (current path)
-5. Resumes from the restored root cursor without discarding the binding trees
-
-This would make session startup faster, stabilise the slab layout across sessions, and eliminate the per-session allocation/free churn for all the import metadata.
+1. **Non-destructive Rehydration**: Modify `normalize_agent_root` or `rehydrate_vm_runtime_state` to avoid a destructive JSON roundtrip. The configuration should be merged into the existing `ListreeValue` root so that existing imported bindings (e.g., `@ext`, `@runtimeffi`) survive.
+2. **Durable Binding Import**: Move the Cartographer `resolver.import !` bootstrapping step into the MAIN VM's root during session setup (e.g., in `install_vm_agent_root` or `rehydrate_vm_runtime_state`). This makes the bindings part of the durable slab state.
+3. **Direct Execution**: Replace the side-channel REPL in `call_runtime_from_vm_or_throw` with direct execution inside the main `EdictVM`.
+4. **Library Handle Preloading**: Hook `preload_imported_libraries(vm, root)` into the `EdictVM` restore path / constructor to automatically reload `dlopen` handles from restored slabs.
+5. **Change Detection (Future/Optional)**: Optionally verify `resolved_content_hash` or `resolved_modified_time_ns` on restore to detect if the library binary changed and force a cold restore if so.
 
 ## Acceptance Criteria
-- [ ] Determine exactly how Cartographer stores resolved function addresses in the Listree tree (field type, storage format, traversal method)
-- [ ] Determine what other process-local state (if any) lives in the slab beyond function pointer values
-- [ ] Produce a concrete design for the in-place address re-resolution walk
-- [ ] Implement a prototype warm-restore path and validate it against `EmbeddedVmRootRestoreTest.FullTurnPersistenceAndResume`
+- [x] Determine exactly how Cartographer stores resolved function addresses in the Listree tree
+- [x] Determine what other process-local state (if any) lives in the slab beyond function pointer values
+- [x] Produce a concrete design for the in-place address re-resolution walk (Turns out to be simple preloading)
+- [x] Implement a prototype warm-restore path and validate it against `EmbeddedVmRootRestoreTest.FullTurnPersistenceAndResume` (Implemented `preload_imported_libraries` and in-place Listree mutation for `rehydrate_vm_runtime_state`)
+- [ ] Implement Phase 2/3: Durable Binding Import and Direct Execution (removing the side-channel REPL for `call_runtime_from_vm_or_throw`)
 - [ ] Implement library-change detection and fall-back to cold restore when needed
 - [ ] Add regression tests proving warm restore produces the same observable VM behaviour as cold restore
 
 ## Related Goals
 - 🔗[G068 - Client/Agent Split with Embedded Persistent Edict VM](../G068-ClientAgentSplitEmbeddedVmPersistence/index.md)
 - 🔗[G071 - Session-Scoped Allocator Image Persistence](../G071-SessionScopedAllocatorImagePersistence/index.md)
-
-## Next Action
-Audit how Cartographer stores resolved symbol addresses: read `cartographer/` source to find the field in the Listree tree that holds a callable function pointer, and determine whether it is a raw pointer stored as blob/immediate bytes or only as a human-readable string.

@@ -412,6 +412,8 @@ static void addBootstrapMetadata(CPtr<agentc::ListreeValue> object,
     agentc::addNamedItem(object, "__cartographer", metadata);
 }
 
+static void preload_imported_libraries(EdictVM& vm, CPtr<agentc::ListreeValue> scope);
+
 EdictVM::EdictVM(CPtr<agentc::ListreeValue> root)
     : cursor(root),
       state(VM_NORMAL),
@@ -426,6 +428,7 @@ EdictVM::EdictVM(CPtr<agentc::ListreeValue> root)
     cartographer = std::make_unique<agentc::cartographer::CartographerService>(*mapper, *ffi);
     startupTrace("vm-ctor-after-cartographer");
     initResources(root);
+    preload_imported_libraries(*this, root);
     startupTrace("vm-ctor-after-initResources");
 }
 
@@ -2757,11 +2760,25 @@ int EdictVM::executeNested(const BytecodeBuffer& code) {
             auto value = item ? item->getValue(false, false) : nullptr;
             if (!value || value->isListMode()) return;
             auto meta = get_named_value(value, "__cartographer");
-            auto lib = get_named_value(meta, "library");
-            if (!lib || !lib->getData()) return;
-            std::string path(static_cast<const char*>(lib->getData()), lib->getLength());
-            (void)key;
-            vm.ffi->loadLibrary(path);
+            if (meta && !meta->isListMode()) {
+                auto type = get_named_value(meta, "type");
+                if (type && !type->isListMode() && type->getData()) {
+                    std::string type_str(static_cast<const char*>(type->getData()), type->getLength());
+                    if (type_str == "library") {
+                        auto path = get_named_value(meta, "path");
+                        if (path && !path->isListMode() && path->getData()) {
+                            std::string path_str(static_cast<const char*>(path->getData()), path->getLength());
+                            try {
+                                vm.ffi->loadLibrary(path_str);
+                            } catch (const std::exception& e) {
+                                std::cerr << "Warning: Failed to preload library " << path_str << ": " << e.what() << std::endl;
+                            }
+                        }
+                    }
+                }
+            }
+            // Recurse to find nested namespaces
+            preload_imported_libraries(vm, value);
         });
     }
     

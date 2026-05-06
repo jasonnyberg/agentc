@@ -56,15 +56,25 @@ Tokenizer::Tokenizer(const std::string& input) : input(input), position(0), json
 
 bool Tokenizer::skipWhitespace() {
     bool skipped = false;
-    while (position < input.length() && std::isspace(input[position])) {
-        if (input[position] == '\n') {
-            ++line_;
-            col_ = 1;
+    while (position < input.length()) {
+        if (std::isspace(input[position])) {
+            if (input[position] == '\n') {
+                ++line_;
+                col_ = 1;
+            } else {
+                ++col_;
+            }
+            position++;
+            skipped = true;
+        } else if (input[position] == '#') {
+            // Skip comment until end of line
+            while (position < input.length() && input[position] != '\n') {
+                position++;
+            }
+            skipped = true;
         } else {
-            ++col_;
+            break;
         }
-        position++;
-        skipped = true;
     }
     return skipped;
 }
@@ -307,7 +317,7 @@ void EdictCompiler::compileTerm() {
     } else if (match(TOKEN_CONTEXT_OPEN)) {
         if (currentToken.value == "{") {
             compileJSONObject();
-        } else if (currentToken.value == "(") {
+        } else if (currentToken.value == "(" || currentToken.value == "[") {
             emitOperation(VMOP_FUN_PUSH);
             nextToken();
         } else {
@@ -315,7 +325,7 @@ void EdictCompiler::compileTerm() {
             nextToken();
         }
     } else if (match(TOKEN_CONTEXT_CLOSE)) {
-        if (currentToken.value == ")") {
+        if (currentToken.value == ")" || currentToken.value == "]") {
             emitOperation(VMOP_FUN_EVAL);
         } else {
             compileContextOperator(currentToken.value[0]);

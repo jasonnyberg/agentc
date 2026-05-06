@@ -1,3 +1,6 @@
+### 2026-05-05
+- G070 architectural cleanup: Eliminated remaining host-owned state duplicates (`base_runtime_config`, `options.system_prompt`, extra `clear()` calls) from `cpp-agent/main.cpp`. Added `install_vm_agent_root` and `reset_vm_agent_root` to `agent_root_vm_ops.*`. The embedded VM is now the sole live owner of the runtime configuration and session state, resolving the final cleanup goals from the Handoff Note.
+
 ### 2026-05-04
 - G071 complete: fixed the three interlocking bugs that were blocking `EmbeddedVmRootRestoreTest.FullTurnPersistenceAndResume` — `copy()` signature/cycle-detection fix in `listree.cpp`, `appendBytes`-always-called serialization fix in `listree.h`, and `saveRoot` JSON round-trip fix in `session_state_store.cpp`. All 36 `cpp_agent_tests` now pass.
 - Switched to full file-backed allocators for slab storage: inUse arrays now live inside mmap'd slab files alongside item bytes, `configureMmapFileBackedSlabs` auto-enables MmapFile policy, `saveRoot` is now flush+anchor (no copy/serialize), `loadRoot` scans slab directories and reattaches files directly. Removed legacy `session_image_mmap_raw_v1` and `session_image_mmap_structured_attach_v1` formats and all associated code. Fixed `O_CREAT|O_TRUNC` → `O_CREAT|O_EXCL` in `createOwnedSlab` to assert the invariant that a new slab file never collides with an existing one.
@@ -71,3 +74,6 @@
 
 ### 2026-05-03
 - Archival pass: 1 work product retired to Archive/; Dashboard rebuilt around 2 active goals.
+- G072 implementation started: hooked `preload_imported_libraries` into `EdictVM` constructor to naturally restore ASLR-shifted `dlopen` handles from durably restored Listree data without pointers patching.
+- G072 implementation started: rewrote `rehydrate_vm_runtime_state` to directly mutate the existing Listree root in-place using `agentc::addNamedItem` instead of making a destructive JSON roundtrip. This prevents non-standard keys like Cartographer schemas and FFI bindings from being wiped out on process restart, keeping slab allocations stable.
+- G072 implementation continued: cleaned up legacy JSON normalization code (`normalize_agent_root`, `normalized_conversation`, `replace_vm_root_from_json_or_throw`) from `agent_root_vm_ops.cpp` now that the non-destructive Listree update strategy fully replaces them. Verified all `cpp_agent_tests` pass.

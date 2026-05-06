@@ -101,6 +101,9 @@ rt agentc_destroy ! /
 
     const std::string jsonText = runEdictScript(script.str());
     ASSERT_FALSE(jsonText.empty());
+    
+    // Add debugging print
+    std::cout << "Edict returned string: '" << jsonText << "'" << std::endl;
 
     auto parsed = nlohmann::json::parse(jsonText);
     ASSERT_TRUE(parsed.contains("ok"));
