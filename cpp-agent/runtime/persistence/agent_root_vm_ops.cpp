@@ -145,32 +145,51 @@ std::string runtime_bootstrap_script_for_artifacts(const VmRuntimeImportArtifact
 }
 
 
-json call_runtime_from_vm_or_throw(agentc::edict::EdictVM& /*vm*/,
+json call_runtime_from_vm_or_throw(agentc::edict::EdictVM& vm,
                                    const json& runtime_config,
                                    const json& request,
                                    const VmRuntimeImportArtifacts& artifacts) {
+    // Phase 2/3: Compile and execute directly in the embedded VM
     std::ostringstream script;
-    script << runtime_bootstrap_script_for_artifacts(artifacts);
-    script << shell_literal(runtime_config.dump()) << " from_json ! @vm_runtime_config\n";
-    script << shell_literal(request.dump()) << " from_json ! @vm_runtime_request\n";
-    script << "vm_runtime_config agentc_runtime_create ! @vm_runtime_handle\n";
-    script << "vm_runtime_handle vm_runtime_request agentc_call ! @__vm_runtime_response\n";
+    
+    // Lazy bootstrap: If bindings aren't imported yet, import them now.
+    auto root = vm.getCursor().getValue();
+    if (!root || !root->find("agentc_call", false)) {
+        script << runtime_bootstrap_script_for_artifacts(artifacts);
+    }
+    
+    script << "agentc_runtime_create ! @vm_runtime_handle\n";
+    script << "vm_runtime_handle swap agentc_call ! @__vm_runtime_response\n";
     script << "vm_runtime_handle agentc_destroy ! /\n";
 
-    std::stringstream input(script.str());
-    std::stringstream output;
-    auto env = agentc::createNullValue();
-    agentc::edict::EdictREPL repl(env, input, output);
-    if (!repl.runScript(input)) {
-        throw std::runtime_error("call_runtime_from_vm_or_throw failed inside embedded VM: " + output.str());
+    agentc::edict::EdictCompiler compiler;
+    auto code = compiler.compile(script.str());
+    if (code.getData().empty()) {
+        throw std::runtime_error("Failed to compile runtime invocation script");
     }
 
-    auto responseItem = env->find("__vm_runtime_response", false);
+    // Push arguments directly onto the VM stack instead of stringifying them through JSON
+    vm.pushData(json_value_or_throw(request, "runtime request"));
+    vm.pushData(json_value_or_throw(runtime_config, "runtime config"));
+
+    if (vm.execute(code) & agentc::edict::VM_ERROR) {
+        const std::string error = vm.getError();
+        vm.reset();
+        throw std::runtime_error("call_runtime_from_vm_or_throw failed inside embedded VM: " + error);
+    }
+
+    auto responseItem = root->find("__vm_runtime_response", false);
     if (!responseItem || !responseItem->getValue(false, false)) {
-        throw std::runtime_error("call_runtime_from_vm_or_throw did not materialize __vm_runtime_response");
+        throw std::runtime_error("call_runtime_from_vm_or_throw did not materialize __vm_runtime_response in the VM root");
     }
 
-    return json_from_value_or_throw(responseItem->getValue(false, false), "response");
+    auto responseVal = responseItem->getValue(false, false);
+    if (!responseVal) {
+        throw std::runtime_error("call_runtime_from_vm_or_throw returned a null ListreeValue");
+    }
+
+    auto finalJson = json_from_value_or_throw(responseVal, "response");
+    return finalJson;
 }
 
 
@@ -363,6 +382,22 @@ void rehydrate_vm_runtime_state(agentc::edict::EdictVM& vm,
     auto root = vm.getCursor().getValue();
     if (!root) {
         return; // Empty or invalid root, let normal startup path handle initialization
+    }
+
+    // Re-import missing bindings (Durable Binding Import)
+    if (!root->find("agentc_call", false) || !root->find("ext", false) || !root->find("runtimeffi", false)) {
+        std::ostringstream script;
+        script << runtime_bootstrap_script_for_artifacts(artifacts);
+        agentc::edict::EdictCompiler compiler;
+        auto code = compiler.compile(script.str());
+        if (code.getData().empty()) {
+            throw std::runtime_error("Failed to compile runtime bootstrap script in rehydrate_vm_runtime_state");
+        }
+        if (vm.execute(code) & agentc::edict::VM_ERROR) {
+            const std::string error = vm.getError();
+            vm.reset();
+            throw std::runtime_error("Failed to execute runtime bootstrap script in rehydrate_vm_runtime_state: " + error);
+        }
     }
 
     // Remove transient runtime scratch state

@@ -33,8 +33,14 @@
 #include <mutex>
 #include <unordered_set>
 #include <unordered_map>
+#include <stdexcept>
 
 namespace agentc::edict {
+
+class StaleLibraryException : public std::runtime_error {
+public:
+    explicit StaleLibraryException(const std::string& msg) : std::runtime_error(msg) {}
+};
 
 namespace {
 
@@ -2761,19 +2767,29 @@ int EdictVM::executeNested(const BytecodeBuffer& code) {
             if (!value || value->isListMode()) return;
             auto meta = get_named_value(value, "__cartographer");
             if (meta && !meta->isListMode()) {
-                auto type = get_named_value(meta, "type");
-                if (type && !type->isListMode() && type->getData()) {
-                    std::string type_str(static_cast<const char*>(type->getData()), type->getLength());
-                    if (type_str == "library") {
-                        auto path = get_named_value(meta, "path");
-                        if (path && !path->isListMode() && path->getData()) {
-                            std::string path_str(static_cast<const char*>(path->getData()), path->getLength());
-                            try {
-                                vm.ffi->loadLibrary(path_str);
-                            } catch (const std::exception& e) {
-                                std::cerr << "Warning: Failed to preload library " << path_str << ": " << e.what() << std::endl;
-                            }
+                auto lib_path = get_named_value(meta, "library");
+                if (lib_path && !lib_path->isListMode() && lib_path->getData()) {
+                    std::string path_str(static_cast<const char*>(lib_path->getData()), lib_path->getLength());
+                    
+                    auto sz_val = get_named_value(meta, "resolved_file_size");
+                    auto mtime_val = get_named_value(meta, "resolved_modified_time_ns");
+                    auto hash_val = get_named_value(meta, "resolved_content_hash");
+
+                    if (sz_val && sz_val->getData() && mtime_val && mtime_val->getData() && hash_val && hash_val->getData()) {
+                        uint64_t expectedSize = std::stoull(std::string(static_cast<const char*>(sz_val->getData()), sz_val->getLength()));
+                        uint64_t expectedMtime = std::stoull(std::string(static_cast<const char*>(mtime_val->getData()), mtime_val->getLength()));
+                        std::string expectedHash(static_cast<const char*>(hash_val->getData()), hash_val->getLength());
+                        
+                        std::string error;
+                        if (!agentc::cartographer::resolver::validateLibraryFreshness(path_str, expectedSize, expectedMtime, expectedHash, error)) {
+                            throw StaleLibraryException(error);
                         }
+                    }
+
+                    try {
+                        vm.ffi->loadLibrary(path_str);
+                    } catch (const std::exception& e) {
+                        std::cerr << "Warning: Failed to preload library " << path_str << ": " << e.what() << std::endl;
                     }
                 }
             }

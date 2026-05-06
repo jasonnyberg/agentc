@@ -146,7 +146,24 @@ int main(int argc, char** argv) {
             initial_root_value = materialize_root_value_or_throw(
                 agentc::runtime::make_default_agent_root(options.system_prompt, options.provider, options.model));
         }
-        agentc::edict::EdictVM embedded_vm(initial_root_value);
+        std::unique_ptr<agentc::edict::EdictVM> embedded_vm_ptr;
+        try {
+            embedded_vm_ptr = std::make_unique<agentc::edict::EdictVM>(initial_root_value);
+        } catch (const std::exception& e) {
+            std::string msg = e.what();
+            if (msg.find("Library changed") != std::string::npos) {
+                std::cerr << "Warning: " << msg << ". Falling back to cold restore." << std::endl;
+                session_store.clear();
+                initial_root_value = materialize_root_value_or_throw(
+                    agentc::runtime::make_default_agent_root(options.system_prompt, options.provider, options.model));
+                restored_root = false;
+                embedded_vm_ptr = std::make_unique<agentc::edict::EdictVM>(initial_root_value);
+            } else {
+                throw;
+            }
+        }
+        agentc::edict::EdictVM& embedded_vm = *embedded_vm_ptr;
+
         agentc::runtime::rehydrate_vm_runtime_state(
             embedded_vm,
             options.system_prompt,

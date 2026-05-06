@@ -445,6 +445,24 @@ void ResolvedApi::forEachSymbol(const std::function<void(CPtr<ResolvedSymbol>&)>
     }
 }
 
+bool validateLibraryFreshness(const std::string& path,
+                              uint64_t expectedSize,
+                              uint64_t expectedMtimeNs,
+                              const std::string& expectedHash,
+                              std::string& error) {
+    uint64_t currentSize = 0;
+    uint64_t currentMtimeNs = 0;
+    std::string currentHash;
+    if (!readLibraryMetadata(path, currentSize, currentMtimeNs, currentHash, error)) {
+        return false;
+    }
+    if (currentSize != expectedSize || currentMtimeNs != expectedMtimeNs || currentHash != expectedHash) {
+        error = "Library changed: size/mtime/hash mismatch for " + path;
+        return false;
+    }
+    return true;
+}
+
 bool resolveApiDescription(const std::string& libraryPath,
                            const Mapper::ParseDescription& description,
                            ResolvedApi& out,

@@ -64,6 +64,12 @@ bool resolveApiDescription(const std::string& libraryPath,
 std::string encodeResolvedApi(const ResolvedApi& api);
 bool decodeResolvedApi(const std::string& json, ResolvedApi& out, std::string& error);
 
+bool validateLibraryFreshness(const std::string& path,
+                              uint64_t expectedSize,
+                              uint64_t expectedMtimeNs,
+                              const std::string& expectedHash,
+                              std::string& error);
+
 } // namespace resolver
 } // namespace cartographer
 } // namespace agentc

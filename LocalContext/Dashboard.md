@@ -96,12 +96,12 @@ None
 
 **Project**: AgentC — building an Edict-native agent runtime with a mmap/Listree-backed persistence substrate and an embedded VM as the sole live owner of session state.
 
-**Current State**: G072 Phase 1 (Non-destructive Rehydration) and Phase 4 (Library Handle Preloading) are implemented. `rehydrate_vm_runtime_state` now correctly updates the root in-place, preserving `__cartographer` and `@ext` bindings across restarts.
-**Next Action**: Implement G072 Phase 2/3: Durable Binding Import and Direct Execution (removing the side-channel REPL for `call_runtime_from_vm_or_throw` to ensure bindings actually enter the main VM's durable slab).
+**Current State**: G072 Phase 5 (Library Change Detection) is complete. The system now validates library freshness during a warm restore. If a binary is updated, the embedded VM constructor raises a `StaleLibraryException` and the loader falls back to a fresh session, preventing catastrophic segfaults caused by invalid schema caching.
+**Next Action**: Implement G072 Phase 6: E2E Regression tests proving warm restore produces the exact same observable VM behavior as cold restore.
 
 **Key Context**:
-- `preload_imported_libraries` runs in the `EdictVM` constructor, parsing `__cartographer` nodes and calling `dlopen()` so Cartographer dynamic dispatch (`dlsym`) works with new ASLR offsets without needing raw pointer patching.
-- `rehydrate_vm_runtime_state` is now fully non-destructive; the legacy `normalize_agent_root` and `replace_vm_root_from_json_or_throw` have been removed.
+- `preload_imported_libraries` reads `resolved_file_size`, `resolved_modified_time_ns`, and `resolved_content_hash` natively from the Cartographer metadata and compares it against the disk file via `validateLibraryFreshness()`.
+- `main.cpp` loops the `EdictVM` initialization to correctly intercept the exception and clear the `session_store`.
 - `ListreeValue::copy()` now propagates a `std::shared_ptr<TraversalContext>*` via `void* ctx_ptr` for cycle detection. The context is passed by pointer-to-shared_ptr so recursive calls share the same tracking set.
 - G071's mmap-backed slab ownership design (file-first allocation, durable bootstrap/catalog, ephemeral mmap addresses, `SlabId` unchanged) is fully recorded in `G071/index.md` and `WP_SessionImagePersistencePlan_2026-05-01.md` — no further work needed on the substrate itself unless a regression surfaces.
 - `rehydrate_vm_runtime_state(...)` in `agent_root_vm_ops.*` is the canonical path for rebuilding transient FFI/runtime handles on restore; `cpp-agent/main.cpp` must call it on startup and reset-session.

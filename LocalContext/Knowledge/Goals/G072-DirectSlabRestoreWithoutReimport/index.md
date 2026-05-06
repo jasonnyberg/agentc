@@ -38,8 +38,8 @@ This means the saved slab data for all the import/binding trees is loaded, then 
 - [x] Determine what other process-local state (if any) lives in the slab beyond function pointer values
 - [x] Produce a concrete design for the in-place address re-resolution walk (Turns out to be simple preloading)
 - [x] Implement a prototype warm-restore path and validate it against `EmbeddedVmRootRestoreTest.FullTurnPersistenceAndResume` (Implemented `preload_imported_libraries` and in-place Listree mutation for `rehydrate_vm_runtime_state`)
-- [ ] Implement Phase 2/3: Durable Binding Import and Direct Execution (removing the side-channel REPL for `call_runtime_from_vm_or_throw`)
-- [ ] Implement library-change detection and fall-back to cold restore when needed
+- [x] Implement Phase 2/3: Durable Binding Import and Direct Execution (removing the side-channel REPL for `call_runtime_from_vm_or_throw`)
+- [x] Implement library-change detection and fall-back to cold restore when needed
 - [ ] Add regression tests proving warm restore produces the same observable VM behaviour as cold restore
 
 ## Related Goals

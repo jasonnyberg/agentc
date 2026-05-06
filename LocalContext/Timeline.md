@@ -77,3 +77,11 @@
 - G072 implementation started: hooked `preload_imported_libraries` into `EdictVM` constructor to naturally restore ASLR-shifted `dlopen` handles from durably restored Listree data without pointers patching.
 - G072 implementation started: rewrote `rehydrate_vm_runtime_state` to directly mutate the existing Listree root in-place using `agentc::addNamedItem` instead of making a destructive JSON roundtrip. This prevents non-standard keys like Cartographer schemas and FFI bindings from being wiped out on process restart, keeping slab allocations stable.
 - G072 implementation continued: cleaned up legacy JSON normalization code (`normalize_agent_root`, `normalized_conversation`, `replace_vm_root_from_json_or_throw`) from `agent_root_vm_ops.cpp` now that the non-destructive Listree update strategy fully replaces them. Verified all `cpp_agent_tests` pass.
+- G072 Phase 2/3 completed: Replaced the transient `EdictREPL` side-channel with direct execution inside the main `EdictVM`.
+- G072 Phase 2/3 completed: Replaced legacy string/JSON literal evaluation in `call_runtime_from_vm_or_throw` with direct native Listree stack pushes using `json_value_or_throw`.
+- G072 Phase 2/3 completed: Lifted Cartographer dynamic module `resolver.import !` into the main VM lifecycle so the generated bindings become durable members of the session's Listree graph.
+- G072 Phase 4 fixed: Fixed Cartographer library path resolution in `preload_imported_libraries`. The module `__cartographer` tags export `"library": "<path>"`, which is now correctly detected and `dlopen`ed on session restore.
+- G072 Phase 5 completed: Implemented library-change detection on VM restore.
+  - Added `validateLibraryFreshness` to `cartographer/resolver.h` to compare disk file size, mtime, and hash against stored `resolved_*` metadata.
+  - `EdictVM::preload_imported_libraries` now calls `validateLibraryFreshness` for each dynamic library and throws `StaleLibraryException` if there is a mismatch.
+  - `cpp-agent/main.cpp` catches `StaleLibraryException` and automatically invalidates the `SessionStateStore` (falling back to a cold start from a fresh root).
