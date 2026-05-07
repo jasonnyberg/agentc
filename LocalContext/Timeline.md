@@ -86,3 +86,4 @@
   - `EdictVM::preload_imported_libraries` now calls `validateLibraryFreshness` for each dynamic library and throws `StaleLibraryException` if there is a mismatch.
   - `cpp-agent/main.cpp` catches `StaleLibraryException` and automatically invalidates the `SessionStateStore` (falling back to a cold start from a fresh root).
 - G072 Phase 6 completed: Implemented comparative `CompareWarmToColdExecution` regression test. It executes 3 agent turns in a single continuous VM process (Cold) and compares the terminal tree state byte-for-byte against a parallel test that restarts the VM entirely from mmap slabs between every single turn (Warm). The generated listree structures are provably identical.
+- Removed legacy JSON serialization methods `load()` and `save()` from `SessionStateStore`, fully transitioning the architecture to raw native `ListreeValue` slab storage. Migrated `session_state_store_test.cpp` to use native APIs.

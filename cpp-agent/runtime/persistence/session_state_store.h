@@ -24,8 +24,6 @@ public:
     bool exists() const;
     bool loadRoot(CPtr<agentc::ListreeValue>& out, std::string* error = nullptr) const;
     bool saveRoot(CPtr<agentc::ListreeValue> root, std::string* error = nullptr) const;
-    bool load(nlohmann::json& out, std::string* error = nullptr) const;
-    bool save(const nlohmann::json& state, std::string* error = nullptr) const;
     void clear() const;
 
 private:

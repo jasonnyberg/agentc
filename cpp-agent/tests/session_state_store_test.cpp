@@ -66,20 +66,22 @@ TEST(SessionStateStoreTest, RoundTripsCanonicalAgentRootThroughListreeBackedStor
     agentc::runtime::SessionStateStore store(base);
     store.clear();
 
-    nlohmann::json root = agentc::runtime::make_default_agent_root("persist me", "google", "gemini-2.5-flash");
-    root["conversation"]["messages"] = nlohmann::json::array({
+    auto rootJson = agentc::runtime::make_default_agent_root("persist me", "google", "gemini-2.5-flash");
+    rootJson["conversation"]["messages"] = nlohmann::json::array({
         nlohmann::json{{"role", "user"}, {"text", "hello"}},
         nlohmann::json{{"role", "assistant"}, {"text", "world"}}
     });
-    root["conversation"]["assistant_text"] = "world";
-    root["loop"]["status"] = "turn-complete";
+    rootJson["conversation"]["assistant_text"] = "world";
+    rootJson["loop"]["status"] = "turn-complete";
 
     std::string error;
-    ASSERT_TRUE(store.save(root, &error)) << error;
+    ASSERT_TRUE(store.saveRoot(agentc::fromJson(rootJson.dump()), &error)) << error;
     ASSERT_TRUE(store.exists());
 
+    CPtr<agentc::ListreeValue> restoredRoot;
     nlohmann::json restored;
-    ASSERT_TRUE(store.load(restored, &error)) << error;
+    ASSERT_TRUE(store.loadRoot(restoredRoot, &error)) << error;
+    restored = nlohmann::json::parse(agentc::toJson(restoredRoot));
     ASSERT_TRUE(restored["conversation"].is_object());
     ASSERT_TRUE(restored["memory"].is_object());
     ASSERT_TRUE(restored["policy"].is_object());
@@ -102,19 +104,23 @@ TEST(SessionStateStoreTest, IsolatesNamedSessionsInSeparateSubdirectories) {
     alpha.clear();
     beta.clear();
 
-    nlohmann::json alphaRoot = agentc::runtime::make_default_agent_root("alpha prompt", "google", "gemini-2.5-flash");
-    alphaRoot["conversation"]["assistant_text"] = "alpha reply";
-    nlohmann::json betaRoot = agentc::runtime::make_default_agent_root("beta prompt", "google", "gemini-2.5-flash");
-    betaRoot["conversation"]["assistant_text"] = "beta reply";
+    auto alphaRootJson = agentc::runtime::make_default_agent_root("alpha prompt", "google", "gemini-2.5-flash");
+    alphaRootJson["conversation"]["assistant_text"] = "alpha reply";
+    auto betaRootJson = agentc::runtime::make_default_agent_root("beta prompt", "google", "gemini-2.5-flash");
+    betaRootJson["conversation"]["assistant_text"] = "beta reply";
 
     std::string error;
-    ASSERT_TRUE(alpha.save(alphaRoot, &error)) << error;
-    ASSERT_TRUE(beta.save(betaRoot, &error)) << error;
+    ASSERT_TRUE(alpha.saveRoot(agentc::fromJson(alphaRootJson.dump()), &error)) << error;
+    ASSERT_TRUE(beta.saveRoot(agentc::fromJson(betaRootJson.dump()), &error)) << error;
 
+    CPtr<agentc::ListreeValue> restoredAlphaRoot;
     nlohmann::json restoredAlpha;
+    CPtr<agentc::ListreeValue> restoredBetaRoot;
     nlohmann::json restoredBeta;
-    ASSERT_TRUE(alpha.load(restoredAlpha, &error)) << error;
-    ASSERT_TRUE(beta.load(restoredBeta, &error)) << error;
+    ASSERT_TRUE(alpha.loadRoot(restoredAlphaRoot, &error)) << error;
+    restoredAlpha = nlohmann::json::parse(agentc::toJson(restoredAlphaRoot));
+    ASSERT_TRUE(beta.loadRoot(restoredBetaRoot, &error)) << error;
+    restoredBeta = nlohmann::json::parse(agentc::toJson(restoredBetaRoot));
 
     EXPECT_EQ(restoredAlpha["conversation"]["system_prompt"].get<std::string>(), "alpha prompt");
     EXPECT_EQ(restoredBeta["conversation"]["system_prompt"].get<std::string>(), "beta prompt");
@@ -132,18 +138,18 @@ TEST(SessionStateStoreTest, WritesSessionManifestAndAllocatorImageIndex) {
     agentc::runtime::SessionStateStore store(root, "manifest-check");
     store.clear();
 
-    nlohmann::json session_root = agentc::runtime::make_default_agent_root(
+    auto session_rootJson = agentc::runtime::make_default_agent_root(
         "this is a long enough prompt to force blob-backed string storage during restore validation",
         "google",
         "gemini-2.5-flash");
-    session_root["conversation"]["messages"] = nlohmann::json::array({
+    session_rootJson["conversation"]["messages"] = nlohmann::json::array({
         nlohmann::json{{"role", "user"}, {"text", "first message"}},
         nlohmann::json{{"role", "assistant"}, {"text", "second message"}}
     });
-    session_root["memory"]["summary"] = "this summary is intentionally longer than the inline payload threshold";
+    session_rootJson["memory"]["summary"] = "this summary is intentionally longer than the inline payload threshold";
 
     std::string error;
-    ASSERT_TRUE(store.save(session_root, &error)) << error;
+    ASSERT_TRUE(store.saveRoot(agentc::fromJson(session_rootJson.dump()), &error)) << error;
 
     const auto manifest_path = std::filesystem::path(root) / "manifest-check" / "manifest.json";
     ASSERT_TRUE(std::filesystem::exists(manifest_path));
@@ -200,8 +206,10 @@ TEST(SessionStateStoreTest, WritesSessionManifestAndAllocatorImageIndex) {
         }
     }
 
+    CPtr<agentc::ListreeValue> restoredRoot;
     nlohmann::json restored;
-    ASSERT_TRUE(store.load(restored, &error)) << error;
+    ASSERT_TRUE(store.loadRoot(restoredRoot, &error)) << error;
+    restored = nlohmann::json::parse(agentc::toJson(restoredRoot));
     EXPECT_EQ(restored["conversation"]["messages"].size(), 2u);
     EXPECT_EQ(restored["memory"]["summary"].get<std::string>(),
               "this summary is intentionally longer than the inline payload threshold");
@@ -214,18 +222,18 @@ TEST(SessionStateStoreTest, WritesSessionBootstrapAndCanRestoreWithoutManifest) 
     agentc::runtime::SessionStateStore store(root, "bootstrap-authority");
     store.clear();
 
-    nlohmann::json session_root = agentc::runtime::make_default_agent_root(
+    auto session_rootJson = agentc::runtime::make_default_agent_root(
         "bootstrap-owned prompt that is long enough to exercise blob-backed string storage",
         "google",
         "gemini-2.5-flash");
-    session_root["conversation"]["messages"] = nlohmann::json::array({
+    session_rootJson["conversation"]["messages"] = nlohmann::json::array({
         nlohmann::json{{"role", "user"}, {"text", "bootstrap first message"}},
         nlohmann::json{{"role", "assistant"}, {"text", "bootstrap second message"}}
     });
-    session_root["memory"]["summary"] = "bootstrap restore should not depend on manifest presence";
+    session_rootJson["memory"]["summary"] = "bootstrap restore should not depend on manifest presence";
 
     std::string error;
-    ASSERT_TRUE(store.save(session_root, &error)) << error;
+    ASSERT_TRUE(store.saveRoot(agentc::fromJson(session_rootJson.dump()), &error)) << error;
 
     const auto bootstrap_path = std::filesystem::path(root) / "bootstrap-authority" / "bootstrap.json";
     ASSERT_TRUE(std::filesystem::exists(bootstrap_path));
@@ -245,8 +253,10 @@ TEST(SessionStateStoreTest, WritesSessionBootstrapAndCanRestoreWithoutManifest) 
     ASSERT_TRUE(std::filesystem::remove(std::filesystem::path(root) / "bootstrap-authority" / "manifest.json"));
     EXPECT_TRUE(store.exists());
 
+    CPtr<agentc::ListreeValue> restoredRoot;
     nlohmann::json restored;
-    ASSERT_TRUE(store.load(restored, &error)) << error;
+    ASSERT_TRUE(store.loadRoot(restoredRoot, &error)) << error;
+    restored = nlohmann::json::parse(agentc::toJson(restoredRoot));
     EXPECT_EQ(restored["conversation"]["messages"].size(), 2u);
     EXPECT_EQ(restored["conversation"]["messages"][1]["text"].get<std::string>(), "bootstrap second message");
     EXPECT_EQ(restored["memory"]["summary"].get<std::string>(),
@@ -281,10 +291,12 @@ TEST(SessionStateStoreTest, PersistsDeclarativeRuntimeRehydrationMetadataWithout
         persisted_root = nlohmann::json::parse(agentc::toJson(vm.getCursor().getValue()));
     }
 
-    ASSERT_TRUE(store.save(persisted_root, &error)) << error;
+    ASSERT_TRUE(store.saveRoot(agentc::fromJson(persisted_root.dump()), &error)) << error;
 
+    CPtr<agentc::ListreeValue> restoredRoot;
     nlohmann::json restored;
-    ASSERT_TRUE(store.load(restored, &error)) << error;
+    ASSERT_TRUE(store.loadRoot(restoredRoot, &error)) << error;
+    restored = nlohmann::json::parse(agentc::toJson(restoredRoot));
     ASSERT_TRUE(restored["runtime"]["rehydration"].is_object());
     EXPECT_EQ(restored["runtime"]["rehydration"]["last_event"].get<std::string>(), "startup-restored");
     EXPECT_EQ(restored["runtime"]["rehydration"]["binding"]["module_name"].get<std::string>(), "agentc");
@@ -301,18 +313,18 @@ TEST(SessionStateStoreTest, CanRestoreCanonicalRootWhenManifestSlabListsAreEmpty
     agentc::runtime::SessionStateStore store(root, "header-discovery");
     store.clear();
 
-    nlohmann::json session_root = agentc::runtime::make_default_agent_root(
+    auto session_rootJson = agentc::runtime::make_default_agent_root(
         "header-discovered prompt that is long enough to exercise blob-backed string storage",
         "google",
         "gemini-2.5-flash");
-    session_root["conversation"]["messages"] = nlohmann::json::array({
+    session_rootJson["conversation"]["messages"] = nlohmann::json::array({
         nlohmann::json{{"role", "user"}, {"text", "first message"}},
         nlohmann::json{{"role", "assistant"}, {"text", "second message"}}
     });
-    session_root["memory"]["summary"] = "header discovery should still find all allocator slabs";
+    session_rootJson["memory"]["summary"] = "header discovery should still find all allocator slabs";
 
     std::string error;
-    ASSERT_TRUE(store.save(session_root, &error)) << error;
+    ASSERT_TRUE(store.saveRoot(agentc::fromJson(session_rootJson.dump()), &error)) << error;
 
     const auto manifest_path = std::filesystem::path(root) / "header-discovery" / "manifest.json";
     ASSERT_TRUE(std::filesystem::exists(manifest_path));
@@ -329,8 +341,10 @@ TEST(SessionStateStoreTest, CanRestoreCanonicalRootWhenManifestSlabListsAreEmpty
         ASSERT_TRUE(out.good());
     }
 
+    CPtr<agentc::ListreeValue> restoredRoot;
     nlohmann::json restored;
-    ASSERT_TRUE(store.load(restored, &error)) << error;
+    ASSERT_TRUE(store.loadRoot(restoredRoot, &error)) << error;
+    restored = nlohmann::json::parse(agentc::toJson(restoredRoot));
     EXPECT_EQ(restored["conversation"]["messages"].size(), 2u);
     EXPECT_EQ(restored["conversation"]["messages"][1]["text"].get<std::string>(), "second message");
     EXPECT_EQ(restored["memory"]["summary"].get<std::string>(),

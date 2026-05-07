@@ -544,30 +544,6 @@ bool SessionStateStore::loadRootFileBacked(CPtr<agentc::ListreeValue>& out,
     return true;
 }
 
-bool SessionStateStore::load(nlohmann::json& out, std::string* error) const {
-    CPtr<agentc::ListreeValue> root;
-    if (!loadRoot(root, error)) {
-        return false;
-    }
-
-    try {
-        out = nlohmann::json::parse(agentc::toJson(root));
-        return true;
-    } catch (const std::exception& e) {
-        if (error) *error = std::string("failed to parse restored session json: ") + e.what();
-        return false;
-    }
-}
-
-bool SessionStateStore::save(const nlohmann::json& state, std::string* error) const {
-    auto root = agentc::fromJson(state.dump());
-    if (!root) {
-        if (error) *error = "failed to materialize json into listree";
-        return false;
-    }
-    return saveRoot(root, error);
-}
-
 void SessionStateStore::clear() const {
     sessionImageStore().clear();
 }
