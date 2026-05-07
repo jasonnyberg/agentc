@@ -97,7 +97,14 @@ char* agentc_runtime_request_json(void* runtime_ptr, const char* request_json) {
         }
 
         runtime->last_error = nullptr;
-        const std::string prompt = request.value("prompt", std::string());
+        std::string prompt = request.value("prompt", std::string());
+        if (prompt.empty() && request.contains("messages") && request["messages"].is_array() && !request["messages"].empty()) {
+            const auto& messages = request["messages"];
+            const auto& last_msg = messages.back();
+            if (last_msg.contains("role") && last_msg["role"] == "user" && last_msg.contains("text")) {
+                prompt = last_msg["text"].get<std::string>();
+            }
+        }
         const json response = {
             {"ok", true},
             {"provider", runtime->config.value("default_provider", "mock")},

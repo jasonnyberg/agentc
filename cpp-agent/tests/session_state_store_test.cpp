@@ -32,6 +32,8 @@ agentc::runtime::VmRuntimeImportArtifacts mockRuntimeArtifacts() {
         .runtime_library_path = (buildRoot / "cpp-agent" / "libagent_runtime_mock.so").string(),
         .runtime_header_path = (sourceRoot / "cpp-agent" / "include" / "agentc_runtime" / "agentc_runtime.h").string(),
         .agentc_module_path = (sourceRoot / "cpp-agent" / "edict" / "modules" / "agentc.edict").string(),
+        .agentc_stateful_loop_module_path = (sourceRoot / "cpp-agent" / "edict" / "modules" / "agentc_stateful_loop.edict").string(),
+        .agentc_agent_root_module_path = (sourceRoot / "cpp-agent" / "edict" / "modules" / "agentc_agent_root.edict").string()
     };
 }
 
@@ -283,7 +285,6 @@ TEST(SessionStateStoreTest, PersistsDeclarativeRuntimeRehydrationMetadataWithout
         agentc::edict::EdictVM vm(vm_root);
         agentc::runtime::rehydrate_vm_runtime_state(
             vm,
-            "persist runtime metadata",
             nlohmann::json{{"default_provider", "mock"}, {"default_model", "mock-model"}},
             mockRuntimeArtifacts(),
             "startup-restored",

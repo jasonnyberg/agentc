@@ -51,6 +51,8 @@ agentc::runtime::VmRuntimeImportArtifacts mockRuntimeArtifacts() {
         .runtime_library_path = (buildRoot / "cpp-agent" / "libagent_runtime_mock.so").string(),
         .runtime_header_path = (sourceRoot / "cpp-agent" / "include" / "agentc_runtime" / "agentc_runtime.h").string(),
         .agentc_module_path = (sourceRoot / "cpp-agent" / "edict" / "modules" / "agentc.edict").string(),
+        .agentc_stateful_loop_module_path = (sourceRoot / "cpp-agent" / "edict" / "modules" / "agentc_stateful_loop.edict").string(),
+        .agentc_agent_root_module_path = (sourceRoot / "cpp-agent" / "edict" / "modules" / "agentc_agent_root.edict").string()
     };
 }
 
@@ -61,7 +63,7 @@ TEST(EmbeddedVmRootRestoreTest, FullTurnPersistenceAndResume) {
 
     const auto artifacts = mockRuntimeArtifacts();
 
-    auto rootJson = agentc::runtime::make_default_agent_root("resume prompt", "mock", "mock-model");
+    auto rootJson = agentc::runtime::make_default_agent_root("system", "mock", "mock-model");
     auto rootValue = agentc::fromJson(rootJson.dump());
     ASSERT_TRUE(rootValue);
 
@@ -69,11 +71,11 @@ TEST(EmbeddedVmRootRestoreTest, FullTurnPersistenceAndResume) {
     {
         agentc::edict::EdictVM vm(rootValue);
         printf("vm created\n"); fflush(stdout);
-        agentc::runtime::rehydrate_vm_runtime_state(vm, "resume prompt", nlohmann::json{{"default_provider", "mock"}, {"default_model", "mock-model"}}, artifacts, "startup-fresh");
+        agentc::runtime::rehydrate_vm_runtime_state(vm, nlohmann::json{{"default_provider", "mock"}, {"default_model", "mock-model"}}, artifacts, "startup-fresh");
         
         std::cout << "Running first turn...\n" << std::flush;
-        auto response = agentc::runtime::run_vm_agent_root_turn_via_imported_runtime(
-            vm, "first step", nlohmann::json{{"default_provider", "mock"}, {"default_model", "mock-model"}}, artifacts);
+        agentc::runtime::run_vm_agent_turn_native(vm, "first step");
+        auto response = nlohmann::json::parse(agentc::toJson(vm.getCursor().getValue()))["conversation"]["last_response"];
             
         std::cout << "Saving root...\n" << std::flush;
         std::string error;
@@ -93,7 +95,7 @@ TEST(EmbeddedVmRootRestoreTest, FullTurnPersistenceAndResume) {
 
         std::cout << "Rehydrating...\n" << std::flush;
         agentc::edict::EdictVM vm(restoredRoot);
-        agentc::runtime::rehydrate_vm_runtime_state(vm, "resume prompt", nlohmann::json{{"default_provider", "mock"}, {"default_model", "mock-model"}}, artifacts, "startup-restored");
+        agentc::runtime::rehydrate_vm_runtime_state(vm, nlohmann::json{{"default_provider", "mock"}, {"default_model", "mock-model"}}, artifacts, "startup-restored");
 
         // Verify history was restored properly
         auto intermediateJson = nlohmann::json::parse(agentc::toJson(vm.getCursor().getValue()));
@@ -102,8 +104,8 @@ TEST(EmbeddedVmRootRestoreTest, FullTurnPersistenceAndResume) {
 
         std::cout << "Running second turn...\n" << std::flush;
         // Issue another turn
-        auto response = agentc::runtime::run_vm_agent_root_turn_via_imported_runtime(
-            vm, "second step", nlohmann::json{{"default_provider", "mock"}, {"default_model", "mock-model"}}, artifacts);
+        agentc::runtime::run_vm_agent_turn_native(vm, "second step");
+        auto response = nlohmann::json::parse(agentc::toJson(vm.getCursor().getValue()))["conversation"]["last_response"];
 
         // Verify state advanced correctly across restore
         auto finalJson = nlohmann::json::parse(agentc::toJson(vm.getCursor().getValue()));
@@ -122,14 +124,14 @@ TEST(EmbeddedVmRootRestoreTest, CompareWarmToColdExecution) {
     // Cold Run (Single uninterrupted session)
     nlohmann::json coldFinalState;
     {
-        auto rootJson = agentc::runtime::make_default_agent_root("comparative prompt", "mock", "mock-model");
+        auto rootJson = agentc::runtime::make_default_agent_root("system", "mock", "mock-model");
         auto rootValue = agentc::fromJson(rootJson.dump());
         agentc::edict::EdictVM vm(rootValue);
-        agentc::runtime::rehydrate_vm_runtime_state(vm, "comparative prompt", nlohmann::json{{"default_provider", "mock"}, {"default_model", "mock-model"}}, artifacts, "startup-fresh");
+        agentc::runtime::rehydrate_vm_runtime_state(vm, nlohmann::json{{"default_provider", "mock"}, {"default_model", "mock-model"}}, artifacts, "startup-fresh");
         
-        agentc::runtime::run_vm_agent_root_turn_via_imported_runtime(vm, "step 1", nlohmann::json{{"default_provider", "mock"}, {"default_model", "mock-model"}}, artifacts);
-        agentc::runtime::run_vm_agent_root_turn_via_imported_runtime(vm, "step 2", nlohmann::json{{"default_provider", "mock"}, {"default_model", "mock-model"}}, artifacts);
-        agentc::runtime::run_vm_agent_root_turn_via_imported_runtime(vm, "step 3", nlohmann::json{{"default_provider", "mock"}, {"default_model", "mock-model"}}, artifacts);
+        agentc::runtime::run_vm_agent_turn_native(vm, "step 1");
+        agentc::runtime::run_vm_agent_turn_native(vm, "step 2");
+        agentc::runtime::run_vm_agent_turn_native(vm, "step 3");
         
         coldFinalState = nlohmann::json::parse(agentc::toJson(vm.getCursor().getValue()));
     }
@@ -140,12 +142,12 @@ TEST(EmbeddedVmRootRestoreTest, CompareWarmToColdExecution) {
     store.clear();
     
     {
-        auto rootJson = agentc::runtime::make_default_agent_root("comparative prompt", "mock", "mock-model");
+        auto rootJson = agentc::runtime::make_default_agent_root("system", "mock", "mock-model");
         auto rootValue = agentc::fromJson(rootJson.dump());
         agentc::edict::EdictVM vm(rootValue);
-        agentc::runtime::rehydrate_vm_runtime_state(vm, "comparative prompt", nlohmann::json{{"default_provider", "mock"}, {"default_model", "mock-model"}}, artifacts, "startup-fresh");
+        agentc::runtime::rehydrate_vm_runtime_state(vm, nlohmann::json{{"default_provider", "mock"}, {"default_model", "mock-model"}}, artifacts, "startup-fresh");
         
-        agentc::runtime::run_vm_agent_root_turn_via_imported_runtime(vm, "step 1", nlohmann::json{{"default_provider", "mock"}, {"default_model", "mock-model"}}, artifacts);
+        agentc::runtime::run_vm_agent_turn_native(vm, "step 1");
         store.saveRoot(vm.getCursor().getValue());
     }
     
@@ -153,9 +155,9 @@ TEST(EmbeddedVmRootRestoreTest, CompareWarmToColdExecution) {
         CPtr<agentc::ListreeValue> restoredRoot;
         store.loadRoot(restoredRoot);
         agentc::edict::EdictVM vm(restoredRoot);
-        agentc::runtime::rehydrate_vm_runtime_state(vm, "comparative prompt", nlohmann::json{{"default_provider", "mock"}, {"default_model", "mock-model"}}, artifacts, "startup-restored");
+        agentc::runtime::rehydrate_vm_runtime_state(vm, nlohmann::json{{"default_provider", "mock"}, {"default_model", "mock-model"}}, artifacts, "startup-restored");
         
-        agentc::runtime::run_vm_agent_root_turn_via_imported_runtime(vm, "step 2", nlohmann::json{{"default_provider", "mock"}, {"default_model", "mock-model"}}, artifacts);
+        agentc::runtime::run_vm_agent_turn_native(vm, "step 2");
         store.saveRoot(vm.getCursor().getValue());
     }
 
@@ -163,18 +165,41 @@ TEST(EmbeddedVmRootRestoreTest, CompareWarmToColdExecution) {
         CPtr<agentc::ListreeValue> restoredRoot;
         store.loadRoot(restoredRoot);
         agentc::edict::EdictVM vm(restoredRoot);
-        agentc::runtime::rehydrate_vm_runtime_state(vm, "comparative prompt", nlohmann::json{{"default_provider", "mock"}, {"default_model", "mock-model"}}, artifacts, "startup-restored");
+        agentc::runtime::rehydrate_vm_runtime_state(vm, nlohmann::json{{"default_provider", "mock"}, {"default_model", "mock-model"}}, artifacts, "startup-restored");
         
-        agentc::runtime::run_vm_agent_root_turn_via_imported_runtime(vm, "step 3", nlohmann::json{{"default_provider", "mock"}, {"default_model", "mock-model"}}, artifacts);
+        agentc::runtime::run_vm_agent_turn_native(vm, "step 3");
         
         warmFinalState = nlohmann::json::parse(agentc::toJson(vm.getCursor().getValue()));
     }
 
-    // The __vm_runtime_handle changes because of raw pointers; remove it before comparison.
     coldFinalState.erase("__vm_runtime_handle");
     warmFinalState.erase("__vm_runtime_handle");
-    // Some mock IDs might increment differently if a global counter exists, but since we are mocking correctly it should match exactly.
+    if (coldFinalState.contains("runtime") && coldFinalState["runtime"].contains("rehydration")) {
+        coldFinalState["runtime"]["rehydration"].erase("last_event");
+    }
+    if (warmFinalState.contains("runtime") && warmFinalState["runtime"].contains("rehydration")) {
+        warmFinalState["runtime"]["rehydration"].erase("last_event");
+    }
 
+    auto erase_dynamic_addresses = [](nlohmann::json& node, auto& self) -> void {
+        if (node.is_object()) {
+            node.erase("resolver_address");
+            for (auto& [key, val] : node.items()) {
+                self(val, self);
+            }
+        } else if (node.is_array()) {
+            for (auto& val : node) {
+                self(val, self);
+            }
+        }
+    };
+    erase_dynamic_addresses(coldFinalState, erase_dynamic_addresses);
+    erase_dynamic_addresses(warmFinalState, erase_dynamic_addresses);
+
+    if (coldFinalState != warmFinalState) {
+        std::ofstream("cold_debug.json") << coldFinalState.dump(2);
+        std::ofstream("warm_debug.json") << warmFinalState.dump(2);
+    }
     EXPECT_EQ(coldFinalState, warmFinalState);
 
     store.clear();

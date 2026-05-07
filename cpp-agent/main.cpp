@@ -166,7 +166,6 @@ int main(int argc, char** argv) {
 
         agentc::runtime::rehydrate_vm_runtime_state(
             embedded_vm,
-            options.system_prompt,
             base_runtime_config,
             runtime_import_artifacts,
             restored_root ? "startup-restored" : "startup-fresh",
@@ -203,7 +202,6 @@ int main(int argc, char** argv) {
                     embedded_vm.reset();
                     agentc::runtime::rehydrate_vm_runtime_state(
                         embedded_vm,
-                        options.system_prompt,
                         base_runtime_config,
                         runtime_import_artifacts,
                         "session-reset",
@@ -219,11 +217,7 @@ int main(int argc, char** argv) {
                 }
 
                 try {
-                    agentc::runtime::run_vm_agent_root_turn_via_imported_runtime(
-                        embedded_vm,
-                        input,
-                        base_runtime_config,
-                        runtime_import_artifacts);
+                    agentc::runtime::run_vm_agent_turn_native(embedded_vm, input);
                     const auto reply_text = agentc::runtime::reply_text_from_vm_agent_root(embedded_vm);
 
                     std::string persist_error;

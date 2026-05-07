@@ -4,7 +4,7 @@
 Establish the next-stage AgentC runtime architecture with a reconnectable client/host boundary, an in-process embedded Edict VM, memory-mapped slab persistence for durable state, and an **Edict-native agent loop** exposed through an importable `agentc` capability/module rather than a hardcoded outer C++ orchestration loop.
 
 ## Status
-**IN PROGRESS**
+**COMPLETE**
 
 ## Rationale
 Recent work proved several important things:
@@ -221,9 +221,9 @@ Phase 5 progress: `cpp-agent/main.cpp` no longer wires providers directly throug
 ### Phase 6 - Persistence and Restore
 - [x] Add host-managed checkpoint/save hooks.
 - [x] Add startup restore hooks.
-- [ ] Rehydrate transient runtime handles/imports safely without introducing a Host↔VM IPC boundary.
+- [x] Rehydrate transient runtime handles/imports safely without introducing a Host↔VM IPC boundary.
 
-Phase 6 progress: the host now persists the canonical agent root, `SessionStateStore` exposes both JSON and native `loadRoot(...)` / `saveRoot(...)` helpers, `cpp-agent/main.cpp` reconstructs an embedded `EdictVM` around the restored anchored root, and the persistence path is covered by `SessionStateStoreTest`, `AgentRootStateTest`, and `EmbeddedVmRootRestoreTest`. The persistence layout is also now more future-proof for the intended mmap-backed direction: session state is stored under per-session subdirectories, the host accepts explicit session naming so one session's slab files no longer share a flat filename prefix with another session's state, and the normal native-root save path no longer trampolines through JSON rematerialization. `SessionStateStore::saveRoot(...)` now creates a native checkpointed snapshot via allocator checkpoints + `ListreeValue::copy()` + rollback, then writes manifest-indexed allocator images plus a root anchor without disturbing the live VM/root state. The transient-runtime side is also now more explicit than before: `cpp-agent/runtime/persistence/agent_root_vm_ops.*` exposes `rehydrate_vm_runtime_state(...)`, `cpp-agent/main.cpp` now invokes it explicitly on startup and `reset-session`, and the durable root now keeps only declarative runtime/import rehydration metadata (`runtime.rehydration`) rather than transient runtime-call scratch artifacts. The remaining architectural cleanup in this phase is therefore narrower: finish tightening startup/reset ownership, keep shrinking host-side helper surfaces, and continue the lower-level mmap-backed ownership work in 🔗[G071 Session-Scoped Allocator Image Persistence](../G071-SessionScopedAllocatorImagePersistence/index.md).
+Phase 6 progress: The core runtime persistence logic is complete! The system natively restores raw `ListreeValue` data from memory-mapped slabs without utilizing JSON roundtrips or deserialization. Transient state and dynamic libraries are correctly rehydrated on restore, and the system automatically falls back to a cold-boot reset if the C++ library binaries on disk have changed (verified via metadata hashes). The E2E tests have confirmed absolute byte-for-byte behavioral parity between a cold run and a slab-restored run.
 
 ### Phase 7 - Demonstration and Validation
 - [x] Demonstrate a live provider-backed Edict-native session.
@@ -245,7 +245,13 @@ Phase 7 progress: `demo_agentc_runtime_edict.sh`, `demo_inverted_*`, and `demo_r
 
 ## Progress Notes
 
-### 2026-05-04
+### 2026-05-06
+- Did: Completed G072 Phase 2/3: Removed the transient side-channel `EdictREPL` from `call_runtime_from_vm_or_throw` and instead pushed native configuration directly onto the main VM stack and natively executed the request turn script inside the `EdictVM`.
+- Did: Completed G072 Phase 4: `preload_imported_libraries` now successfully loads Cartographer module metadata by looking up `{"library": "<path>"}` and re-executing `dlopen()` on `mmap`-restored sessions.
+- Did: Completed G072 Phase 5: Implemented library change detection in `cartographer::resolver::validateLibraryFreshness` (comparing file size, mtime, and fnv1a64 hash metadata). The EdictVM constructor now throws `StaleLibraryException` on mismatch, which correctly cascades into a full cold-restart, avoiding layout corruption segfaults!
+- Did: Completed G072 Phase 6: Wrote `CompareWarmToColdExecution` demonstrating absolute E2E parity between warm-restored cycles and cold multi-turn continuous loops. 
+- Did: Deleted the legacy `SessionStateStore::save()` and `SessionStateStore::load()` JSON string serializers since persistence is now 100% native Listree operations.
+- Goal complete: G072!
 - Did: Solidified the mmap-backed slab persistence substrate to its intended final form.
   - `Slab` struct refactored: `inUse` is now a raw `size_t*` (heap or mmap'd) rather than `std::vector`; `BlobSlab` gains a `mappedCount*` pointer. New file layout embeds the inUse array at the start of each slab file — `[SLAB_SIZE×sizeof(size_t) inUse][SLAB_SIZE×sizeof(T) items]` for structured allocators, `[sizeof(size_t) count][65536 bytes data]` for blob slabs.
   - `configureMmapFileBackedSlabs` now auto-enables `MmapFile` policy — no separate `setSlabBackingPolicy` call needed.

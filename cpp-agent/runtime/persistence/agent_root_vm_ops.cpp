@@ -14,20 +14,6 @@ namespace {
 
 using json = nlohmann::json;
 
-const agentc::edict::BytecodeBuffer& build_request_code() {
-    static const agentc::edict::BytecodeBuffer code = agentc::edict::EdictCompiler().compile(R"(@prompt @agent_root {"system": "", "messages": [], "prompt": "", "response_mode": "text"} @request agent_root.conversation.system_prompt @request.system agent_root.conversation.messages @request.messages prompt @request.prompt [text] @request.response_mode request)");
-    return code;
-}
-
-const agentc::edict::BytecodeBuffer& apply_response_code() {
-    static const agentc::edict::BytecodeBuffer code = agentc::edict::EdictCompiler().compile(R"(@response @prompt @agent_root {"role": "user", "text": ""} @user_message prompt @user_message.text / user_message ^agent_root.conversation.messages^ prompt @agent_root.conversation.last_prompt / response @agent_root.conversation.last_response / response.message @assistant_message assistant_message.text @agent_root.conversation.assistant_text / assistant_message ^agent_root.conversation.messages^ prompt @agent_root.loop.last_prompt [turn-complete] @agent_root.loop.status)");
-    return code;
-}
-
-const agentc::edict::BytecodeBuffer& apply_response_without_message_code() {
-    static const agentc::edict::BytecodeBuffer code = agentc::edict::EdictCompiler().compile(R"(@response @prompt @agent_root {"role": "user", "text": ""} @user_message prompt @user_message.text / user_message ^agent_root.conversation.messages^ prompt @agent_root.conversation.last_prompt / response @agent_root.conversation.last_response / {"value": ""} @assistant_text_holder assistant_text_holder.value @agent_root.conversation.assistant_text / prompt @agent_root.loop.last_prompt [turn-complete] @agent_root.loop.status)");
-    return code;
-}
 
 CPtr<agentc::ListreeValue> json_value_or_throw(const json& value, const char* label) {
     auto out = agentc::fromJson(value.dump());
@@ -84,32 +70,6 @@ std::string shell_literal(const std::string& value) {
     return "[" + value + "]";
 }
 
-CPtr<agentc::ListreeValue> execute_vm_value_query_or_throw(
-    agentc::edict::EdictVM& vm,
-    const agentc::edict::BytecodeBuffer& code,
-    std::initializer_list<CPtr<agentc::ListreeValue>> args,
-    const char* label);
-
-std::string config_default_or(const json& config, const char* key, const char* fallback) {
-    return config.contains(key) && config[key].is_string()
-        ? config[key].get<std::string>()
-        : std::string(fallback);
-}
-
-json merged_runtime_config_for_vm_agent_root(agentc::edict::EdictVM& vm,
-                                             const json& base_runtime_config) {
-    json config = base_runtime_config;
-    const auto root = json_from_value_or_throw(vm.getCursor().getValue(), "embedded vm root");
-    if (root.contains("runtime") && root["runtime"].is_object()) {
-        const auto& runtime = root["runtime"];
-        for (const auto* key : {"default_provider", "default_model", "defaults", "providers"}) {
-            if (runtime.contains(key)) {
-                config[key] = runtime[key];
-            }
-        }
-    }
-    return config;
-}
 
 json runtime_rehydration_metadata(const json& /*base_runtime_config*/,
                                   const VmRuntimeImportArtifacts& artifacts,
@@ -141,123 +101,17 @@ std::string runtime_bootstrap_script_for_artifacts(const VmRuntimeImportArtifact
     script << shell_literal(artifacts.runtime_library_path) << " "
            << shell_literal(artifacts.runtime_header_path) << " resolver.import ! @runtimeffi\n";
     script << read_text_file_or_throw(artifacts.agentc_module_path) << "\n";
+    script << read_text_file_or_throw(artifacts.agentc_stateful_loop_module_path) << "\n";
+    script << read_text_file_or_throw(artifacts.agentc_agent_root_module_path) << "\n";
     return script.str();
 }
 
 
-json call_runtime_from_vm_or_throw(agentc::edict::EdictVM& vm,
-                                   const json& runtime_config,
-                                   const json& request,
-                                   const VmRuntimeImportArtifacts& artifacts) {
-    // Phase 2/3: Compile and execute directly in the embedded VM
-    std::ostringstream script;
-    
-    // Lazy bootstrap: If bindings aren't imported yet, import them now.
-    auto root = vm.getCursor().getValue();
-    if (!root || !root->find("agentc_call", false)) {
-        script << runtime_bootstrap_script_for_artifacts(artifacts);
-    }
-    
-    script << "agentc_runtime_create ! @vm_runtime_handle\n";
-    script << "vm_runtime_handle swap agentc_call ! @__vm_runtime_response\n";
-    script << "vm_runtime_handle agentc_destroy ! /\n";
 
-    agentc::edict::EdictCompiler compiler;
-    auto code = compiler.compile(script.str());
-    if (code.getData().empty()) {
-        throw std::runtime_error("Failed to compile runtime invocation script");
-    }
-
-    // Push arguments directly onto the VM stack instead of stringifying them through JSON
-    vm.pushData(json_value_or_throw(request, "runtime request"));
-    vm.pushData(json_value_or_throw(runtime_config, "runtime config"));
-
-    if (vm.execute(code) & agentc::edict::VM_ERROR) {
-        const std::string error = vm.getError();
-        vm.reset();
-        throw std::runtime_error("call_runtime_from_vm_or_throw failed inside embedded VM: " + error);
-    }
-
-    auto responseItem = root->find("__vm_runtime_response", false);
-    if (!responseItem || !responseItem->getValue(false, false)) {
-        throw std::runtime_error("call_runtime_from_vm_or_throw did not materialize __vm_runtime_response in the VM root");
-    }
-
-    auto responseVal = responseItem->getValue(false, false);
-    if (!responseVal) {
-        throw std::runtime_error("call_runtime_from_vm_or_throw returned a null ListreeValue");
-    }
-
-    auto finalJson = json_from_value_or_throw(responseVal, "response");
-    return finalJson;
-}
-
-
-CPtr<agentc::ListreeValue> execute_vm_value_query_or_throw(
-    agentc::edict::EdictVM& vm,
-    const agentc::edict::BytecodeBuffer& code,
-    std::initializer_list<CPtr<agentc::ListreeValue>> args,
-    const char* label) {
-    for (const auto& arg : args) {
-        vm.pushData(arg);
-    }
-
-    if (vm.execute(code) & agentc::edict::VM_ERROR) {
-        const std::string error = vm.getError();
-        vm.reset();
-        throw std::runtime_error(std::string(label) + " failed inside embedded VM: " + error);
-    }
-
-    auto result = vm.popData();
-    if (!result) {
-        vm.reset();
-        throw std::runtime_error(std::string(label) + " returned null value");
-    }
-    return result;
-}
-
-
-void merge_object(json& dst, const json& src) {
-    if (!dst.is_object() || !src.is_object()) {
-        return;
-    }
-    for (auto it = src.begin(); it != src.end(); ++it) {
-        dst[it.key()] = it.value();
-    }
-}
-
-json normalized_conversation(const json& root,
-                             const std::string& fallback_system_prompt) {
-    json conversation = {
-        {"system_prompt", fallback_system_prompt},
-        {"messages", json::array()},
-        {"last_prompt", nullptr},
-        {"last_response", nullptr},
-        {"assistant_text", ""}
-    };
-
-    if (root.is_object() && root.contains("conversation") && root["conversation"].is_object()) {
-        merge_object(conversation, root["conversation"]);
-    } else if (root.is_object()) {
-        if (root.contains("system_prompt") && root["system_prompt"].is_string()) {
-            conversation["system_prompt"] = root["system_prompt"];
-        }
-        if (root.contains("messages") && root["messages"].is_array()) {
-            conversation["messages"] = root["messages"];
-        }
-    }
-
-    if (!conversation.contains("messages") || !conversation["messages"].is_array()) {
-        conversation["messages"] = json::array();
-    }
-    if (!conversation.contains("assistant_text") || !conversation["assistant_text"].is_string()) {
-        conversation["assistant_text"] = "";
-    }
-    if (!conversation.contains("system_prompt") || !conversation["system_prompt"].is_string()) {
-        conversation["system_prompt"] = fallback_system_prompt;
-    }
-
-    return conversation;
+std::string config_default_or(const json& config, const char* key, const char* fallback) {
+    return config.contains(key) && config[key].is_string()
+        ? config[key].get<std::string>()
+        : std::string(fallback);
 }
 
 } // namespace
@@ -318,63 +172,48 @@ VmRuntimeImportArtifacts discover_vm_runtime_import_artifacts() {
     artifacts.agentc_module_path = first_existing_path_or_throw(
         {sourceRoot / "cpp-agent" / "edict" / "modules" / "agentc.edict"},
         "agentc.edict module").string();
+    artifacts.agentc_stateful_loop_module_path = first_existing_path_or_throw(
+        {sourceRoot / "cpp-agent" / "edict" / "modules" / "agentc_stateful_loop.edict"},
+        "agentc_stateful_loop.edict module").string();
+    artifacts.agentc_agent_root_module_path = first_existing_path_or_throw(
+        {sourceRoot / "cpp-agent" / "edict" / "modules" / "agentc_agent_root.edict"},
+        "agentc_agent_root.edict module").string();
     return artifacts;
 }
 
-json build_request_from_vm_agent_root(agentc::edict::EdictVM& vm,
-                                      const std::string& prompt) {
-    const auto requestValue = execute_vm_value_query_or_throw(
-        vm,
-        build_request_code(),
-        {vm.getCursor().getValue(), agentc::createStringValue(prompt)},
-        "build_request_from_vm_agent_root");
-    const auto request = json_from_value_or_throw(requestValue, "request");
-    vm.reset();
-    return request;
-}
+void run_vm_agent_turn_native(agentc::edict::EdictVM& vm, const std::string& prompt) {
+    const std::string script = R"(
+        @prompt
+        @root
+        root agentc_agent_root_create_runtime ! @runtime_handle
+        runtime_handle root prompt agentc_agent_root_turn ! @next_root
+        runtime_handle agentc_destroy ! /
+        next_root
+    )";
 
-void apply_runtime_response_to_vm_agent_root(agentc::edict::EdictVM& vm,
-                                             const std::string& prompt,
-                                             const json& response) {
-    for (const auto& arg : {vm.getCursor().getValue(), agentc::createStringValue(prompt), json_value_or_throw(response, "runtime response")}) {
-        vm.pushData(arg);
+    agentc::edict::EdictCompiler compiler;
+    auto code = compiler.compile(script);
+    if (code.getData().empty()) {
+        throw std::runtime_error("Failed to compile native turn script");
     }
 
-    const auto& code = (response.is_object() && response.contains("message") && response["message"].is_object())
-        ? apply_response_code()
-        : apply_response_without_message_code();
+    vm.pushData(vm.getCursor().getValue());
+    vm.pushData(agentc::createStringValue(prompt));
 
     if (vm.execute(code) & agentc::edict::VM_ERROR) {
         const std::string error = vm.getError();
         vm.reset();
-        throw std::runtime_error(std::string("apply_runtime_response_to_vm_agent_root failed inside embedded VM: ") + error);
+        throw std::runtime_error("Native Edict turn failed: " + error);
     }
 
+    auto next_root = vm.popData();
+    if (next_root) {
+        vm.setCursor(next_root);
+    }
     vm.reset();
 }
 
-json run_vm_agent_root_turn(agentc::edict::EdictVM& vm,
-                            const std::string& prompt,
-                            const VmAgentRuntimeInvoker& runtime_invoker) {
-    const auto request = build_request_from_vm_agent_root(vm, prompt);
-    const auto response = runtime_invoker(request);
-    apply_runtime_response_to_vm_agent_root(vm, prompt, response);
-    return response;
-}
-
-json run_vm_agent_root_turn_via_imported_runtime(agentc::edict::EdictVM& vm,
-                                                 const std::string& prompt,
-                                                 const json& base_runtime_config,
-                                                 const VmRuntimeImportArtifacts& artifacts) {
-    const auto request = build_request_from_vm_agent_root(vm, prompt);
-    const auto runtime_config = merged_runtime_config_for_vm_agent_root(vm, base_runtime_config);
-    const auto response = call_runtime_from_vm_or_throw(vm, runtime_config, request, artifacts);
-    apply_runtime_response_to_vm_agent_root(vm, prompt, response);
-    return response;
-}
-
 void rehydrate_vm_runtime_state(agentc::edict::EdictVM& vm,
-                                const std::string& fallback_system_prompt,
                                 const json& base_runtime_config,
                                 const VmRuntimeImportArtifacts& artifacts,
                                 const std::string& lifecycle_event,
