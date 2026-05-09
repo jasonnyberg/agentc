@@ -1,35 +1,34 @@
 # Dashboard
 
 **Project**: AgentC / J3  
-**Last Updated**: 2026-05-06
+**Last Updated**: 2026-05-09
 
 ## Open Goals
 ### Planned / Active
-- 🔗[G074 — Real-time FFI Token Streaming](./Knowledge/Goals/G074-RealtimeFFITokenStreaming/index.md) — PLANNED
+- 🔗[G074 — Real-time FFI Token Streaming](./Knowledge/Goals/G074-RealtimeFFITokenStreaming/index.md) — **IN PROGRESS**
 - 🔗[G075 — Speculative Edict Native Architectures](./Knowledge/Goals/G075-SpeculativeEdictArchitectures/index.md) — PLANNED
 
 ### Complete (this cycle)
+- 🔗[G076 — Generalized Multiline Edict Accumulator](./Knowledge/Goals/G076-GeneralizedMultilineAccumulator/index.md) — **COMPLETE** (2026-05-09)
 - 🔗[G073 — Pure VM Lifecycle & Host Thinning](./Knowledge/Goals/G073-PureVMLifecycleHostThinning/index.md) — **COMPLETE** (2026-05-06)
 - 🔗[G072 — Direct Slab Restore Without Full Library Re-import](./Knowledge/Goals/G072-DirectSlabRestoreWithoutReimport/index.md) — **COMPLETE** (2026-05-06)
-- 🔗[G071 — Session-Scoped Allocator Image Persistence](./Knowledge/Goals/G071-SessionScopedAllocatorImagePersistence/index.md) — **COMPLETE** (2026-05-04)
-- 🔗[G068 — Client/Agent Split with Embedded Persistent Edict VM](./Knowledge/Goals/G068-ClientAgentSplitEmbeddedVmPersistence/index.md) — **COMPLETE** (2026-05-06)
 
 ### Blocked
 None
 
 ## Active Context
-- **G073 Complete**: The host process acts solely as a process supervisor and a socket/pipe conduit. Any loops built into the FFI logic have been dissolved into basic discrete tools (like `agentc_call_json !`) that Edict chains together natively.
-- **Edict Control Flow**: Edict fundamentally owns all recursive logic and iteration logic. The host never calls "step" on anything intelligent, it only fires events at the VM (`agentc_agent_root_turn !`).
+- **G074 Streaming Architecture Locked**: We have designed the "Decoupled Ghost Queue" approach. Background LLM network streams will write to standard C++ `std::queue`s (ephemeral, disposable RAM). The Edict VM's main thread will explicitly pull from these queues via `agentc_stream_sync !` to mutate its persistent Listree mailboxes. This guarantees Listree mmap safety and deterministic snapshot resilience.
+- **Resilience**: If the VM restarts, background C++ threads die. The VM handles stuck mailboxes using native timeouts.
 
 ## Knowledge Inventory
 - **Category Indexes**: `Knowledge/Concepts/index.md`; `Knowledge/Facts/index.md`; `Knowledge/Procedures/index.md`
 
 ## Handoff Note
 
-**Project**: AgentC — an Edict-native agent runtime with a mmap/Listree-backed persistence substrate.
-**Current State**: G073 is finished. The runtime orchestration is pure native Edict.
-**Next Action**: Either pivot to G074 to enable sub-second UI interactivity via Server-Sent Events from the FFI bounds down to Edict, or start G075 for multi-path reasoning inside Listree's copy-on-write memory natively in Edict.
-**Key Context**: FFI methods should act purely as actuators. Edict script retains all looping and architectural logic.
+**Project**: AgentC
+**Current State**: G074 architecture is locked and documented.
+**Next Action**: Implement the `StreamManager` class in the C++ runtime to manage thread-safe token queues, then build the `agentc_call_stream` and `agentc_stream_sync` FFI bindings.
+**Key Context**: The FFI stream waiter must be entirely stateless and ephemeral. The VM must decide *when* to sync the Listree.
 
 ## Session Compliance
 - [x] Reviewed Dashboard at session start

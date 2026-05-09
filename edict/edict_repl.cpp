@@ -143,22 +143,31 @@ void EdictREPL::printError(const std::string& error) {
 bool EdictREPL::runScript(std::istream& in) {
     std::string line;
     int lineNum = 0;
+    BlockAccumulator accumulator;
+
     while (std::getline(in, line)) {
         ++lineNum;
         if (!line.empty() && line.back() == '\r') line.pop_back();
-        const auto first = line.find_first_not_of(" \t");
-        if (first == std::string::npos || line[first] == '#') continue;
-        try {
-            BytecodeBuffer code = compiler.compile(line);
-            int result = vm.execute(code);
-            if (result & VM_ERROR) {
-                output << "Error (line " << lineNum << "): " << vm.getError() << std::endl;
+
+        if (accumulator.addLine(line, &output, lineNum)) {
+            try {
+                BytecodeBuffer code = compiler.compile(accumulator.getBlock());
+                int result = vm.execute(code);
+                if (result & VM_ERROR) {
+                    output << "Error (lines " << accumulator.getStartLine() << "-" << lineNum << "): " << vm.getError() << std::endl;
+                    return false;
+                }
+            } catch (const std::exception& e) {
+                output << "Error (lines " << accumulator.getStartLine() << "-" << lineNum << "): " << e.what() << std::endl;
                 return false;
             }
-        } catch (const std::exception& e) {
-            output << "Error (line " << lineNum << "): " << e.what() << std::endl;
-            return false;
+            accumulator.clear();
         }
+    }
+    
+    if (!accumulator.isEmpty() && accumulator.getDepth() > 0) {
+        output << "Error (line " << accumulator.getStartLine() << "): Unclosed brackets at EOF (depth " << accumulator.getDepth() << ")" << std::endl;
+        return false;
     }
     return true;
 }

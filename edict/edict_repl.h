@@ -22,6 +22,7 @@
 #include "edict_types.h"
 #include "edict_compiler.h"
 #include "edict_vm.h"
+#include "block_accumulator.h"
 
 namespace agentc::edict {
 

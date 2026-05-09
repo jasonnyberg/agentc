@@ -13,6 +13,7 @@ set(LIB_SOURCES
     edict_compiler.cpp
     edict_vm.cpp
     edict_repl.cpp
+    block_accumulator.cpp
 )
 
 # Create library
