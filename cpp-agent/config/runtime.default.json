@@ -1,6 +1,6 @@
 {
   "default_provider": "google",
-  "default_model": "gemini-2.5-flash",
+  "default_model": "gemini-3.1-pro-preview",
   "defaults": {
     "timeout_ms": 30000,
     "response_mode": "text",
@@ -9,7 +9,7 @@
   "providers": {
     "google": {
       "enabled": true,
-      "default_model": "gemini-2.5-flash",
+      "default_model": "gemini-3.1-pro-preview",
       "api_key_env": "GEMINI_API_KEY",
       "base_url": "https://generativelanguage.googleapis.com"
     },

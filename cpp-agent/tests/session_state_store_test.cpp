@@ -68,7 +68,7 @@ TEST(SessionStateStoreTest, RoundTripsCanonicalAgentRootThroughListreeBackedStor
     agentc::runtime::SessionStateStore store(base);
     store.clear();
 
-    auto rootJson = agentc::runtime::make_default_agent_root("persist me", "google", "gemini-2.5-flash");
+    auto rootJson = agentc::runtime::make_default_agent_root("persist me", "google", "gemini-3.1-pro-preview");
     rootJson["conversation"]["messages"] = nlohmann::json::array({
         nlohmann::json{{"role", "user"}, {"text", "hello"}},
         nlohmann::json{{"role", "assistant"}, {"text", "world"}}
@@ -106,9 +106,9 @@ TEST(SessionStateStoreTest, IsolatesNamedSessionsInSeparateSubdirectories) {
     alpha.clear();
     beta.clear();
 
-    auto alphaRootJson = agentc::runtime::make_default_agent_root("alpha prompt", "google", "gemini-2.5-flash");
+    auto alphaRootJson = agentc::runtime::make_default_agent_root("alpha prompt", "google", "gemini-3.1-pro-preview");
     alphaRootJson["conversation"]["assistant_text"] = "alpha reply";
-    auto betaRootJson = agentc::runtime::make_default_agent_root("beta prompt", "google", "gemini-2.5-flash");
+    auto betaRootJson = agentc::runtime::make_default_agent_root("beta prompt", "google", "gemini-3.1-pro-preview");
     betaRootJson["conversation"]["assistant_text"] = "beta reply";
 
     std::string error;
@@ -143,7 +143,7 @@ TEST(SessionStateStoreTest, WritesSessionManifestAndAllocatorImageIndex) {
     auto session_rootJson = agentc::runtime::make_default_agent_root(
         "this is a long enough prompt to force blob-backed string storage during restore validation",
         "google",
-        "gemini-2.5-flash");
+        "gemini-3.1-pro-preview");
     session_rootJson["conversation"]["messages"] = nlohmann::json::array({
         nlohmann::json{{"role", "user"}, {"text", "first message"}},
         nlohmann::json{{"role", "assistant"}, {"text", "second message"}}
@@ -227,7 +227,7 @@ TEST(SessionStateStoreTest, WritesSessionBootstrapAndCanRestoreWithoutManifest) 
     auto session_rootJson = agentc::runtime::make_default_agent_root(
         "bootstrap-owned prompt that is long enough to exercise blob-backed string storage",
         "google",
-        "gemini-2.5-flash");
+        "gemini-3.1-pro-preview");
     session_rootJson["conversation"]["messages"] = nlohmann::json::array({
         nlohmann::json{{"role", "user"}, {"text", "bootstrap first message"}},
         nlohmann::json{{"role", "assistant"}, {"text", "bootstrap second message"}}
@@ -272,7 +272,7 @@ TEST(SessionStateStoreTest, PersistsDeclarativeRuntimeRehydrationMetadataWithout
     agentc::runtime::SessionStateStore store(root, "runtime-rehydration");
     store.clear();
 
-    auto root_json = agentc::runtime::make_default_agent_root("persist runtime metadata", "google", "gemini-2.5-flash");
+    auto root_json = agentc::runtime::make_default_agent_root("persist runtime metadata", "google", "gemini-3.1-pro-preview");
     root_json["conversation"]["messages"] = nlohmann::json::array({
         nlohmann::json{{"role", "user"}, {"text", "hello"}},
         nlohmann::json{{"role", "assistant"}, {"text", "world"}}
@@ -317,7 +317,7 @@ TEST(SessionStateStoreTest, CanRestoreCanonicalRootWhenManifestSlabListsAreEmpty
     auto session_rootJson = agentc::runtime::make_default_agent_root(
         "header-discovered prompt that is long enough to exercise blob-backed string storage",
         "google",
-        "gemini-2.5-flash");
+        "gemini-3.1-pro-preview");
     session_rootJson["conversation"]["messages"] = nlohmann::json::array({
         nlohmann::json{{"role", "user"}, {"text", "first message"}},
         nlohmann::json{{"role", "assistant"}, {"text", "second message"}}
@@ -716,7 +716,7 @@ TEST(SessionStateStoreTest, SavesNativeSnapshotWithoutDestroyingLiveAmbientState
     junk_values.push_back(agentc::createStringValue("junk-2"));
     junk_values.push_back(agentc::createStringValue("junk-3"));
 
-    auto root_json = agentc::runtime::make_default_agent_root("native prompt", "google", "gemini-2.5-flash");
+    auto root_json = agentc::runtime::make_default_agent_root("native prompt", "google", "gemini-3.1-pro-preview");
     root_json["conversation"]["messages"] = nlohmann::json::array({
         nlohmann::json{{"role", "user"}, {"text", "hello native"}},
         nlohmann::json{{"role", "assistant"}, {"text", "world native"}}

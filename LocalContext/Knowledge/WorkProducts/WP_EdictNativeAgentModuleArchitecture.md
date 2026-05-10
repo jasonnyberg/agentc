@@ -174,7 +174,7 @@ Edict can directly read JSON, but vendor-specific payloads should not become the
 {
   "prompt": "Summarize the current task",
   "provider": "google",
-  "model": "gemini-2.5-pro",
+  "model": "gemini-3.1-pro-preview",
   "system": "optional system prompt",
   "conversation": [],
   "response_mode": "json",
@@ -191,7 +191,7 @@ Edict can directly read JSON, but vendor-specific payloads should not become the
   "ok": true,
   "request_id": "req-123",
   "provider": "google",
-  "model": "gemini-2.5-pro",
+  "model": "gemini-3.1-pro-preview",
   "finish_reason": "stop",
   "message": {
     "role": "assistant",

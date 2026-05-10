@@ -38,7 +38,7 @@
 
 [
     @system_prompt
-    agentc_agent_root_init_with_runtime(system_prompt {"default_provider": "google", "default_model": "gemini-2.5-flash"})
+    agentc_agent_root_init_with_runtime(system_prompt {"default_provider": "google", "default_model": "gemini-3.1-pro-preview"})
 ] @agentc_agent_root_init
 
 [

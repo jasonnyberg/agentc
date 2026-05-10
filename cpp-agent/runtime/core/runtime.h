@@ -2,6 +2,8 @@
 
 #include <nlohmann/json.hpp>
 #include <string>
+#include "stream_manager.h"
+#include <memory>
 
 namespace agentc::runtime {
 
@@ -14,6 +16,9 @@ public:
     void configure_file(const std::string& config_path);
 
     nlohmann::json request_json(const std::string& request_json_text);
+    std::string stream_request_json(const std::string& request_json_text);
+
+    std::shared_ptr<StreamManager> get_stream_manager() { return stream_manager_; }
 
     std::string last_error_json() const;
     std::string last_trace_json() const;
@@ -22,6 +27,7 @@ private:
     nlohmann::json config_;
     nlohmann::json last_error_;
     nlohmann::json last_trace_;
+    std::shared_ptr<StreamManager> stream_manager_;
 
     void clear_error();
     void set_error(const std::string& code,

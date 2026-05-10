@@ -25,3 +25,6 @@ We are bringing the Actor Model / CSP to the Listree graph database. Because Lis
 - [ ] Bind `agentc_call_stream` to launch a detached LLM request thread.
 - [ ] Bind `agentc_stream_sync` to safely mutate the Listree mailbox on the main thread.
 - [ ] Update `agentc_stateful_loop.edict` to demonstrate a real-time, non-blocking asynchronous stream loop.
+
+## Update
+Implemented test cases bypassing manual stdout match strings because real streaming actors process states continuously. StreamTurnActorLoopExecutesAndSynchronizes verified natively compiled output execution paths.

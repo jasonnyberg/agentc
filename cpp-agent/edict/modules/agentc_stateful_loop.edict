@@ -23,7 +23,12 @@
 
 [
     @system_prompt
-    {"system_prompt": "", "messages": [], "last_prompt": null, "last_response": null, "assistant_text": ""} @state
+    { "system_prompt": "",
+      "messages": [],
+      "last_prompt": null,
+      "last_response": null,
+      "assistant_text": "
+    } @state
     system_prompt @state.system_prompt
     state
 ] @agentc_state_init
@@ -59,5 +64,54 @@
     agentc_call(runtime_handle request) @response            # call LLM provider
     agentc_state_apply_response(next_state response)         # apply and return
 ] @agentc_state_turn
+
+# agentc_state_stream_turn ! ( runtime_handle state prompt -- state )
+# Non-blocking equivalent of agentc_state_turn that demonstrates the Actor Loop / yield mechanics.
+[
+    @prompt @state @runtime_handle
+    
+    agentc_state_push_user(state prompt) @next_state
+    {} @request
+    next_state.system_prompt @request.system
+    next_state.messages @request.messages
+    
+    # 1. Spawn background LLM thread via FFI, returns lightweight ID instantly
+    agentc_call_stream(runtime_handle request) @stream_id
+    
+    # 2. Setup our local accumulator state
+    "" @accumulated_text
+    false @is_done
+    
+    # 3. Enter explicit Actor event-loop
+    [
+        # Yield control to allow host processes / C++ threads to run
+        yield
+        
+        # Explicitly synchronize the background ghost-queue into Edict memory space
+        agentc_stream_sync(runtime_handle stream_id) @sync_data
+        
+        sync_data.tokens "" != [
+            # In a real UI, this is where we stream tokens via SSE or WebSockets to the client
+            # For now, we append to our local accumulator
+            accumulated_text sync_data.tokens + @accumulated_text
+            
+            # Flush the tokens out to the console to visually prove it's streaming
+            sync_data.tokens print
+        ] [] if
+        
+        sync_data.complete true == [
+            true @is_done
+        ] [] if
+        
+        # Keep looping until the LLM says it's done
+        is_done !
+    ] loop
+    
+    # 4. Construct a mock response shape from our streamed tokens to satisfy standard agentc wrappers
+    {} @response
+    {"text": accumulated_text} @response.message
+    
+    agentc_state_apply_response(next_state response)
+] @agentc_state_stream_turn
 
 [@prompt @system_prompt @config_path config_path agentc_runtime_create_path ! @runtime system_prompt agentc_state_init ! @state runtime state prompt agentc_state_turn ! @next_state runtime agentc_destroy ! / next_state] @agentc_state_demo

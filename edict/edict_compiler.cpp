@@ -97,7 +97,7 @@ Token Tokenizer::nextToken() {
         tok = parseLiteral(input[position], skipped);
     }
     // Check for strings (used for JSON dict keys/values)
-    else if (jsonMode && input[position] == '"') {
+    else if (input[position] == '"') {
         tok = parseString(skipped);
     }
     // Check for quote-word form: 'word  (whitespace-terminated atom literal)
@@ -284,6 +284,11 @@ void EdictCompiler::compileTerm() {
     }
     if (match(TOKEN_LITERAL)) {
         compileLiteral();
+    } else if (match(TOKEN_STRING)) {
+        // Double-quote prefix literal: push bare string, no dictionary lookup
+        std::string s = currentToken.value.substr(1, currentToken.value.length() - 2);
+        emitValue(Value(s));
+        nextToken();
     } else if (match(TOKEN_QUOTE)) {
         // 'word — single-quote prefix literal: push bare string, no dictionary lookup
         emitValue(Value(currentToken.value));

@@ -271,7 +271,7 @@ void rehydrate_vm_runtime_state(agentc::edict::EdictVM& vm,
     // Ensure default_model exists
     auto model_item = runtime->find("default_model");
     if (!model_item || !model_item->getValue(false, false) || model_item->getValue(false, false)->isListMode()) {
-        auto model_val = agentc::createStringValue(config_default_or(base_runtime_config, "default_model", "gemini-2.5-flash"));
+        auto model_val = agentc::createStringValue(config_default_or(base_runtime_config, "default_model", "gemini-3.1-pro-preview"));
         if (model_item) {
             model_item->addValue(model_val, true);
         } else {

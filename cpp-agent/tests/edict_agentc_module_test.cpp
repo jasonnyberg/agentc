@@ -112,3 +112,27 @@ rt agentc_destroy ! /
     EXPECT_EQ(parsed["error"].value("code", std::string()), "request_invalid");
     EXPECT_EQ(parsed["error"].value("message", std::string()), "Request must provide prompt or messages");
 }
+
+TEST(EdictAgentcModuleTest, StreamWrapperSpawnsAndSynchronizes) {
+    const std::string moduleSource = readFile(modulePath());
+
+    std::ostringstream script;
+    script << "[" << extensionsLibPath() << "] [" << extensionsHeaderPath() << "] resolver.import ! @ext\n";
+    script << "[" << runtimeLibPath() << "] [" << runtimeHeaderPath() << "] resolver.import ! @runtimeffi\n";
+    script << moduleSource << "\n";
+    script << "[" << projectConfigPath() << "] agentc_runtime_create_path ! @rt\n";
+    
+    script << R"(
+    rt {"prompt": "hello"} agentc_call_stream ! @sid
+    rt sid agentc_stream_sync ! @sync_result
+    sync_result to_json ! print
+    rt agentc_destroy ! /
+    )";
+
+    const std::string jsonText = runEdictScript(script.str());
+    ASSERT_FALSE(jsonText.empty());
+    
+    auto parsed = nlohmann::json::parse(jsonText);
+    ASSERT_TRUE(parsed.contains("complete"));
+    ASSERT_TRUE(parsed.contains("tokens"));
+}

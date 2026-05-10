@@ -116,7 +116,7 @@ TEST(AgentRootVmOpsTest, ScriptCanBuildRequestShapeFromPromptAndRoot) {
 
 
 TEST(AgentRootVmOpsTest, RehydratesTransientRuntimeStateExplicitlyOnStartup) {
-    auto root = agentc::runtime::make_default_agent_root("system", "google", "gemini-2.5-flash");
+    auto root = agentc::runtime::make_default_agent_root("system", "google", "gemini-3.1-pro-preview");
     root["conversation"]["messages"] = nlohmann::json::array({
         nlohmann::json{{"role", "user"}, {"text", "hello"}},
         nlohmann::json{{"role", "assistant"}, {"text", "world"}}
@@ -148,7 +148,7 @@ TEST(AgentRootVmOpsTest, RehydratesTransientRuntimeStateExplicitlyOnStartup) {
               "embedded_imported_agentc_runtime");
     EXPECT_EQ(rehydrated["runtime"]["rehydration"]["binding"]["module_name"].get<std::string>(), "agentc");
     EXPECT_EQ(rehydrated["runtime"]["default_provider"].get<std::string>(), "google");
-    EXPECT_EQ(rehydrated["runtime"]["default_model"].get<std::string>(), "gemini-2.5-flash");
+    EXPECT_EQ(rehydrated["runtime"]["default_model"].get<std::string>(), "gemini-3.1-pro-preview");
     EXPECT_FALSE(rehydrated.contains("__vm_runtime_response"));
     EXPECT_FALSE(rehydrated.contains("vm_runtime_handle"));
     ASSERT_EQ(rehydrated["conversation"]["messages"].size(), 2u);
@@ -156,7 +156,7 @@ TEST(AgentRootVmOpsTest, RehydratesTransientRuntimeStateExplicitlyOnStartup) {
 }
 
 TEST(AgentRootVmOpsTest, RunTurnCanInvokeRuntimeThroughImportedVmBindings) {
-    auto root = agentc::runtime::make_default_agent_root("system", "google", "gemini-2.5-flash");
+    auto root = agentc::runtime::make_default_agent_root("system", "google", "gemini-3.1-pro-preview");
     root["runtime"]["default_provider"] = "mock";
     root["runtime"]["default_model"] = "mock-model";
     auto vm = makeVm(root);

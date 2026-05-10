@@ -16,6 +16,8 @@ int agentc_runtime_configure_json(void* runtime, const char* config_json);
 int agentc_runtime_configure_file(void* runtime, const char* config_path);
 
 char* agentc_runtime_request_json(void* runtime, const char* request_json);
+char* agentc_runtime_stream_request_json(void* runtime, const char* request_json);
+char* agentc_runtime_stream_sync_json(void* runtime, const char* stream_id);
 char* agentc_runtime_last_error_json(void* runtime);
 char* agentc_runtime_last_trace_json(void* runtime);
 

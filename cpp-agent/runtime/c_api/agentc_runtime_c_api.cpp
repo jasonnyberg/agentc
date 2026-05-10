@@ -2,6 +2,7 @@
 #include "../core/runtime.h"
 
 #include <cstring>
+#include <iostream>
 #include <exception>
 #include <new>
 #include <string>
@@ -31,7 +32,11 @@ extern "C" const char* agentc_runtime_version(void) {
 extern "C" agentc_runtime_t agentc_runtime_create_json(const char* config_json) {
     try {
         return new agentc::runtime::Runtime(config_json ? std::string(config_json) : std::string("{}"));
+    } catch (const std::exception& e) {
+        std::cerr << "Exception in agentc_runtime_create_json: " << e.what() << std::endl;
+        return nullptr;
     } catch (...) {
+        std::cerr << "Unknown exception in agentc_runtime_create_json" << std::endl;
         return nullptr;
     }
 }
@@ -74,8 +79,38 @@ extern "C" char* agentc_runtime_request_json(agentc_runtime_t runtime, const cha
         return nullptr;
     }
     try {
+        std::cerr << "[C-API] Received request_json:\n" << (request_json ? request_json : "null") << std::endl;
+        std::cerr << "[C-API] Hit synchronous request_json" << std::endl;
         const auto response = impl->request_json(request_json ? std::string(request_json) : std::string("{}"));
         return dup_cstr(response.dump());
+    } catch (...) {
+        return nullptr;
+    }
+}
+
+extern "C" char* agentc_runtime_stream_request_json(agentc_runtime_t runtime, const char* request_json) {
+    auto* impl = cast_runtime(runtime);
+    if (!impl) {
+        return nullptr;
+    }
+    try {
+
+        const std::string sid = impl->stream_request_json(request_json ? std::string(request_json) : std::string("{}"));
+        return dup_cstr(sid);
+    } catch (...) {
+        return nullptr;
+    }
+}
+
+extern "C" char* agentc_runtime_stream_sync_json(agentc_runtime_t runtime, const char* stream_id) {
+    auto* impl = cast_runtime(runtime);
+    if (!impl) {
+        return nullptr;
+    }
+    try {
+        auto result = impl->get_stream_manager()->syncStream(stream_id ? std::string(stream_id) : std::string(""));
+        const std::string response = result.first;
+        return dup_cstr(response);
     } catch (...) {
         return nullptr;
     }

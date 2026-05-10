@@ -12,7 +12,7 @@ TEST(EmbeddedVmRootRestoreTest, ConstructsVmFromRestoredAnchoredRoot) {
     agentc::runtime::SessionStateStore store(base);
     store.clear();
 
-    auto rootJson = agentc::runtime::make_default_agent_root("persisted prompt", "google", "gemini-2.5-flash");
+    auto rootJson = agentc::runtime::make_default_agent_root("persisted prompt", "google", "gemini-3.1-pro-preview");
     rootJson["conversation"]["messages"] = nlohmann::json::array({
         nlohmann::json{{"role", "user"}, {"text", "hello"}},
         nlohmann::json{{"role", "assistant"}, {"text", "world"}}

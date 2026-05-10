@@ -24,7 +24,7 @@ The intended operator-facing configuration file is `agentc-config.json` at the p
 ```json
 {
   "default_provider": "google",
-  "default_model": "gemini-2.5-flash"
+  "default_model": "gemini-3.1-pro-preview"
 }
 ```
 
@@ -32,7 +32,7 @@ The intended operator-facing configuration file is `agentc-config.json` at the p
 ```json
 {
   "default_provider": "google",
-  "default_model": "gemini-2.5-flash",
+  "default_model": "gemini-3.1-pro-preview",
   "defaults": {
     "timeout_ms": 30000,
     "response_mode": "text",
@@ -41,7 +41,7 @@ The intended operator-facing configuration file is `agentc-config.json` at the p
   "providers": {
     "google": {
       "enabled": true,
-      "default_model": "gemini-2.5-flash",
+      "default_model": "gemini-3.1-pro-preview",
       "api_key_env": "GEMINI_API_KEY",
       "base_url": "https://generativelanguage.googleapis.com"
     },
@@ -106,7 +106,7 @@ Each provider block may define:
 {
   "request_id": "optional-client-request-id",
   "provider": "google",
-  "model": "gemini-2.5-pro",
+  "model": "gemini-3.1-pro-preview",
   "system": "You are a careful assistant.",
   "prompt": "Summarize the current task.",
   "messages": [
@@ -175,7 +175,7 @@ Each provider block may define:
   "ok": true,
   "request_id": "req-123",
   "provider": "google",
-  "model": "gemini-2.5-pro",
+  "model": "gemini-3.1-pro-preview",
   "finish_reason": "stop",
   "message": {
     "role": "assistant",
@@ -191,7 +191,7 @@ Each provider block may define:
   "error": null,
   "trace": {
     "selected_provider": "google",
-    "selected_model": "gemini-2.5-pro"
+    "selected_model": "gemini-3.1-pro-preview"
   },
   "raw": null
 }
@@ -203,7 +203,7 @@ Each provider block may define:
   "ok": false,
   "request_id": "req-123",
   "provider": "google",
-  "model": "gemini-2.5-pro",
+  "model": "gemini-3.1-pro-preview",
   "finish_reason": "error",
   "message": null,
   "tool_calls": [],
@@ -218,7 +218,7 @@ Each provider block may define:
   },
   "trace": {
     "selected_provider": "google",
-    "selected_model": "gemini-2.5-pro"
+    "selected_model": "gemini-3.1-pro-preview"
   },
   "raw": null
 }

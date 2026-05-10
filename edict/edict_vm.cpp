@@ -2039,6 +2039,15 @@ bool EdictVM::evalDispatchFFI(CPtr<agentc::ListreeValue> v) {
     if (!nameItem || !valueToString(nameItem->getValue(false, false), funcName)) return false;
 
     if (!enforceImportedFunctionPolicy(funcName, v)) return true;
+    
+    auto resolutionItem = v->find("resolution_status");
+    if (!resolutionItem) return false;
+    std::string resStr;
+    if (!valueToString(resolutionItem->getValue(false, false), resStr)) return false;
+    if (resStr != "resolved") {
+        setError("Cannot invoke unresolved FFI function: " + funcName);
+        return true;
+    }
 
     // Collect parameter nodes.
     auto paramNodes = agentc::createListValue();

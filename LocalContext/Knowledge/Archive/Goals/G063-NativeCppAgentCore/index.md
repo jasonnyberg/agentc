@@ -344,7 +344,7 @@ No API keys to provide. No browser flows. No configuration.
     - `usageMetadata.promptTokenCount` + `candidatesTokenCount` → Usage
   - Map to `AssistantMessageEvent`: start, text_delta, text_end, toolcall_end, done/error
 - [ ] Register as `"google-gemini-cli"` in api_registry
-- [ ] Hardcode test model: `gemini-2.0-flash`
+- [ ] Hardcode test model: `gemini-3.1-pro-preview`
 - [ ] Write live integration test: `./cpp-agent "say hello"` with Gemini
 - [ ] **Verify**: receives streaming response, prints text
 

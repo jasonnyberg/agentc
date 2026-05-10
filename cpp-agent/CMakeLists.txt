@@ -15,6 +15,7 @@ find_package(CURL REQUIRED)
 
 add_library(agent_runtime SHARED
     runtime/core/runtime.cpp
+    runtime/core/stream_manager.cpp
     runtime/core/provider_registry.cpp
     runtime/c_api/agentc_runtime_c_api.cpp
     runtime/providers/register_builtin_providers.cpp
@@ -78,6 +79,7 @@ add_executable(cpp_agent_tests
     tests/agent_root_vm_ops_test.cpp
     tests/embedded_vm_root_restore_test.cpp
     tests/session_state_store_test.cpp
+    tests/stream_manager_test.cpp
     runtime/persistence/agent_root_vm_ops.cpp
 )
 target_compile_definitions(cpp_agent_tests PRIVATE

@@ -39,7 +39,7 @@ struct HostOptions {
     std::string state_base = env_or_default("AGENTC_STATE_BASE", "/tmp/agentc_session_state");
     std::string session_name = env_or_default("AGENTC_SESSION", "default");
     std::string provider = env_or_default("AGENTC_PROVIDER", "google");
-    std::string model = env_or_default("AGENTC_MODEL", "gemini-2.5-flash");
+    std::string model = env_or_default("AGENTC_MODEL", "gemini-3.1-pro-preview");
     std::string system_prompt = env_or_default("AGENTC_SYSTEM_PROMPT", "You are a helpful coding assistant.");
 };
 
