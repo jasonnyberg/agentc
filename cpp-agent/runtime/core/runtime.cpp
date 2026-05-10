@@ -39,6 +39,9 @@ std::string default_base_url_for_provider(const std::string& provider) {
     if (provider == "github-copilot") {
         return "https://api.individual.githubcopilot.com";
     }
+    if (provider == "openai-codex") {
+        return "https://chatgpt.com/backend-api";
+    }
     return {};
 }
 
@@ -271,6 +274,9 @@ json Runtime::request_json(const std::string& request_json_text) {
             if (options.contains("temperature") && options["temperature"].is_number()) {
                 opts.temperature = options["temperature"].get<double>();
             }
+            if (options.contains("reasoning_effort") && options["reasoning_effort"].is_string()) {
+                opts.reasoning_effort = options["reasoning_effort"].get<std::string>();
+            }
         }
 
         AssistantMessage final_msg;
@@ -409,6 +415,7 @@ std::string Runtime::resolve_api(const std::string& provider) const {
     if (provider == "openai") return "openai-completions";
     if (provider == "local") return "openai-completions";
     if (provider == "github-copilot") return "openai-completions";
+    if (provider == "openai-codex") return "openai-codex-responses";
     throw std::runtime_error("Unsupported provider: " + provider);
 }
 
@@ -442,6 +449,10 @@ std::string Runtime::resolve_api_key(const std::string& provider, const json& re
     }
     if (provider == "openai") {
         return get_openai_api_key();
+    }
+    if (provider == "openai-codex") {
+        auto creds = get_openai_codex_credentials();
+        return creds.access;
     }
     return {};
 }

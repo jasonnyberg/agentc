@@ -2,6 +2,7 @@
 
 #include "google/google_provider.h"
 #include "openai/openai_provider.h"
+#include "openai_codex/openai_codex_provider.h"
 
 #include <mutex>
 
@@ -12,6 +13,7 @@ void register_builtin_providers_once() {
     std::call_once(once, []() {
         register_google_provider();
         register_openai_provider();
+        register_openai_codex_provider();
     });
 }
 

@@ -154,6 +154,7 @@ struct StreamOptions {
     std::optional<int> max_tokens;
     std::optional<double> temperature;
     std::optional<std::string> session_id;
+    std::optional<std::string> reasoning_effort;
     std::unordered_map<std::string, std::string> extra_headers;
 };
 

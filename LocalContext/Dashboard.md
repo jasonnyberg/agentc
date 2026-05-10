@@ -12,6 +12,7 @@
 - 🔗[G075 — Speculative Edict Native Architectures](./Knowledge/Goals/G075-SpeculativeEdictArchitectures/index.md) — PLANNED
 
 ### Complete (this cycle)
+- 🔗[G081 — OpenAI Codex Subscription Provider](./Knowledge/Goals/G081-OpenAICodexSubscriptionProvider/index.md) — **COMPLETE** (2026-05-10)
 - 🔗[G077 — Local LLM Demo Request Diagnostics](./Knowledge/Goals/G077-LocalLlmDemoRequestDiagnostics/index.md) — **COMPLETE** (2026-05-10)
 - 🔗[G076 — Generalized Multiline Edict Accumulator](./Knowledge/Goals/G076-GeneralizedMultilineAccumulator/index.md) — **COMPLETE** (2026-05-09)
 - 🔗[G073 — Pure VM Lifecycle & Host Thinning](./Knowledge/Goals/G073-PureVMLifecycleHostThinning/index.md) — **COMPLETE** (2026-05-06)
@@ -34,16 +35,18 @@ None
 - **First Provider REPL Landed**: `cpp-agent/edict/modules/llm.edict` now exposes `provider.repl` for launcher-backed chat sessions. The working invocation is `provider < repl ! > pop /`, stdin/status packaging now lives partly in `agentc_stdlib`, and focused coverage proves repeated turns plus clean EOF through `./edict.sh` with the mock runtime.
 - **Zero-Code Chat Launcher Landed**: `./edict.sh` now defaults to `EDICT_AUTO_CHAT=1` and `EDICT_DEFAULT_PRESET=local-qwen`, so no-arg launch auto-creates a provider and drops straight into `provider.repl()`. Setting `EDICT_AUTO_CHAT=0` preserves the curated raw REPL path.
 - **Next Big Tracks Formalized**: the next major execution tracks after the current G078 seam are 🔗[G079 — Edict Agent Loop Tool Support](./Knowledge/Goals/G079-EdictAgentLoopToolSupport/index.md) and 🔗[G080 — LLM REPL Context Management](./Knowledge/Goals/G080-LlmReplContextManagement/index.md).
+- **OpenAI Codex Subscription Provider Landed**: 🔗[G081 — OpenAI Codex Subscription Provider](./Knowledge/Goals/G081-OpenAICodexSubscriptionProvider/index.md) added a native `openai-codex-responses` runtime provider that reuses pi's `~/.pi/agent/auth.json` OAuth credentials, an Edict `openai-codex` provider contract/preset, and a live-validated `llm.init([openai-codex])` path. `gpt-5.1-codex-mini` and `gpt-5.1/5.2-codex` were unsupported for the current ChatGPT account; `gpt-5.3-codex` succeeded and is the current lower-than-`gpt-5.5` default with low reasoning effort for cost control.
 
 ## Knowledge Inventory
 - **Category Indexes**: `Knowledge/Concepts/index.md`; `Knowledge/Facts/index.md`; `Knowledge/Procedures/index.md`
+- **Goals**: 🔗[G081 — OpenAI Codex Subscription Provider](./Knowledge/Goals/G081-OpenAICodexSubscriptionProvider/index.md)
 
 ## Handoff Note
 
 **Project**: AgentC
-**Current State**: G078 now has the first Edict provider-contract slice, the first working `llm.init(...)` slice, VM-level strict/lax unresolved lookup modes, a curated launcher/preload path, the first launcher-backed `provider.repl()` loop, and zero-code default chat through `./edict.sh`. Named presets initialize stable provider objects, repeated provider requests now preserve full multi-turn conversation state, `provider.repl()` can consume multiple prompts and exit cleanly on EOF, and targeted coverage across the Edict/LLM/root/embedded/session plus Edict VM suites is passing.
+**Current State**: G078 now has the first Edict provider-contract slice, the first working `llm.init(...)` slice, VM-level strict/lax unresolved lookup modes, a curated launcher/preload path, the first launcher-backed `provider.repl()` loop, zero-code default chat through `./edict.sh`, and a new live-validated OpenAI Codex subscription provider path. `llm.init([openai-codex])` uses pi's ChatGPT OAuth credentials, targets `gpt-5.3-codex` by default, and successfully returned `ok` in a live SSE smoke test.
 **Next Action**: Start G079 by adding the first minimal Edict/FFI tool surface for file read/write-edit and shell/system execution, while keeping G080 queued immediately behind it for explicit context management inside the provider REPL.
-**Key Context**: The current `llm` provider API is intentionally VM-grounded: provider objects are stable, `request !` mutates them in place, `provider < repl ! > pop /` is the current explicit chat-loop pattern, and plain `./edict.sh` now auto-creates a default provider chat session unless `EDICT_AUTO_CHAT=0` is set. `& |` integration should use explicit success/failure sentinels rather than object truthiness, Edict now supports `lax!`, `strict!` / `strict_null!`, and `strict_fail!`, and `edict.sh` / `agentc_curated.edict` is the canonical way to avoid repeated import/bootstrap boilerplate.
+**Key Context**: The current `llm` provider API is intentionally VM-grounded: provider objects are stable, `request !` mutates them in place, `provider < repl ! > pop /` is the current explicit chat-loop pattern, and plain `./edict.sh` now auto-creates a default provider chat session unless `EDICT_AUTO_CHAT=0` is set. `openai-codex` currently implements SSE-only Codex Responses, relies on pi `auth.json`, defaults to low reasoning effort for cost control, and does not yet include pi's WebSocket/cached-context transport. `& |` integration should use explicit success/failure sentinels rather than object truthiness, Edict now supports `lax!`, `strict!` / `strict_null!`, and `strict_fail!`, and `edict.sh` / `agentc_curated.edict` is the canonical way to avoid repeated import/bootstrap boilerplate.
 
 ## Session Compliance
 - [x] Reviewed Dashboard at session start

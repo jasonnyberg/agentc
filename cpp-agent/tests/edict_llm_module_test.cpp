@@ -128,6 +128,37 @@ print
     ASSERT_TRUE(parsed["request"].is_string());
 }
 
+TEST(EdictLlmModuleTest, InitBuildsOpenAICodexProviderPreset) {
+    const auto base = std::filesystem::path(TEST_SOURCE_DIR) / "cpp-agent" / "edict" / "modules";
+    const std::string agentcModule = readFile(base / "agentc.edict");
+    const std::string statefulModule = readFile(base / "agentc_stateful_loop.edict");
+    const std::string providerModule = readFile(base / "agentc_provider_contracts.edict");
+    const std::string llmModule = readFile(base / "llm.edict");
+
+    std::ostringstream script;
+    script << agentcModule << "\n";
+    script << statefulModule << "\n";
+    script << providerModule << "\n";
+    script << llmModule << "\n";
+    script << bootstrapJsonForMockRuntime() << R"( llm.configure_bootstrap ! /
+llm.init([openai-codex]) @provider
+{"preset_name":"","runtime":null,"system_prompt":""} @summary
+provider.preset_name @summary.preset_name
+provider.runtime @summary.runtime
+provider.conversation.system_prompt @summary.system_prompt
+summary to_json !
+print
+)";
+
+    const std::string output = runEdictScript(script.str());
+    auto parsed = nlohmann::json::parse(output);
+    EXPECT_EQ(parsed["preset_name"].get<std::string>(), "openai-codex");
+    EXPECT_EQ(parsed["runtime"]["default_provider"].get<std::string>(), "openai-codex");
+    EXPECT_EQ(parsed["runtime"]["default_model"].get<std::string>(), "gpt-5.3-codex");
+    EXPECT_EQ(parsed["runtime"]["provider_contract"]["transport_api"].get<std::string>(), "openai-codex-responses");
+    EXPECT_EQ(parsed["system_prompt"].get<std::string>(), "You are a helpful coding assistant.");
+}
+
 TEST(EdictLlmModuleTest, ProviderRequestRunsTurnAndReturnsUpdatedProvider) {
     const auto base = std::filesystem::path(TEST_SOURCE_DIR) / "cpp-agent" / "edict" / "modules";
     const std::string agentcModule = readFile(base / "agentc.edict");

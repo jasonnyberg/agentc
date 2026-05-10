@@ -26,6 +26,7 @@ add_library(agent_runtime SHARED
     runtime/persistence/session_state_store.cpp
     runtime/providers/google/google_provider.cpp
     runtime/providers/openai/openai_provider.cpp
+    runtime/providers/openai_codex/openai_codex_provider.cpp
 )
 set_target_properties(agent_runtime PROPERTIES OUTPUT_NAME agent_runtime)
 

@@ -8,14 +8,17 @@
 # Initial providers in this slice:
 # - `local`  : OpenAI-compatible local server (current qwen path)
 # - `google` : Gemini generateContent path
+# - `openai-codex` : ChatGPT Plus/Pro Codex subscription path
 #
 # Defined wrappers:
 #   agentc_provider_local_spec !           ( -- spec )
 #   agentc_provider_openai_spec !          ( -- spec )
+#   agentc_provider_openai_codex_spec !    ( -- spec )
 #   agentc_provider_google_spec !          ( -- spec )
 #   agentc_provider_catalog !              ( -- catalog )
 #   agentc_provider_local_runtime_config ! ( -- runtime_config )
 #   agentc_provider_openai_runtime_config !( -- runtime_config )
+#   agentc_provider_openai_codex_runtime_config !( -- runtime_config )
 #   agentc_provider_google_runtime_config !( -- runtime_config )
 #   agentc_provider_default_runtime_config !( -- runtime_config )
 #   agentc_provider_resolve_name !         ( runtime_config -- provider_name )
@@ -64,6 +67,19 @@
 ] @agentc_provider_google_spec
 
 [
+    {"id": "openai-codex",
+     "family": "openai-codex-responses",
+     "runtime_provider": "openai-codex",
+     "default_model": "gpt-5.3-codex",
+     "request_contract": "canonical-chat-v1",
+     "transport_api": "openai-codex-responses",
+     "message_field": "input",
+     "response_text_path": "message.text",
+     "capabilities": {"streaming": "true", "system_prompt": "true", "history": "true", "tools": "true"}
+    }
+] @agentc_provider_openai_codex_spec
+
+[
     @provider_name
     {"id": "", "family": "custom", "runtime_provider": "", "default_model": "", "request_contract": "canonical-chat-v1", "transport_api": "runtime-native", "message_field": "content", "response_text_path": "message.text", "capabilities": {"streaming": "true", "system_prompt": "true", "history": "true"}} @spec
     provider_name @spec.id
@@ -72,9 +88,10 @@
 ] @agentc_provider_unknown_spec
 
 [
-    {"local": null, "openai": null, "google": null} @catalog
+    {"local": null, "openai": null, "openai-codex": null, "google": null} @catalog
     agentc_provider_local_spec ! @catalog.local
     agentc_provider_openai_spec ! @catalog.openai
+    agentc_provider_openai_codex_spec ! @catalog.openai-codex
     agentc_provider_google_spec ! @catalog.google
     catalog
 ] @agentc_provider_catalog
@@ -99,6 +116,13 @@
     spec @runtime_config.provider_contract
     runtime_config
  ] @agentc_provider_google_runtime_config
+
+[agentc_provider_openai_codex_spec ! @spec {"default_provider": "", "default_model": "", "provider_contract": null} @runtime_config
+    spec.runtime_provider @runtime_config.default_provider
+    spec.default_model @runtime_config.default_model
+    spec @runtime_config.provider_contract
+    runtime_config
+ ] @agentc_provider_openai_codex_runtime_config
 
 [agentc_provider_google_runtime_config !] @agentc_provider_default_runtime_config
 

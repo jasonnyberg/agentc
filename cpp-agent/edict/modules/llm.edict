@@ -50,15 +50,25 @@ llm_bootstrap_repo_root ! @llm_bootstrap_override
     agentc_provider_local_runtime_config ! @local_qwen.runtime
     {"runtime": null, "system_prompt": "You are a helpful assistant."} @google_gemini
     agentc_provider_google_runtime_config ! @google_gemini.runtime
+    {"runtime": null, "system_prompt": "You are a helpful coding assistant."} @openai_codex
+    agentc_provider_openai_codex_runtime_config ! @openai_codex.runtime
     {"local-qwen": null,
      "local": null,
      "google-gemini-3-1-pro-preview": null,
-     "google": null
+     "google": null,
+     "openai-codex": null,
+     "gpt-5.3-codex": null,
+     "gpt-5.1-codex-mini": null,
+     "gpt-5.1-codex": null
     } @catalog
     local_qwen @catalog.local-qwen
     local_qwen @catalog.local
     google_gemini @catalog.google-gemini-3-1-pro-preview
     google_gemini @catalog.google
+    openai_codex @catalog.openai-codex
+    openai_codex @catalog.gpt-5.3-codex
+    openai_codex @catalog.gpt-5.1-codex-mini
+    openai_codex @catalog.gpt-5.1-codex
     catalog
 ] @llm_preset_catalog
 

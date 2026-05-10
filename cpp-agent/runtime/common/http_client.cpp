@@ -58,7 +58,7 @@ bool HttpClient::post_sse(const Request& req, std::function<void(const char*, si
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
 
-    return res == CURLE_OK;
+    return res == CURLE_OK && response_code < 400;
 }
 
 } // namespace agentc::runtime
