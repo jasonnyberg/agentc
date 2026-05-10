@@ -14,6 +14,51 @@ namespace {
 
 using json = nlohmann::json;
 
+json provider_contract_json_for(const std::string& provider) {
+    if (provider == "local") {
+        return json{{"id", "local"},
+                    {"family", "openai-compatible"},
+                    {"runtime_provider", "local"},
+                    {"default_model", "qwen"},
+                    {"request_contract", "canonical-chat-v1"},
+                    {"transport_api", "openai-completions"},
+                    {"message_field", "content"},
+                    {"response_text_path", "message.text"},
+                    {"capabilities", json{{"streaming", "true"}, {"system_prompt", "true"}, {"history", "true"}}}};
+    }
+    if (provider == "openai") {
+        return json{{"id", "openai"},
+                    {"family", "openai-compatible"},
+                    {"runtime_provider", "openai"},
+                    {"default_model", "gpt-4.1"},
+                    {"request_contract", "canonical-chat-v1"},
+                    {"transport_api", "openai-completions"},
+                    {"message_field", "content"},
+                    {"response_text_path", "message.text"},
+                    {"capabilities", json{{"streaming", "true"}, {"system_prompt", "true"}, {"history", "true"}}}};
+    }
+    if (provider == "google") {
+        return json{{"id", "google"},
+                    {"family", "gemini-generate-content"},
+                    {"runtime_provider", "google"},
+                    {"default_model", "gemini-3.1-pro-preview"},
+                    {"request_contract", "canonical-chat-v1"},
+                    {"transport_api", "google-gemini-cli"},
+                    {"message_field", "parts[].text"},
+                    {"response_text_path", "message.text"},
+                    {"capabilities", json{{"streaming", "true"}, {"system_prompt", "true"}, {"history", "true"}}}};
+    }
+    return json{{"id", provider},
+                {"family", "custom"},
+                {"runtime_provider", provider},
+                {"default_model", ""},
+                {"request_contract", "canonical-chat-v1"},
+                {"transport_api", "runtime-native"},
+                {"message_field", "content"},
+                {"response_text_path", "message.text"},
+                {"capabilities", json{{"streaming", "true"}, {"system_prompt", "true"}, {"history", "true"}}}};
+}
+
 
 CPtr<agentc::ListreeValue> json_value_or_throw(const json& value, const char* label) {
     auto out = agentc::fromJson(value.dump());
@@ -102,6 +147,7 @@ std::string runtime_bootstrap_script_for_artifacts(const VmRuntimeImportArtifact
            << shell_literal(artifacts.runtime_header_path) << " resolver.import ! @runtimeffi\n";
     script << read_text_file_or_throw(artifacts.agentc_module_path) << "\n";
     script << read_text_file_or_throw(artifacts.agentc_stateful_loop_module_path) << "\n";
+    script << read_text_file_or_throw(artifacts.agentc_provider_contracts_module_path) << "\n";
     script << read_text_file_or_throw(artifacts.agentc_agent_root_module_path) << "\n";
     return script.str();
 }
@@ -135,7 +181,8 @@ nlohmann::json make_default_agent_root(const std::string& system_prompt,
         }},
         {"runtime", {
             {"default_provider", default_provider},
-            {"default_model", default_model}
+            {"default_model", default_model},
+            {"provider_contract", provider_contract_json_for(default_provider)}
         }},
         {"loop", {
             {"status", "ready"},
@@ -175,6 +222,9 @@ VmRuntimeImportArtifacts discover_vm_runtime_import_artifacts() {
     artifacts.agentc_stateful_loop_module_path = first_existing_path_or_throw(
         {sourceRoot / "cpp-agent" / "edict" / "modules" / "agentc_stateful_loop.edict"},
         "agentc_stateful_loop.edict module").string();
+    artifacts.agentc_provider_contracts_module_path = first_existing_path_or_throw(
+        {sourceRoot / "cpp-agent" / "edict" / "modules" / "agentc_provider_contracts.edict"},
+        "agentc_provider_contracts.edict module").string();
     artifacts.agentc_agent_root_module_path = first_existing_path_or_throw(
         {sourceRoot / "cpp-agent" / "edict" / "modules" / "agentc_agent_root.edict"},
         "agentc_agent_root.edict module").string();
@@ -277,6 +327,15 @@ void rehydrate_vm_runtime_state(agentc::edict::EdictVM& vm,
         } else {
             agentc::addNamedItem(runtime, "default_model", model_val);
         }
+    }
+
+    const std::string provider_name = config_default_or(base_runtime_config, "default_provider", "google");
+    auto provider_contract_item = runtime->find("provider_contract");
+    auto provider_contract_ltv = json_value_or_throw(provider_contract_json_for(provider_name), "provider contract");
+    if (provider_contract_item) {
+        provider_contract_item->addValue(provider_contract_ltv, true);
+    } else {
+        agentc::addNamedItem(runtime, "provider_contract", provider_contract_ltv);
     }
 
     // Build the rehydration metadata JSON block and inject it

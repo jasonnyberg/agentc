@@ -10,6 +10,7 @@ EXT_LIB="${EXT_LIB:-$PROJECT_ROOT/build/extensions/libagentc_extensions.so}"
 EXT_HDR="${EXT_HDR:-$PROJECT_ROOT/extensions/agentc_stdlib.h}"
 AGENTC_MODULE="${AGENTC_MODULE:-$PROJECT_ROOT/cpp-agent/edict/modules/agentc.edict}"
 STATEFUL_MODULE="${STATEFUL_MODULE:-$PROJECT_ROOT/cpp-agent/edict/modules/agentc_stateful_loop.edict}"
+PROVIDER_MODULE="${PROVIDER_MODULE:-$PROJECT_ROOT/cpp-agent/edict/modules/agentc_provider_contracts.edict}"
 ROOT_MODULE="${ROOT_MODULE:-$PROJECT_ROOT/cpp-agent/edict/modules/agentc_agent_root.edict}"
 CONFIG="${CONFIG:-$PROJECT_ROOT/agentc-config.json}"
 SYSTEM_PROMPT="${SYSTEM_PROMPT:-You are a concise assistant.}"
@@ -48,6 +49,8 @@ EDICT
   cat "$AGENTC_MODULE"
   echo
   cat "$STATEFUL_MODULE"
+  echo
+  cat "$PROVIDER_MODULE"
   echo
   cat "$ROOT_MODULE"
   echo

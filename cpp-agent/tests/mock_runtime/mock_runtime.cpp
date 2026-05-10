@@ -101,8 +101,12 @@ char* agentc_runtime_request_json(void* runtime_ptr, const char* request_json) {
         if (prompt.empty() && request.contains("messages") && request["messages"].is_array() && !request["messages"].empty()) {
             const auto& messages = request["messages"];
             const auto& last_msg = messages.back();
-            if (last_msg.contains("role") && last_msg["role"] == "user" && last_msg.contains("text")) {
-                prompt = last_msg["text"].get<std::string>();
+            if (last_msg.contains("role") && last_msg["role"] == "user") {
+                if (last_msg.contains("text") && last_msg["text"].is_string()) {
+                    prompt = last_msg["text"].get<std::string>();
+                } else if (last_msg.contains("content") && last_msg["content"].is_string()) {
+                    prompt = last_msg["content"].get<std::string>();
+                }
             }
         }
         const json response = {

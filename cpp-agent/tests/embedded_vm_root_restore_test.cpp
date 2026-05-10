@@ -52,6 +52,7 @@ agentc::runtime::VmRuntimeImportArtifacts mockRuntimeArtifacts() {
         .runtime_header_path = (sourceRoot / "cpp-agent" / "include" / "agentc_runtime" / "agentc_runtime.h").string(),
         .agentc_module_path = (sourceRoot / "cpp-agent" / "edict" / "modules" / "agentc.edict").string(),
         .agentc_stateful_loop_module_path = (sourceRoot / "cpp-agent" / "edict" / "modules" / "agentc_stateful_loop.edict").string(),
+        .agentc_provider_contracts_module_path = (sourceRoot / "cpp-agent" / "edict" / "modules" / "agentc_provider_contracts.edict").string(),
         .agentc_agent_root_module_path = (sourceRoot / "cpp-agent" / "edict" / "modules" / "agentc_agent_root.edict").string()
     };
 }

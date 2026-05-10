@@ -1,0 +1,142 @@
+# agentc_provider_contracts.edict — first Edict-side provider contract catalog
+#
+# Purpose:
+# - centralize provider-facing semantic defaults in Edict data
+# - give the core loop one canonical request-construction seam
+# - keep C++ focused on transport/auth/provider execution mechanics
+#
+# Initial providers in this slice:
+# - `local`  : OpenAI-compatible local server (current qwen path)
+# - `google` : Gemini generateContent path
+#
+# Defined wrappers:
+#   agentc_provider_local_spec !           ( -- spec )
+#   agentc_provider_openai_spec !          ( -- spec )
+#   agentc_provider_google_spec !          ( -- spec )
+#   agentc_provider_catalog !              ( -- catalog )
+#   agentc_provider_local_runtime_config ! ( -- runtime_config )
+#   agentc_provider_openai_runtime_config !( -- runtime_config )
+#   agentc_provider_google_runtime_config !( -- runtime_config )
+#   agentc_provider_default_runtime_config !( -- runtime_config )
+#   agentc_provider_resolve_name !         ( runtime_config -- provider_name )
+#   agentc_provider_resolve_spec !         ( runtime_config -- spec )
+#   agentc_provider_resolve_model !        ( runtime_config provider_spec -- model )
+#   agentc_provider_build_turn_request !   ( provider_spec runtime_config conversation -- request )
+#   agentc_provider_project_text !         ( provider_spec response -- assistant_text )
+
+[
+    {"id": "local",
+     "family": "openai-compatible",
+     "runtime_provider": "local",
+     "default_model": "qwen",
+     "request_contract": "canonical-chat-v1",
+     "transport_api": "openai-completions",
+     "message_field": "content",
+     "response_text_path": "message.text",
+     "capabilities": {"streaming": "true", "system_prompt": "true", "history": "true"}
+    }
+] @agentc_provider_local_spec
+
+[
+    {"id": "openai",
+     "family": "openai-compatible",
+     "runtime_provider": "openai",
+     "default_model": "gpt-4.1",
+     "request_contract": "canonical-chat-v1",
+     "transport_api": "openai-completions",
+     "message_field": "content",
+     "response_text_path": "message.text",
+     "capabilities": {"streaming": "true", "system_prompt": "true", "history": "true"}
+    }
+] @agentc_provider_openai_spec
+
+[
+    {"id": "google",
+     "family": "gemini-generate-content",
+     "runtime_provider": "google",
+     "default_model": "gemini-3.1-pro-preview",
+     "request_contract": "canonical-chat-v1",
+     "transport_api": "google-gemini-cli",
+     "message_field": "parts[].text",
+     "response_text_path": "message.text",
+     "capabilities": {"streaming": "true", "system_prompt": "true", "history": "true"}
+    }
+] @agentc_provider_google_spec
+
+[
+    @provider_name
+    {"id": "", "family": "custom", "runtime_provider": "", "default_model": "", "request_contract": "canonical-chat-v1", "transport_api": "runtime-native", "message_field": "content", "response_text_path": "message.text", "capabilities": {"streaming": "true", "system_prompt": "true", "history": "true"}} @spec
+    provider_name @spec.id
+    provider_name @spec.runtime_provider
+    spec
+] @agentc_provider_unknown_spec
+
+[
+    {"local": null, "openai": null, "google": null} @catalog
+    agentc_provider_local_spec ! @catalog.local
+    agentc_provider_openai_spec ! @catalog.openai
+    agentc_provider_google_spec ! @catalog.google
+    catalog
+] @agentc_provider_catalog
+
+[agentc_provider_local_spec ! @spec {"default_provider": "", "default_model": "", "provider_contract": null} @runtime_config
+    spec.runtime_provider @runtime_config.default_provider
+    spec.default_model @runtime_config.default_model
+    spec @runtime_config.provider_contract
+    runtime_config
+] @agentc_provider_local_runtime_config
+
+[agentc_provider_openai_spec ! @spec {"default_provider": "", "default_model": "", "provider_contract": null} @runtime_config
+    spec.runtime_provider @runtime_config.default_provider
+    spec.default_model @runtime_config.default_model
+    spec @runtime_config.provider_contract
+    runtime_config
+] @agentc_provider_openai_runtime_config
+
+[agentc_provider_google_spec ! @spec {"default_provider": "", "default_model": "", "provider_contract": null} @runtime_config
+    spec.runtime_provider @runtime_config.default_provider
+    spec.default_model @runtime_config.default_model
+    spec @runtime_config.provider_contract
+    runtime_config
+ ] @agentc_provider_google_runtime_config
+
+[agentc_provider_google_runtime_config !] @agentc_provider_default_runtime_config
+
+[
+    @runtime_config
+    runtime_config.default_provider
+] @agentc_provider_resolve_name
+
+[
+    @provider_spec @runtime_config
+    runtime_config.default_model
+] @agentc_provider_resolve_model
+
+[
+    @runtime_config
+    runtime_config.provider_contract
+] @agentc_provider_resolve_spec
+
+[
+    @conversation @runtime_config @provider_spec
+    agentc_provider_resolve_model(runtime_config provider_spec) @model
+    {"provider": "", "model": "", "system": "", "messages": [], "response_mode": "text", "options": {}, "metadata": {}} @request
+    provider_spec.runtime_provider @request.provider
+    model @request.model
+    conversation.system_prompt @request.system
+    conversation.messages @request.messages
+    [text] @request.response_mode
+    {"provider_contract": "", "provider_family": "", "transport_api": "", "message_field": "", "response_text_path": ""} @metadata
+    provider_spec.id @metadata.provider_contract
+    provider_spec.family @metadata.provider_family
+    provider_spec.transport_api @metadata.transport_api
+    provider_spec.message_field @metadata.message_field
+    provider_spec.response_text_path @metadata.response_text_path
+    metadata @request.metadata
+    request
+] @agentc_provider_build_turn_request
+
+[
+    @response @provider_spec
+    response.message.text
+] @agentc_provider_project_text

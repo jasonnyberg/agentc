@@ -1,7 +1,8 @@
 # agentc_agent_root.edict — first canonical Edict agent-root shape
 #
-# Prerequisite: load `cpp-agent/edict/modules/agentc.edict` and
-# `cpp-agent/edict/modules/agentc_stateful_loop.edict` first.
+# Prerequisite: load `cpp-agent/edict/modules/agentc.edict`,
+# `cpp-agent/edict/modules/agentc_stateful_loop.edict`, and
+# `cpp-agent/edict/modules/agentc_provider_contracts.edict` first.
 #
 # Defined wrappers:
 #   agentc_agent_root_init !              ( system_prompt -- root )
@@ -9,6 +10,9 @@
 #   agentc_agent_root_create_runtime !    ( root -- runtime_handle )
 #   agentc_agent_root_text !              ( root -- assistant_text )
 #   agentc_agent_root_messages !          ( root -- messages )
+#   agentc_agent_root_stage_user_turn !   ( root prompt -- root )
+#   agentc_agent_root_build_turn_request ! ( root -- request )
+#   agentc_agent_root_apply_turn_response !( root response -- root )
 #   agentc_agent_root_turn !              ( runtime_handle root prompt -- root )
 #   agentc_agent_root_demo !              ( config_path system_prompt prompt -- root )
 #
@@ -38,7 +42,8 @@
 
 [
     @system_prompt
-    agentc_agent_root_init_with_runtime(system_prompt {"default_provider": "google", "default_model": "gemini-3.1-pro-preview"})
+    agentc_provider_default_runtime_config ! @runtime_config
+    agentc_agent_root_init_with_runtime(system_prompt runtime_config)
 ] @agentc_agent_root_init
 
 [
@@ -50,11 +55,33 @@
 [ @root root.conversation.messages ] @agentc_agent_root_messages
 
 [
-    @prompt @root @runtime_handle
-    agentc_state_turn(runtime_handle root.conversation prompt) @root.conversation
+    @prompt @root
+    agentc_state_push_user(root.conversation prompt) @root.conversation
     prompt @root.loop.last_prompt
+    "awaiting-provider" @root.loop.status
+    root
+] @agentc_agent_root_stage_user_turn
+
+[
+    @root
+    root.runtime.provider_contract @provider_spec
+    agentc_provider_build_turn_request(provider_spec root.runtime root.conversation)
+] @agentc_agent_root_build_turn_request
+
+[
+    @response @root
+    root.conversation response agentc_state_apply_response ! @conversation
+    conversation @root.conversation
     "turn-complete" @root.loop.status
     root
+] @agentc_agent_root_apply_turn_response
+
+[
+    @prompt @root @runtime_handle
+    agentc_agent_root_stage_user_turn(root prompt) @next_root
+    next_root agentc_agent_root_build_turn_request ! @request
+    agentc_call(runtime_handle request) @response
+    next_root response agentc_agent_root_apply_turn_response !
 ] @agentc_agent_root_turn
 
 [
