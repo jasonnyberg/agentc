@@ -30,6 +30,7 @@ private:
     CPtr<ListreeItem> currentItem;
     CPtr<ListreeValue> pathComponents; // Slab-allocated list of strings
     bool reverse;
+    bool currentItemFromEnd;
     std::string lastError;
     
     // History Iteration Support

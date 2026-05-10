@@ -135,6 +135,41 @@ TEST(EdictVM, ConcatenatedMultipleRemovesApplyToSameIdentifier) {
     EXPECT_EQ(valueToString(vm.getStackTop()), "x");
 }
 
+TEST(EdictVM, TailPrefixedLookupReadsDictionaryValueTail) {
+    EdictVM vm;
+    int res = runCode(vm, "[x]@a [y]@a [z]@a -a");
+    EXPECT_FALSE(res & 0x02);
+    EXPECT_EQ(valueToString(vm.getStackTop()), "x");
+}
+
+TEST(EdictVM, TailPrefixedAssignmentAddsDictionaryValueTail) {
+    EdictVM vm;
+    int res = runCode(vm, "[x]@a [y]@a [z]@a [t]@-a -a");
+    EXPECT_FALSE(res & 0x02);
+    EXPECT_EQ(valueToString(vm.getStackTop()), "t");
+}
+
+TEST(EdictVM, TailPrefixedRemoveDiscardsDictionaryValueTail) {
+    EdictVM vm;
+    int res = runCode(vm, "[x]@a [y]@a [z]@a /-a -a");
+    EXPECT_FALSE(res & 0x02);
+    EXPECT_EQ(valueToString(vm.getStackTop()), "y");
+}
+
+TEST(EdictVM, TailPrefixedRemoveAssignReplacesDictionaryValueTail) {
+    EdictVM vm;
+    int res = runCode(vm, "[x]@a [y]@a [z]@a [t]/@-a -a");
+    EXPECT_FALSE(res & 0x02);
+    EXPECT_EQ(valueToString(vm.getStackTop()), "t");
+}
+
+TEST(EdictVM, TailPrefixedRemoveCleansUpWhenHistoryBecomesEmpty) {
+    EdictVM vm;
+    int res = runCode(vm, "[x]@a [y]@a [z]@a ///-a strict! a");
+    EXPECT_FALSE(res & 0x02);
+    EXPECT_TRUE(isNullValue(vm.getStackTop()));
+}
+
 TEST(EdictVM, SpliceNameSyntaxStillWorksAfterPrefixChainParsing) {
     EdictVM vm;
     int res = runCode(vm, "[] @collector [^collector^] @capture capture([one] [two]) collector to_json !");

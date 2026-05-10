@@ -83,9 +83,21 @@ Assignment is history-preserving, not destructive.
 
 Practical implications:
 
-- `x` usually means "the newest value bound to `x`".
+- `x` usually means "the newest/head value bound to `x`".
+- `-x` means "the oldest/tail value bound to `x`".
 - `f() @x` does not erase older `x`; it adds a new head binding.
+- `f() @-x` appends at the tail of `x`'s binding history.
+- `/-x` removes the tail binding; `/x` removes the head binding.
 - If you want true head-binding replacement, use a concatenated remove-then-assign prefix chain such as `f() /@x`. The `/` and `@` both apply to `x` in order.
+- If you want tail-binding replacement, use `f() /@-x`.
+
+Examples:
+
+```edict
+[x]@a [y]@a [z]@a -a print   -- prints x
+[x]@a [y]@a [z]@a /-a -a     -- tail remove leaves y at the tail
+[x]@a [y]@a [z]@a [t]/@-a -a -- tail replace leaves t at the tail
+```
 
 ## 5. Truthiness: Use the VM, Not the Old Prose
 The actual truthiness rules are in `edict/edict_vm.cpp::isTrue(...)`.

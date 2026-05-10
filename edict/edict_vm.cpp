@@ -1895,7 +1895,10 @@ void EdictVM::op_ASSIGN() {
     auto ctxVal = dictFrame ? dictFrame->get(false, true) : nullptr;
     if (!ctxVal) return; 
 
-    if (!ctxVal->isListMode() && k.find('.') == std::string::npos) {
+    const bool plainDirectName = k.find('.') == std::string::npos
+                              && (k.empty() || (k.front() != '-' && k.front() != '*'))
+                              && (k.empty() || k.back() != '-');
+    if (!ctxVal->isListMode() && plainDirectName) {
         agentc::addNamedItem(ctxVal, k, v);
         return;
     }

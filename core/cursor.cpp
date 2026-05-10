@@ -19,13 +19,13 @@
 
 namespace agentc {
 
-Cursor::Cursor() : root(nullptr), current(nullptr), currentItem(nullptr), reverse(false), lastError(), historyMode(false), historyHead(nullptr), historyCurrent(nullptr) {
+Cursor::Cursor() : root(nullptr), current(nullptr), currentItem(nullptr), reverse(false), currentItemFromEnd(false), lastError(), historyMode(false), historyHead(nullptr), historyCurrent(nullptr) {
     pathComponents = createListValue();
     LISTREE_DEBUG_TRACE() << "Cursor default constructor";
 }
 
 Cursor::Cursor(CPtr<ListreeValue> rootValue)
-    : root(rootValue), current(rootValue), currentItem(nullptr), reverse(false), lastError(), historyMode(false), historyHead(nullptr), historyCurrent(nullptr) {
+    : root(rootValue), current(rootValue), currentItem(nullptr), reverse(false), currentItemFromEnd(false), lastError(), historyMode(false), historyHead(nullptr), historyCurrent(nullptr) {
     pathComponents = createListValue();
     pinPath();
     // LISTREE_DEBUG_INFO() << "Cursor created with root node";
@@ -51,7 +51,7 @@ bool tryNamedLookup(CPtr<ListreeValue> current,
 }
 
 Cursor::Cursor(const Cursor& other)
-    : root(other.root), current(other.current), currentItem(other.currentItem), reverse(other.reverse), lastError(other.lastError),
+    : root(other.root), current(other.current), currentItem(other.currentItem), reverse(other.reverse), currentItemFromEnd(other.currentItemFromEnd), lastError(other.lastError),
       historyMode(other.historyMode), historyHead(other.historyHead), historyCurrent(other.historyCurrent) {
     pathComponents = other.pathComponents ? other.pathComponents->duplicate() : createListValue();
     pinPath();
@@ -64,6 +64,7 @@ Cursor& Cursor::operator=(const Cursor& other) {
         root = other.root; current = other.current; currentItem = other.currentItem;
         pathComponents = other.pathComponents ? other.pathComponents->duplicate() : createListValue();
         reverse = other.reverse;
+        currentItemFromEnd = other.currentItemFromEnd;
         lastError = other.lastError;
         historyMode = other.historyMode; historyHead = other.historyHead; historyCurrent = other.historyCurrent;
         pinPath();
@@ -104,7 +105,7 @@ bool Cursor::resolve(const std::string& path, bool insert) {
         if (bool(first)) pathEmpty = false;
     }
     if (isAbsolute || pathEmpty) {
-        current = root; currentItem = nullptr;
+        current = root; currentItem = nullptr; currentItemFromEnd = false;
         pathComponents = createListValue();
         newComponents->forEachList([&](CPtr<ListreeValueRef>& ref) {
             if (ref && ref->getValue()) pathComponents->put(ref->getValue()->duplicate(), false);
@@ -175,7 +176,7 @@ bool Cursor::resolve(const std::string& path, bool insert) {
              
               // Update current to point to this wrapper
               current = wrapper;
-              currentItem = nullptr; // Detached
+              currentItem = nullptr; currentItemFromEnd = false; // Detached
               return;
         }
         
@@ -219,7 +220,7 @@ bool Cursor::resolve(const std::string& path, bool insert) {
             return;
         }
         
-        current = next; currentItem = item;
+        current = next; currentItem = item; currentItemFromEnd = fromEnd;
     });
     pinPath(); return resolvedAll;
 }
@@ -264,7 +265,7 @@ bool Cursor::next() {
     if (!nextName.empty()) {
         CPtr<ListreeItem> nextItem = current->find(nextName);
         if (nextItem && nextItem->getValue()) {
-            current = nextItem->getValue(); currentItem = nextItem;
+            current = nextItem->getValue(); currentItem = nextItem; currentItemFromEnd = false;
             pathComponents = sPath; pathComponents->get(true, false); pathComponents->put(createStringValue(nextName), false);
             pinPath(); return true;
         }
@@ -298,7 +299,7 @@ bool Cursor::prev() {
     if (!prevName.empty()) {
         CPtr<ListreeItem> prevItem = current->find(prevName);
         if (prevItem && prevItem->getValue()) {
-            current = prevItem->getValue(); currentItem = prevItem;
+            current = prevItem->getValue(); currentItem = prevItem; currentItemFromEnd = false;
             pathComponents = sPath; pathComponents->get(true, false); pathComponents->put(createStringValue(prevName), false);
             pinPath(); return true;
         }
@@ -321,7 +322,7 @@ bool Cursor::down() {
     if (current->isListMode()) {
         CPtr<ListreeValue> child = current->get(false, reverse);
         if (!child) { pinPath(); return false; }
-        current = child; currentItem = nullptr;
+        current = child; currentItem = nullptr; currentItemFromEnd = false;
         pathComponents->put(createStringValue("0"), false);
         pinPath(); return true;
     } else {
@@ -330,7 +331,7 @@ bool Cursor::down() {
         bool found = false;
         current->forEachTree([&](const std::string& name, CPtr<ListreeItem>& item) {
             if (found || !item || !item->getValue()) return;
-            current = item->getValue(); currentItem = item;
+            current = item->getValue(); currentItem = item; currentItemFromEnd = false;
             pathComponents->put(createStringValue(name), false);
             pinPath();
             found = true;
@@ -347,7 +348,7 @@ bool Cursor::find(const std::string& pattern) {
     static const char* const names[] = {"first", "0", "a", "start", "begin", "name", "id", "key", "value"};
     if (tryNamedLookup(current, names, [&](CPtr<ListreeItem>& item, const char* name) {
         if (!matchPattern(pattern, name)) return false;
-        current = item->getValue(); currentItem = item;
+        current = item->getValue(); currentItem = item; currentItemFromEnd = false;
         pathComponents->put(createStringValue(name), false);
         pinPath();
         return true;
@@ -364,7 +365,7 @@ bool Cursor::filter(const std::function<bool(const Cursor&)>& predicate) {
         Cursor temp = *this; temp.unpinPath(); temp.current = item->getValue(); temp.currentItem = item;
         temp.pathComponents->put(createStringValue(name), false);
         if (!predicate(temp)) return false;
-        current = temp.current; currentItem = temp.currentItem; pathComponents->put(createStringValue(name), false); pinPath();
+        current = temp.current; currentItem = temp.currentItem; currentItemFromEnd = temp.currentItemFromEnd; pathComponents->put(createStringValue(name), false); pinPath();
         return true;
     })) return true;
     current = sCur; currentItem = sItem; pathComponents = sPath; pinPath(); return false;
@@ -403,7 +404,7 @@ bool Cursor::assign(CPtr<ListreeValue> value) {
     // Check if the current head value is an empty placeholder (Null flag and no data/children)
     // This happens when resolve(..., true) creates intermediate nodes.
     bool isPlaceholder = false;
-    CPtr<ListreeValue> head = currentItem->getValue(false, false);
+    CPtr<ListreeValue> head = currentItem->getValue(false, currentItemFromEnd);
     if (head) {
         bool isNull = (head->getFlags() & LtvFlags::Null) != LtvFlags::None;
         bool hasData = head->getData() != nullptr || head->getLength() > 0;
@@ -423,11 +424,11 @@ bool Cursor::assign(CPtr<ListreeValue> value) {
     
     if (isPlaceholder) {
         // Pop the placeholder
-        currentItem->getValue(true, false);
+        currentItem->getValue(true, currentItemFromEnd);
     }
     
     // Accumulate value
-    currentItem->addValue(value, false); // Add to head
+    currentItem->addValue(value, currentItemFromEnd); // Add to selected end
     current = value; 
     pinPath(); 
     return true; 
@@ -439,7 +440,7 @@ bool Cursor::remove() {
     std::string name(static_cast<char*>(lastVal->getData()), lastVal->getLength());
     
     // 1. Pop the value from the current item
-    CPtr<ListreeValue> popped = currentItem->getValue(true, reverse); 
+    CPtr<ListreeValue> popped = currentItem->getValue(true, currentItemFromEnd); 
     if (!popped) return false;
     
     // 2. Recursive Cleanup
@@ -502,7 +503,7 @@ bool Cursor::remove() {
         
         // Simpler approach for now:
         // Just pop the head of 'currentItem'.
-        currentItem->getValue(true, reverse); // Pop the empty tree value.
+        currentItem->getValue(true, currentItemFromEnd); // Pop the empty tree value.
         
         // Loop continues to check if 'currentItem' is now empty.
     }
@@ -518,13 +519,13 @@ bool Cursor::remove() {
 bool Cursor::removeHeadOnly() {
     if (!currentItem) return false;
     unpinPath();
-    CPtr<ListreeValue> popped = currentItem->getValue(true, reverse);
+    CPtr<ListreeValue> popped = currentItem->getValue(true, currentItemFromEnd);
     if (!popped) {
         current = nullptr;
         pinPath();
         return false;
     }
-    current = currentItem->getValue(false, reverse);
+    current = currentItem->getValue(false, currentItemFromEnd);
     pinPath();
     return true;
 }
@@ -533,7 +534,7 @@ bool Cursor::create(const std::string& name, CPtr<ListreeValue> value) {
     if (!current || current->isListMode()) return false;
     unpinPath(); if (!value) value = createNullValue();
     CPtr<ListreeItem> item = current->find(name, true); if (!item) { pinPath(); return false; }
-    item->addValue(value, false); current = value; currentItem = item;
+    item->addValue(value, false); current = value; currentItem = item; currentItemFromEnd = false;
     pathComponents->put(createStringValue(name), false); pinPath(); return true;
 }
 bool Cursor::push(CPtr<ListreeValue> value, bool atEnd) { if (!current || !current->isListMode()) return false; return bool(current->put(value, atEnd)); }
@@ -544,7 +545,7 @@ bool Cursor::forEach(const std::function<bool(Cursor&)>& callback) {
     if (current->isListMode()) {
         current->forEachList([&](CPtr<ListreeValueRef>& ref) {
             if (!cont || !ref || !ref->getValue()) return;
-            Cursor child = *this; child.unpinPath(); child.current = ref->getValue(); child.currentItem = nullptr;
+            Cursor child = *this; child.unpinPath(); child.current = ref->getValue(); child.currentItem = nullptr; child.currentItemFromEnd = false;
             child.pathComponents->put(createStringValue("0"), false); child.pinPath();
             if (!callback(child)) cont = false;
         });
@@ -553,7 +554,7 @@ bool Cursor::forEach(const std::function<bool(Cursor&)>& callback) {
             if (!cont || !item) return;
             item->forEachValue([&](CPtr<ListreeValue>& val) {
                 if (!cont || !val) return;
-                Cursor child = *this; child.unpinPath(); child.current = val; child.currentItem = item;
+                Cursor child = *this; child.unpinPath(); child.current = val; child.currentItem = item; child.currentItemFromEnd = false;
                 child.pathComponents->put(createStringValue(name), false); child.pinPath();
                 if (!callback(child)) cont = false;
             });
@@ -563,7 +564,7 @@ bool Cursor::forEach(const std::function<bool(Cursor&)>& callback) {
 }
 bool Cursor::forEachChild(const std::function<bool(Cursor&)>& callback) { return forEach(callback); }
 void Cursor::traverse(const std::function<void(CPtr<ListreeValue>)>& callback, TraversalOptions options, std::shared_ptr<TraversalContext> context) { if (current) { if (!options.from) options.from = current; current->traverse(callback, options, context); } }
-void Cursor::reset(CPtr<ListreeValue> newRoot) { unpinPath(); if (newRoot) root = newRoot; current = root; currentItem = nullptr; pathComponents = createListValue(); pinPath(); }
+void Cursor::reset(CPtr<ListreeValue> newRoot) { unpinPath(); if (newRoot) root = newRoot; current = root; currentItem = nullptr; currentItemFromEnd = false; pathComponents = createListValue(); pinPath(); }
 Cursor Cursor::clone() const { return *this; }
 Cursor Cursor::createEmpty() { return Cursor(createNullValue()); }
 Cursor Cursor::createList() { return Cursor(createListValue()); }

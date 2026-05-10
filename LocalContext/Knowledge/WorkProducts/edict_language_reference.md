@@ -288,6 +288,38 @@ Chains are generalized:
 -- stack: [ "x" ]
 ```
 
+### Tail-prefixed dictionary history: `-name`
+
+A leading `-` on an identifier selects the **tail** of that dictionary item's value history instead of the head.
+
+```edict
+[x]@a [y]@a [z]@a a
+-- stack: [ "z" ]  -- normal lookup reads the head/newest value
+
+[x]@a [y]@a [z]@a -a
+-- stack: [ "x" ]  -- tail lookup reads the oldest value
+```
+
+The same tail selector applies to assignment and removal:
+
+```edict
+[x]@a [y]@a [z]@a [t]@-a -a
+-- stack: [ "t" ]  -- append t at the tail
+
+[x]@a [y]@a [z]@a /-a -a
+-- stack: [ "y" ]  -- remove old tail x, so y becomes the tail
+
+[x]@a [y]@a [z]@a [t]/@-a -a
+-- stack: [ "t" ]  -- replace the tail x with t
+```
+
+If tail removals exhaust the history, the dictionary item is cleaned up:
+
+```edict
+[x]@a [y]@a [z]@a ///-a strict! a
+-- stack: [ null ]
+```
+
 ### Dotted paths
 
 ```edict
