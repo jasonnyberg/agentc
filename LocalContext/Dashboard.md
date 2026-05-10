@@ -6,7 +6,9 @@
 ## Open Goals
 ### Planned / Active
 - 🔗[G078 — Edict-Resident Agent Loop Consolidation](./Knowledge/Goals/G078-EdictResidentAgentLoopConsolidation/index.md) — **IN PROGRESS**
-- 🔗[G074 — Real-time FFI Token Streaming](./Knowledge/Goals/G074-RealtimeFFITokenStreaming/index.md) — **IN PROGRESS**
+- 🔗[G079 — Edict Agent Loop Tool Support](./Knowledge/Goals/G079-EdictAgentLoopToolSupport/index.md) — PLANNED
+- 🔗[G080 — LLM REPL Context Management](./Knowledge/Goals/G080-LlmReplContextManagement/index.md) — PLANNED
+- 🔗[G074 — Real-time FFI Token Streaming](./Knowledge/Goals/G074-RealtimeFFITokenStreaming/index.md) — PLANNED
 - 🔗[G075 — Speculative Edict Native Architectures](./Knowledge/Goals/G075-SpeculativeEdictArchitectures/index.md) — PLANNED
 
 ### Complete (this cycle)
@@ -30,6 +32,8 @@ None
 - **Strict/Lax Lookup Modes Added**: Edict now has VM-level unresolved lookup modes: `lax!` preserves the old symbolic fallback, `strict!` / `strict_null!` return `null`, and `strict_fail!` returns `null` while entering failure state. This gives Edict code a practical debugging surface without breaking the older metaprogramming behavior by default.
 - **Curated Launcher Landed**: `edict.sh` now injects a stable `EDICT_PATH` object, preloads `agentc_curated.edict`, auto-loads the core AgentC Edict modules, configures `llm` bootstrap paths, and then hands off to REPL, `-e`, stdin, or file execution so provider calls are available without repeating import boilerplate.
 - **First Provider REPL Landed**: `cpp-agent/edict/modules/llm.edict` now exposes `provider.repl` for launcher-backed chat sessions. The working invocation is `provider < repl ! > pop /`, stdin/status packaging now lives partly in `agentc_stdlib`, and focused coverage proves repeated turns plus clean EOF through `./edict.sh` with the mock runtime.
+- **Zero-Code Chat Launcher Landed**: `./edict.sh` now defaults to `EDICT_AUTO_CHAT=1` and `EDICT_DEFAULT_PRESET=local-qwen`, so no-arg launch auto-creates a provider and drops straight into `provider.repl()`. Setting `EDICT_AUTO_CHAT=0` preserves the curated raw REPL path.
+- **Next Big Tracks Formalized**: the next major execution tracks after the current G078 seam are 🔗[G079 — Edict Agent Loop Tool Support](./Knowledge/Goals/G079-EdictAgentLoopToolSupport/index.md) and 🔗[G080 — LLM REPL Context Management](./Knowledge/Goals/G080-LlmReplContextManagement/index.md).
 
 ## Knowledge Inventory
 - **Category Indexes**: `Knowledge/Concepts/index.md`; `Knowledge/Facts/index.md`; `Knowledge/Procedures/index.md`
@@ -37,9 +41,9 @@ None
 ## Handoff Note
 
 **Project**: AgentC
-**Current State**: G074 architecture is locked and documented. Local OpenAI-compatible demo diagnostics are complete and verified. G078 now has the first Edict provider-contract slice, the first working `llm.init(...)` slice, VM-level strict/lax unresolved lookup modes, a curated launcher/preload path, and the first launcher-backed `provider.repl()` loop: named presets initialize stable provider objects, repeated provider requests now preserve full multi-turn conversation state, `provider.repl()` can consume multiple prompts and exit cleanly on EOF through `./edict.sh`, and targeted coverage across the Edict/LLM/root/embedded/session plus Edict VM suites is passing.
-**Next Action**: Continue G078 by turning the new `provider.repl()` seam into the broader Edict-owned UX layer, then start removing temporary C++ bootstrap mirroring (`runtime.provider_contract`) and the remaining host-owned loop responsibilities behind the now-working provider surface.
-**Key Context**: The FFI stream waiter must be entirely stateless and ephemeral. The VM must decide *when* to sync the Listree. The local demo now logs full outbound OpenAI-compatible requests for future debugging. The current `llm` provider API is intentionally VM-grounded: provider objects are stable, `request !` mutates them in place, `provider < repl ! > pop /` is the current launcher-backed chat-loop pattern, `& |` integration should use explicit success/failure sentinels rather than object truthiness, Edict now supports `lax!`, `strict!` / `strict_null!`, and `strict_fail!`, and the new `edict.sh` / `agentc_curated.edict` layer is the canonical way to avoid repeated import/bootstrap boilerplate.
+**Current State**: G078 now has the first Edict provider-contract slice, the first working `llm.init(...)` slice, VM-level strict/lax unresolved lookup modes, a curated launcher/preload path, the first launcher-backed `provider.repl()` loop, and zero-code default chat through `./edict.sh`. Named presets initialize stable provider objects, repeated provider requests now preserve full multi-turn conversation state, `provider.repl()` can consume multiple prompts and exit cleanly on EOF, and targeted coverage across the Edict/LLM/root/embedded/session plus Edict VM suites is passing.
+**Next Action**: Start G079 by adding the first minimal Edict/FFI tool surface for file read/write-edit and shell/system execution, while keeping G080 queued immediately behind it for explicit context management inside the provider REPL.
+**Key Context**: The current `llm` provider API is intentionally VM-grounded: provider objects are stable, `request !` mutates them in place, `provider < repl ! > pop /` is the current explicit chat-loop pattern, and plain `./edict.sh` now auto-creates a default provider chat session unless `EDICT_AUTO_CHAT=0` is set. `& |` integration should use explicit success/failure sentinels rather than object truthiness, Edict now supports `lax!`, `strict!` / `strict_null!`, and `strict_fail!`, and `edict.sh` / `agentc_curated.edict` is the canonical way to avoid repeated import/bootstrap boilerplate.
 
 ## Session Compliance
 - [x] Reviewed Dashboard at session start

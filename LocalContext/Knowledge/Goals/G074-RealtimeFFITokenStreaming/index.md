@@ -1,6 +1,6 @@
 # Goal: G074 — Real-time FFI Token Streaming
 
-**Status**: IN PROGRESS  
+**Status**: PLANNED  
 **Created**: 2026-05-09  
 
 ## Objective

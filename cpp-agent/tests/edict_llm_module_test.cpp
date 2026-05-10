@@ -54,7 +54,7 @@ std::string runEdictScript(const std::string& script) {
     return output;
 }
 
-std::string runLauncherReplScript(const std::string& input) {
+std::string runLauncherReplScript(const std::string& input, bool autoChat = false) {
     const auto tempDir = std::filesystem::temp_directory_path();
     const auto inputPath = tempDir / "agentc_llm_launcher_test.in";
     const auto outputPath = tempDir / "agentc_llm_launcher_test.out";
@@ -69,6 +69,7 @@ std::string runLauncherReplScript(const std::string& input) {
     const std::string command =
         "env EDICT_RUNTIME_LIB=\"" + (buildRoot / "cpp-agent" / "libagent_runtime_mock.so").string() +
         "\" EDICT_RUNTIME_HDR=\"" + (sourceRoot / "cpp-agent" / "include" / "agentc_runtime" / "agentc_runtime.h").string() +
+        "\" EDICT_AUTO_CHAT=\"" + std::string(autoChat ? "1" : "0") +
         "\" \"" + launcherPath() + "\" < \"" + inputPath.string() + "\" > \"" + outputPath.string() + "\"";
     const int rc = std::system(command.c_str());
     EXPECT_EQ(rc, 0) << "Launcher command failed: " << command;
@@ -206,9 +207,22 @@ TEST(EdictLlmModuleTest, ProviderReplHandlesMultiplePromptsAndEof) {
         "provider < repl ! > pop /\n"
         "Hello from repl\n"
         "\n"
-        "Second prompt\n");
+        "Second prompt\n",
+        false);
 
     EXPECT_NE(output.find("Chat ready. Press Ctrl-D to exit."), std::string::npos);
     EXPECT_NE(output.find("mock:Hello from repl"), std::string::npos);
     EXPECT_NE(output.find("mock:Second prompt"), std::string::npos);
+}
+
+TEST(EdictLlmModuleTest, LauncherAutoChatStartsDefaultProviderRepl) {
+    const std::string output = runLauncherReplScript(
+        "Hello from auto chat\n"
+        "\n"
+        "Second auto prompt\n",
+        true);
+
+    EXPECT_NE(output.find("Chat ready. Press Ctrl-D to exit."), std::string::npos);
+    EXPECT_NE(output.find("mock:Hello from auto chat"), std::string::npos);
+    EXPECT_NE(output.find("mock:Second auto prompt"), std::string::npos);
 }

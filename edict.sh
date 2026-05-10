@@ -16,6 +16,8 @@ EDICT_STATEFUL_MODULE="${EDICT_STATEFUL_MODULE:-$EDICT_MODULE_DIR/agentc_statefu
 EDICT_PROVIDER_CONTRACTS_MODULE="${EDICT_PROVIDER_CONTRACTS_MODULE:-$EDICT_MODULE_DIR/agentc_provider_contracts.edict}"
 EDICT_AGENT_ROOT_MODULE="${EDICT_AGENT_ROOT_MODULE:-$EDICT_MODULE_DIR/agentc_agent_root.edict}"
 EDICT_LLM_MODULE="${EDICT_LLM_MODULE:-$EDICT_MODULE_DIR/llm.edict}"
+EDICT_DEFAULT_PRESET="${EDICT_DEFAULT_PRESET:-local-qwen}"
+EDICT_AUTO_CHAT="${EDICT_AUTO_CHAT:-1}"
 
 usage() {
   cat <<'EOF'
@@ -34,6 +36,8 @@ Environment overrides:
   EDICT_EXT_HDR              extensions header path
   EDICT_RUNTIME_LIB          runtime shared library path
   EDICT_RUNTIME_HDR          runtime header path
+  EDICT_DEFAULT_PRESET       default preset for no-arg chat launcher
+  EDICT_AUTO_CHAT            1 to auto-enter provider chat, 0 for raw curated REPL
 EOF
 }
 
@@ -54,7 +58,23 @@ agentc_curated_init ! /
 EOF
 }
 
+emit_default_chat() {
+  cat <<EOF
+llm.init([$EDICT_DEFAULT_PRESET]) @provider
+provider < repl ! > pop /
+EOF
+}
+
 run_repl() {
+  if [[ "$EDICT_AUTO_CHAT" != "0" ]]; then
+    {
+      emit_prelude
+      emit_default_chat
+      cat
+    } | "$EDICT_BIN" -
+    return
+  fi
+
   {
     emit_prelude
     cat
