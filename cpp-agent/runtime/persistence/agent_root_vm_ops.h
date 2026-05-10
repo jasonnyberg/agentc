@@ -16,6 +16,7 @@ struct VmRuntimeImportArtifacts {
     std::string agentc_module_path;
     std::string agentc_stateful_loop_module_path;
     std::string agentc_provider_contracts_module_path;
+    std::string llm_module_path;
     std::string agentc_agent_root_module_path;
 };
 

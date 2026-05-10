@@ -77,6 +77,9 @@ enum VMOpcode {
     // State Stack Ops
     VMOP_FAIL,
     VMOP_TEST,
+    VMOP_LOOKUP_LAX,
+    VMOP_LOOKUP_STRICT_NULL,
+    VMOP_LOOKUP_STRICT_FAIL,
     
     // FFI operations
     VMOP_MAP,

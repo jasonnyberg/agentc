@@ -73,6 +73,7 @@ target_compile_options(agent_runtime_mock PRIVATE -Wall -Wextra -Wno-unused-para
 add_executable(cpp_agent_tests
     tests/runtime_abi_test.cpp
     tests/edict_agentc_module_test.cpp
+    tests/edict_llm_module_test.cpp
     tests/edict_hello_loop_test.cpp
     tests/edict_stateful_loop_test.cpp
     tests/edict_agent_root_test.cpp

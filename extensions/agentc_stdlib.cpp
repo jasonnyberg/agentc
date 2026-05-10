@@ -5,6 +5,7 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <iostream>
 #include <string>
 #include <vector>
 
@@ -35,6 +36,22 @@ static size_t scalar_size_from_ltv(ltv ctype_name) {
         return 0;
     }
     return agentc::cartographer::Boxing::scalarSize(ctype);
+}
+
+static std::string json_escape(const std::string& input) {
+    std::string out;
+    out.reserve(input.size() + 8);
+    for (char ch : input) {
+        switch (ch) {
+            case '\\': out += "\\\\"; break;
+            case '"': out += "\\\""; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            default: out += ch; break;
+        }
+    }
+    return out;
 }
 
 } // namespace
@@ -90,6 +107,48 @@ extern "C" ltv agentc_ext_string_from_cstr(void* ptr) {
 
 extern "C" unsigned long agentc_ext_string_length_ltv(ltv value) {
     return static_cast<unsigned long>(ltv_length(decode_ltv_handle(value)));
+}
+
+extern "C" void* agentc_ext_stdin_read_line_cstr(void) {
+    std::string line;
+    if (!std::getline(std::cin, line)) {
+        return nullptr;
+    }
+
+    char* copy = static_cast<char*>(std::malloc(line.size() + 1));
+    if (!copy) {
+        return nullptr;
+    }
+    std::memcpy(copy, line.c_str(), line.size());
+    copy[line.size()] = '\0';
+    return copy;
+}
+
+extern "C" void* agentc_ext_stdin_read_line_status_json_cstr(void) {
+    std::string line;
+    std::string payload;
+    if (!std::getline(std::cin, line)) {
+        payload = R"({"line":null,"eof":["eof"]})";
+    } else {
+        payload = std::string("{\"line\":\"") + json_escape(line) + "\",\"eof\":[]}";
+    }
+
+    char* copy = static_cast<char*>(std::malloc(payload.size() + 1));
+    if (!copy) {
+        return nullptr;
+    }
+    std::memcpy(copy, payload.c_str(), payload.size());
+    copy[payload.size()] = '\0';
+    return copy;
+}
+
+extern "C" int agentc_ext_stdout_write_cstr(void* ptr) {
+    if (!ptr) {
+        return -1;
+    }
+    std::cout << static_cast<const char*>(ptr);
+    std::cout.flush();
+    return 0;
 }
 
 extern "C" unsigned long agentc_ext_type_size_ltv(ltv ctype_name) {

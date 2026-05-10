@@ -148,6 +148,7 @@ std::string runtime_bootstrap_script_for_artifacts(const VmRuntimeImportArtifact
     script << read_text_file_or_throw(artifacts.agentc_module_path) << "\n";
     script << read_text_file_or_throw(artifacts.agentc_stateful_loop_module_path) << "\n";
     script << read_text_file_or_throw(artifacts.agentc_provider_contracts_module_path) << "\n";
+    script << read_text_file_or_throw(artifacts.llm_module_path) << "\n";
     script << read_text_file_or_throw(artifacts.agentc_agent_root_module_path) << "\n";
     return script.str();
 }
@@ -225,6 +226,9 @@ VmRuntimeImportArtifacts discover_vm_runtime_import_artifacts() {
     artifacts.agentc_provider_contracts_module_path = first_existing_path_or_throw(
         {sourceRoot / "cpp-agent" / "edict" / "modules" / "agentc_provider_contracts.edict"},
         "agentc_provider_contracts.edict module").string();
+    artifacts.llm_module_path = first_existing_path_or_throw(
+        {sourceRoot / "cpp-agent" / "edict" / "modules" / "llm.edict"},
+        "llm.edict module").string();
     artifacts.agentc_agent_root_module_path = first_existing_path_or_throw(
         {sourceRoot / "cpp-agent" / "edict" / "modules" / "agentc_agent_root.edict"},
         "agentc_agent_root.edict module").string();

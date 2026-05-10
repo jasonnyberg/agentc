@@ -12,6 +12,12 @@
 //
 // You should have received a copy of the GNU Lesser General Public
 // License along with AgentC. If not, see <https://www.gnu.org/licenses/>.
+//
+// Maintenance note: changes to Edict runtime behavior, stack/scope semantics,
+// truthiness, lookup, control flow, or evaluation in this file should be
+// reflected in both guide documents:
+// `LocalContext/Knowledge/WorkProducts/edict_language_reference.md` and
+// `LocalContext/Knowledge/WorkProducts/WP-LlmsGuideToEdictVm-2026-05-10/index.md`.
 
 #include "edict_vm.h"
 #include "edict_compiler.h"
@@ -1796,11 +1802,29 @@ void EdictVM::op_REF() {
 
     std::string k(static_cast<char*>(kVal->getData()), kVal->getLength());
 
+    const auto handleUnresolvedLookup = [&]() {
+        switch (lookup_mode) {
+            case LookupMode::Lax:
+                pushData(kVal);
+                return;
+            case LookupMode::StrictNull:
+                pushData(agentc::createNullValue());
+                return;
+            case LookupMode::StrictFail:
+                pushData(agentc::createNullValue());
+                enq(VMRES_STATE, agentc::createStringValue("unresolved symbol: " + k));
+                return;
+        }
+    };
+
     
 
     auto dictStack = resources[VMRES_DICT];
 
-    if (!dictStack) { pushData(kVal); return; }
+    if (!dictStack) {
+        handleUnresolvedLookup();
+        return;
+    }
 
     
 
@@ -1857,8 +1881,7 @@ void EdictVM::op_REF() {
         if (edictTraceEnabled()) {
             std::cout << "REF NOT found: " << k << std::endl;
         }
-        // Fallback: push original key
-        pushData(kVal);
+        handleUnresolvedLookup();
     }
 }
 
@@ -2301,6 +2324,18 @@ void EdictVM::op_TEST() {
     }
 }
 
+void EdictVM::op_LOOKUP_LAX() {
+    lookup_mode = LookupMode::Lax;
+}
+
+void EdictVM::op_LOOKUP_STRICT_NULL() {
+    lookup_mode = LookupMode::StrictNull;
+}
+
+void EdictVM::op_LOOKUP_STRICT_FAIL() {
+    lookup_mode = LookupMode::StrictFail;
+}
+
 void EdictVM::op_THROW() { // op_AND (&)
     // Check State Stack
     auto err = deq(VMRES_STATE, true); // Pop state
@@ -2448,6 +2483,7 @@ int EdictVM::runCodeLoop(size_t stopCodeDepth, bool markCompleteOnDrain) {
         &&op_CATCH, &&op_S2S, &&op_D2S, &&op_E2S,
         &&op_F2S, &&op_S2D, &&op_S2E, &&op_S2F,
         &&op_CONCAT, &&op_LIST_ADD, &&op_FAIL, &&op_TEST,
+        &&op_LOOKUP_LAX, &&op_LOOKUP_STRICT_NULL, &&op_LOOKUP_STRICT_FAIL,
         &&op_MAP, &&op_LOAD, &&op_IMPORT, &&op_IMPORT_RESOLVED,
         &&op_IMPORT_DEFERRED, &&op_IMPORT_COLLECT, &&op_IMPORT_STATUS,
         &&op_PARSE_JSON, &&op_MATERIALIZE_JSON, &&op_RESOLVE_JSON, &&op_IMPORT_RESOLVED_JSON,
@@ -2601,6 +2637,9 @@ op_CONCAT: op_CONCAT(); goto op_epilogue;
 op_LIST_ADD: op_LIST_ADD(); goto op_epilogue;
 op_FAIL: op_FAIL(); goto op_epilogue;
 op_TEST: op_TEST(); goto op_epilogue;
+op_LOOKUP_LAX: op_LOOKUP_LAX(); goto op_epilogue;
+op_LOOKUP_STRICT_NULL: op_LOOKUP_STRICT_NULL(); goto op_epilogue;
+op_LOOKUP_STRICT_FAIL: op_LOOKUP_STRICT_FAIL(); goto op_epilogue;
 op_MAP: op_MAP(); goto op_epilogue;
 op_LOAD: op_LOAD(); goto op_epilogue;
 op_IMPORT: op_IMPORT(); goto op_epilogue;
@@ -2901,6 +2940,10 @@ int EdictVM::executeNested(const BytecodeBuffer& code) {
         addBuiltinThunk(dictVal, "print", VMOP_PRINT);
         addBuiltinThunk(dictVal, "fail", VMOP_FAIL);
         addBuiltinThunk(dictVal, "test", VMOP_TEST);
+        addBuiltinThunk(dictVal, "lax", VMOP_LOOKUP_LAX);
+        addBuiltinThunk(dictVal, "strict", VMOP_LOOKUP_STRICT_NULL);
+        addBuiltinThunk(dictVal, "strict_null", VMOP_LOOKUP_STRICT_NULL);
+        addBuiltinThunk(dictVal, "strict_fail", VMOP_LOOKUP_STRICT_FAIL);
         addBuiltinThunk(dictVal, "ffi_closure", VMOP_CLOSURE);
         addBuiltinThunk(dictVal, "rewrite_define", VMOP_REWRITE_DEFINE);
         addBuiltinThunk(dictVal, "rewrite_list", VMOP_REWRITE_LIST);

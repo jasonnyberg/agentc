@@ -12,6 +12,11 @@
 //
 // You should have received a copy of the GNU Lesser General Public
 // License along with AgentC. If not, see <https://www.gnu.org/licenses/>.
+//
+// Maintenance note: changes to Edict source semantics, term parsing, or
+// bytecode emission in this file should be reflected in both guide documents:
+// `LocalContext/Knowledge/WorkProducts/edict_language_reference.md` and
+// `LocalContext/Knowledge/WorkProducts/WP-LlmsGuideToEdictVm-2026-05-10/index.md`.
 
 #include "edict_compiler.h"
 #include <sstream>

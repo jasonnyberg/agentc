@@ -27,6 +27,10 @@ static std::string valueToString(const CPtr<agentc::ListreeValue>& v) {
     return std::string(static_cast<char*>(v->getData()), v->getLength());
 }
 
+static bool isNullValue(const CPtr<agentc::ListreeValue>& v) {
+    return v && (v->getFlags() & agentc::LtvFlags::Null) != agentc::LtvFlags::None;
+}
+
 static int runCode(EdictVM& vm, const std::string& source) {
     EdictCompiler compiler;
     BytecodeBuffer code = compiler.compile(source);
@@ -59,6 +63,38 @@ TEST(EdictVM, UndefinedSymbolFallsBack) {
     EXPECT_FALSE(res & 0x02);
     auto top = vm.getStackTop();
     EXPECT_EQ(valueToString(top), "not_defined");
+}
+
+TEST(EdictVM, StrictLookupReturnsNullForUndefinedSymbol) {
+    EdictVM vm;
+    int res = runCode(vm, "strict! not_defined");
+    EXPECT_FALSE(res & 0x02);
+    EXPECT_EQ(vm.getResourceDepth(VMRES_STATE), 0u);
+    EXPECT_TRUE(isNullValue(vm.getStackTop()));
+}
+
+TEST(EdictVM, StrictLookupReturnsNullForUndefinedDottedPath) {
+    EdictVM vm;
+    int res = runCode(vm, R"({"nested":{"value":"ok"}} @root strict! root.nested.missing)");
+    EXPECT_FALSE(res & 0x02);
+    EXPECT_EQ(vm.getResourceDepth(VMRES_STATE), 0u);
+    EXPECT_TRUE(isNullValue(vm.getStackTop()));
+}
+
+TEST(EdictVM, StrictFailLookupPushesNullAndFailureState) {
+    EdictVM vm;
+    int res = runCode(vm, "strict_fail! not_defined");
+    EXPECT_FALSE(res & 0x02);
+    EXPECT_EQ(vm.getResourceDepth(VMRES_STATE), 1u);
+    EXPECT_TRUE(isNullValue(vm.getStackTop()));
+}
+
+TEST(EdictVM, LaxLookupStillFallsBackAfterStrictMode) {
+    EdictVM vm;
+    int res = runCode(vm, "strict! not_defined / lax! missing_again");
+    EXPECT_FALSE(res & 0x02);
+    EXPECT_EQ(vm.getResourceDepth(VMRES_STATE), 0u);
+    EXPECT_EQ(valueToString(vm.getStackTop()), "missing_again");
 }
 
 TEST(EdictVM, RemoveSymbol) {

@@ -16,6 +16,9 @@ void* agentc_ext_memory_slice(void* ptr, unsigned long offset);
 void* agentc_ext_string_to_cstr_ltv(ltv value);
 ltv agentc_ext_string_from_cstr(void* ptr);
 unsigned long agentc_ext_string_length_ltv(ltv value);
+void* agentc_ext_stdin_read_line_cstr(void);
+void* agentc_ext_stdin_read_line_status_json_cstr(void);
+int agentc_ext_stdout_write_cstr(void* ptr);
 
 unsigned long agentc_ext_type_size_ltv(ltv ctype_name);
 int agentc_ext_memory_write_scalar_ltv(void* dest, unsigned long offset, ltv ctype_name, ltv value);

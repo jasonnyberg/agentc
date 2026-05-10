@@ -18,6 +18,8 @@
 #   agentc_last_error !          ( runtime_handle -- value_or_null )
 #   agentc_last_trace_json !     ( runtime_handle -- json_string_or_null )
 #   agentc_last_trace !          ( runtime_handle -- value_or_null )
+#   agentc_read_line_status !    ( -- {"line": ..., "eof": [...] } )
+#   agentc_write !               ( text -- status )
 #   agentc_destroy !             ( runtime_handle -- )
 #
 # `*_file` wrappers call the runtime C ABI file helpers directly.
@@ -39,4 +41,6 @@
 [@runtime_handle runtime_handle agentc_last_error_json ! @error_json error_json from_json !] @agentc_last_error
 [@runtime_handle runtime_handle runtimeffi.agentc_runtime_last_trace_json ! @trace_cstr trace_cstr ext.agentc_ext_string_from_cstr ! @trace_json trace_cstr runtimeffi.agentc_runtime_free_string ! / trace_json] @agentc_last_trace_json
 [@runtime_handle runtime_handle agentc_last_trace_json ! @trace_json trace_json from_json !] @agentc_last_trace
+[ext.agentc_ext_stdin_read_line_status_json_cstr ! @status_cstr status_cstr ext.agentc_ext_string_from_cstr ! @status_json status_cstr ext.agentc_ext_memory_free ! / status_json from_json !] @agentc_read_line_status
+[@text text ext.agentc_ext_string_to_cstr_ltv ! @text_cstr text_cstr ext.agentc_ext_stdout_write_cstr ! @status text_cstr ext.agentc_ext_memory_free ! / status] @agentc_write
 [runtimeffi.agentc_runtime_destroy !] @agentc_destroy

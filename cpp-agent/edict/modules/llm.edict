@@ -1,0 +1,122 @@
+# llm.edict — Edict-owned LLM bootstrap and provider-object surface
+#
+# Prerequisite: load `cpp-agent/edict/modules/agentc.edict`,
+# `cpp-agent/edict/modules/agentc_stateful_loop.edict`, and
+# `cpp-agent/edict/modules/agentc_provider_contracts.edict` first.
+#
+# Public surface in this first slice:
+# - `llm.init([preset-name])` -> provider object
+# - `llm.configure_bootstrap(bootstrap)` -> bootstrap override object
+# - `provider.request([prompt])` mutates provider state in place and returns `[ok]` or `fail`
+# - `provider < repl ! > pop /` enters a provider-driven chat loop until EOF
+
+[] @llm_bootstrap_override
+
+[
+    {"extensions_library_path": "build/extensions/libagentc_extensions.so",
+     "extensions_header_path": "extensions/agentc_stdlib.h",
+     "runtime_library_path": "build/cpp-agent/libagent_runtime.so",
+     "runtime_header_path": "cpp-agent/include/agentc_runtime/agentc_runtime.h"
+    }
+] @llm_bootstrap_repo_root
+
+[
+    {"extensions_library_path": "extensions/libagentc_extensions.so",
+     "extensions_header_path": "../extensions/agentc_stdlib.h",
+     "runtime_library_path": "cpp-agent/libagent_runtime.so",
+     "runtime_header_path": "../cpp-agent/include/agentc_runtime/agentc_runtime.h"
+    }
+] @llm_bootstrap_build_dir
+
+llm_bootstrap_repo_root ! @llm_bootstrap_override
+
+[
+    @bootstrap
+    bootstrap.extensions_library_path bootstrap.extensions_header_path resolver.import ! @ext
+    bootstrap.runtime_library_path bootstrap.runtime_header_path resolver.import ! @runtimeffi
+    bootstrap
+] @llm_import_bindings_with
+
+[llm_bootstrap_override llm_import_bindings_with !] @llm_ensure_imports
+
+[
+    @bootstrap
+    bootstrap @llm_bootstrap_override
+    bootstrap
+] @llm_configure_bootstrap
+
+[
+    {"runtime": null, "system_prompt": "You are Qwen, created by Alibaba Cloud. You are a helpful assistant."} @local_qwen
+    agentc_provider_local_runtime_config ! @local_qwen.runtime
+    {"runtime": null, "system_prompt": "You are a helpful assistant."} @google_gemini
+    agentc_provider_google_runtime_config ! @google_gemini.runtime
+    {"local-qwen": null,
+     "local": null,
+     "google-gemini-3-1-pro-preview": null,
+     "google": null
+    } @catalog
+    local_qwen @catalog.local-qwen
+    local_qwen @catalog.local
+    google_gemini @catalog.google-gemini-3-1-pro-preview
+    google_gemini @catalog.google
+    catalog
+] @llm_preset_catalog
+
+[
+    @preset_name
+    llm_preset_catalog ! @catalog
+    catalog < preset_name ! > pop @preset
+    preset test &
+        [Unknown llm preset] fail
+    |
+        preset
+] @llm_resolve_preset
+
+[
+    @response @conversation
+    response.message @message
+    response @conversation.last_response
+    / message.text @conversation.assistant_text
+    / message ^conversation.messages^
+    conversation
+] @llm_conversation_apply_response
+
+[
+    [You> ] agentc_write ! /
+    agentc_read_line_status ! @__llm_input
+    __llm_input.eof test &
+        / [bye]
+    |
+        / __llm_input.line test &
+            / __llm_input.line @provider.__llm_prompt provider < __llm_prompt request ! > pop &
+                [Assistant] print
+                provider.assistant_text print
+                llm_provider_repl_loop()
+            |
+                [Error] print
+                provider.last_error.message print
+                llm_provider_repl_loop()
+        |
+            /
+            llm_provider_repl_loop()
+] @llm_provider_repl_loop
+
+[
+    @preset_name
+    llm_ensure_imports ! /
+    preset_name llm_resolve_preset ! @preset
+    {"preset_name": "", "runtime": null, "conversation": null, "assistant_text": "", "last_response": null, "last_error": null, "request": "", "repl": "", "ext": null, "runtimeffi": null} @provider
+    preset_name @provider.preset_name
+    preset.runtime @provider.runtime
+    agentc_state_init(preset.system_prompt) @provider.conversation
+    ext @provider.ext
+    runtimeffi @provider.runtimeffi
+    [@__llm_prompt agentc_state_push_user(conversation __llm_prompt) @conversation runtime.provider_contract @__llm_provider_spec agentc_provider_build_turn_request(__llm_provider_spec runtime conversation) @__llm_request_value agentc_runtime_create(runtime) @__llm_runtime_handle agentc_call_json(__llm_runtime_handle __llm_request_value) @__llm_response_json agentc_last_error_json(__llm_runtime_handle) @__llm_error_json __llm_runtime_handle agentc_destroy ! / __llm_response_json from_json ! @__llm_response __llm_response @last_response __llm_error_json test & / __llm_error_json from_json ! @last_error last_error.message fail | / null @last_error __llm_response @conversation.last_response __llm_response.message @__llm_message / __llm_message.text @conversation.assistant_text / __llm_message ^conversation.messages^ conversation.assistant_text @assistant_text [ok]] @provider.request
+    [[Chat ready. Press Ctrl-D to exit.] print llm_provider_repl_loop()] @provider.repl
+    provider
+] @llm_init
+
+{"init": "", "configure_bootstrap": "", "catalog": ""} @llm
+[@preset_name preset_name llm_init !] @llm.init
+[@bootstrap bootstrap llm_configure_bootstrap !] @llm.configure_bootstrap
+[llm_preset_catalog !] @llm.catalog

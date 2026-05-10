@@ -43,6 +43,12 @@ public:
         Off,
     };
 
+    enum class LookupMode {
+        Lax,
+        StrictNull,
+        StrictFail,
+    };
+
     struct TransactionCheckpoint {
         bool valid = false;
         bool restoreCodeResource = true;
@@ -103,6 +109,8 @@ public:
     bool removeRewriteRule(size_t index);
     RewriteMode getRewriteMode() const { return rewrite_mode; }
     void setRewriteMode(RewriteMode mode) { rewrite_mode = mode; }
+    LookupMode getLookupMode() const { return lookup_mode; }
+    void setLookupMode(LookupMode mode) { lookup_mode = mode; }
     CPtr<agentc::ListreeValue> getLastRewriteTrace() const { return last_rewrite_trace; }
     bool getAllowUnsafeFfiCalls() const { return allow_unsafe_ffi_calls; }
     void setAllowUnsafeFfiCalls(bool allow) { allow_unsafe_ffi_calls = allow; }
@@ -154,6 +162,7 @@ private:
     std::vector<RewriteRule> rewrite_rules;
     
     uint32_t state;
+    LookupMode lookup_mode = LookupMode::Lax;
     size_t instruction_ptr;
     std::string error_message;
     CPtr<agentc::ListreeValue> exception_value;
@@ -217,6 +226,9 @@ private:
     void op_PRINT();
     void op_FAIL();
     void op_TEST();
+    void op_LOOKUP_LAX();
+    void op_LOOKUP_STRICT_NULL();
+    void op_LOOKUP_STRICT_FAIL();
     void op_YIELD();
     
     // FFI Ops
