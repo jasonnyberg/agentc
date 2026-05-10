@@ -514,6 +514,21 @@ bool Cursor::remove() {
     pinPath();
     return true;
 }
+
+bool Cursor::removeHeadOnly() {
+    if (!currentItem) return false;
+    unpinPath();
+    CPtr<ListreeValue> popped = currentItem->getValue(true, reverse);
+    if (!popped) {
+        current = nullptr;
+        pinPath();
+        return false;
+    }
+    current = currentItem->getValue(false, reverse);
+    pinPath();
+    return true;
+}
+
 bool Cursor::create(const std::string& name, CPtr<ListreeValue> value) {
     if (!current || current->isListMode()) return false;
     unpinPath(); if (!value) value = createNullValue();

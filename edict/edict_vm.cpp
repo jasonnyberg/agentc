@@ -1929,6 +1929,24 @@ void EdictVM::op_REMOVE() {
     }, true);
 }
 
+void EdictVM::op_REMOVE_HEAD() {
+    auto kVal = popData(); if (!kVal || !kVal->getData()) return;
+    if ((kVal->getFlags() & agentc::LtvFlags::Binary) != agentc::LtvFlags::None) return;
+    std::string k(static_cast<char*>(kVal->getData()), kVal->getLength());
+    auto dictFrame = peek(VMRES_DICT);
+    if (!dictFrame) return;
+    bool removed = false;
+    dictFrame->forEachList([&](CPtr<agentc::ListreeValueRef>& ref) {
+        if (removed || !ref || !ref->getValue()) return;
+        agentc::Cursor ctx(ref->getValue());
+        if (ctx.resolve(k)) { ctx.removeHeadOnly(); removed = true; }
+        else if (!ctx.getLastError().empty()) {
+            enq(VMRES_STATE, agentc::createStringValue(ctx.getLastError()));
+            removed = true;
+        }
+    }, true);
+}
+
 void EdictVM::executeIterativeFFI(const std::string& funcName, CPtr<agentc::ListreeValue> funcDef, 
                                   CPtr<agentc::ListreeValue> args,
                                   size_t index,
@@ -2477,7 +2495,7 @@ int EdictVM::runCodeLoop(size_t stopCodeDepth, bool markCompleteOnDrain) {
         &&op_RESET, // Index 0
         &&op_YIELD, &&op_PUSHEXT, &&op_SPLICE,
         &&op_DUP, &&op_SWAP, &&op_POP, &&op_REF,
-        &&op_ASSIGN, &&op_REMOVE, &&op_EVAL,
+        &&op_ASSIGN, &&op_REMOVE, &&op_REMOVE_HEAD, &&op_EVAL,
         &&op_CTX_PUSH, &&op_CTX_POP, &&op_FUN_PUSH, &&op_FUN_EVAL,
         &&op_FUN_POP, &&op_FRAME_PUSH, &&op_FRAME_MERGE, &&op_THROW,
         &&op_CATCH, &&op_S2S, &&op_D2S, &&op_E2S,
@@ -2617,6 +2635,7 @@ op_EVAL: op_EVAL(); goto op_epilogue;
 op_REF: op_REF(); goto op_epilogue;
 op_ASSIGN: op_ASSIGN(); goto op_epilogue;
 op_REMOVE: op_REMOVE(); goto op_epilogue;
+op_REMOVE_HEAD: op_REMOVE_HEAD(); goto op_epilogue;
 op_CTX_PUSH: op_CTX_PUSH(); goto op_epilogue;
 op_CTX_POP: op_CTX_POP(); goto op_epilogue;
 op_FUN_PUSH: op_FUN_PUSH(); goto op_epilogue;
@@ -2935,6 +2954,7 @@ int EdictVM::executeNested(const BytecodeBuffer& code) {
         addBuiltinThunk(dictVal, "ref", VMOP_REF);
         addBuiltinThunk(dictVal, "assign", VMOP_ASSIGN);
         addBuiltinThunk(dictVal, "remove", VMOP_REMOVE);
+        addBuiltinThunk(dictVal, "remove_head", VMOP_REMOVE_HEAD);
         addBuiltinThunk(dictVal, "!", VMOP_EVAL);
         addBuiltinThunk(dictVal, ".", VMOP_PRINT);
         addBuiltinThunk(dictVal, "print", VMOP_PRINT);

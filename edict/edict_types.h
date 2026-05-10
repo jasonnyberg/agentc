@@ -42,6 +42,7 @@ enum VMOpcode {
     VMOP_REF,
     VMOP_ASSIGN,
     VMOP_REMOVE,
+    VMOP_REMOVE_HEAD,
     
     // Evaluation operations
     VMOP_EVAL,

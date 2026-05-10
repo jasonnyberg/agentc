@@ -70,6 +70,7 @@ public:
     bool assign(CPtr<ListreeValue> value);
     template<typename T> bool assignValue(const T& value);
     bool remove();
+    bool removeHeadOnly();
     bool create(const std::string& name, CPtr<ListreeValue> value = nullptr);
     
     bool push(CPtr<ListreeValue> value, bool atEnd = true);

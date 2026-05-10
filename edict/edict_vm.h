@@ -204,6 +204,7 @@ private:
     void op_DEREF();
     void op_ASSIGN();
     void op_REMOVE();
+    void op_REMOVE_HEAD();
     void op_EVAL();
     void op_CTX_PUSH();
     void op_CTX_POP();

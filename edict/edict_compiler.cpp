@@ -303,24 +303,45 @@ void EdictCompiler::compileTerm() {
     } else if (match(TOKEN_OPERATOR)) {
         std::string op = currentToken.value;
         nextToken();
+
+        auto isPrefixSigil = [](const std::string& value) {
+            return value == "@" || value == "/" || value == "^";
+        };
         
-        // Check if identifier is immediately following (no space)
-        if ((op == "@" || op == "/" || op == "^") && 
-            match(TOKEN_IDENTIFIER) && !currentToken.hadSpaceBefore) {
-            emitValue(Value(currentToken.value));
-            if (op == "^") {
-                // Just push the value (already done by emitValue)
-            } else if (op == "@") {
-                // @name emits key after value, matching VMOP_ASSIGN's stack order.
-                emitOperation(VMOP_ASSIGN);
-            } else {
-                compileOperator(op);
+        if (isPrefixSigil(op)) {
+            std::vector<std::string> sigils{op};
+            while (match(TOKEN_OPERATOR) && isPrefixSigil(currentToken.value) && !currentToken.hadSpaceBefore) {
+                sigils.push_back(currentToken.value);
+                nextToken();
             }
-            nextToken();
-        } else if (op == "/") {
-            emitOperation(VMOP_POP);
-        } else if (op == "^") {
-            emitOperation(VMOP_SPLICE);
+
+            if (match(TOKEN_IDENTIFIER) && !currentToken.hadSpaceBefore) {
+                const std::string identifier = currentToken.value;
+                nextToken();
+                for (size_t i = 0; i < sigils.size(); ++i) {
+                    const std::string& sigil = sigils[i];
+                    emitValue(Value(identifier));
+                    if (sigil == "^") {
+                        // ^name is a literal destination label; a following bare ^ performs SPLICE.
+                    } else if (sigil == "@") {
+                        // @name emits key after value, matching VMOP_ASSIGN's stack order.
+                        emitOperation(VMOP_ASSIGN);
+                    } else if (sigil == "/") {
+                        // In a concatenated prefix chain such as /@name, intermediate removals
+                        // pop the binding head without cleaning up the live dictionary entry.
+                        // A terminal /name preserves the legacy remove-and-cleanup behavior.
+                        emitOperation((i + 1 < sigils.size()) ? VMOP_REMOVE_HEAD : VMOP_REMOVE);
+                    }
+                }
+            } else if (sigils.size() == 1 && op == "/") {
+                emitOperation(VMOP_POP);
+            } else if (sigils.size() == 1 && op == "^") {
+                emitOperation(VMOP_SPLICE);
+            } else if (sigils.size() == 1) {
+                compileOperator(op);
+            } else {
+                throw std::runtime_error("Prefix sigil chain must end with an identifier");
+            }
         } else {
             compileOperator(op);
         }

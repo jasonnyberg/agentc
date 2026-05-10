@@ -114,6 +114,35 @@ TEST(EdictVM, RemoveTopOfStack) {
     EXPECT_TRUE(bool(top));
 }
 
+TEST(EdictVM, ConcatenatedPrefixSigilsApplyToSameIdentifierInOrder) {
+    EdictVM vm;
+    int res = runCode(vm, "[x]@a [y]/@a a");
+    EXPECT_FALSE(res & 0x02);
+    EXPECT_EQ(valueToString(vm.getStackTop()), "y");
+}
+
+TEST(EdictVM, ConcatenatedRemoveAssignDoesNotPopReplacementValue) {
+    EdictVM vm;
+    int res = runCode(vm, "[old]@a [new]/@a a");
+    EXPECT_FALSE(res & 0x02);
+    EXPECT_EQ(valueToString(vm.getStackTop()), "new");
+}
+
+TEST(EdictVM, ConcatenatedMultipleRemovesApplyToSameIdentifier) {
+    EdictVM vm;
+    int res = runCode(vm, "[x]@a [y]@a [z]@a //a a");
+    EXPECT_FALSE(res & 0x02);
+    EXPECT_EQ(valueToString(vm.getStackTop()), "x");
+}
+
+TEST(EdictVM, SpliceNameSyntaxStillWorksAfterPrefixChainParsing) {
+    EdictVM vm;
+    int res = runCode(vm, "[] @collector [^collector^] @capture capture([one] [two]) collector to_json !");
+    EXPECT_FALSE(res & 0x02);
+    EXPECT_NE(valueToString(vm.getStackTop()).find("one"), std::string::npos);
+    EXPECT_NE(valueToString(vm.getStackTop()).find("two"), std::string::npos);
+}
+
 TEST(EdictVM, DeferredEvalWithMethodCall) {
     EdictVM vm;
     int res = runCode(vm, "[!]@myeval [dup]@twice myeval([hello] twice)");

@@ -31,6 +31,11 @@ The compiler is very direct.
   - Stack order for bare `@` is `key value @` in source, but the compiler swaps to match `ASSIGN`.
 - No-space remove `/name`
   - Compiles as push `name` then `REMOVE`.
+- Concatenated no-space prefix sigils such as `/@name`
+  - Compile as a single prefix chain over the same identifier, with sigils applied left-to-right.
+  - Example: `[x]@a [y]/@a` means assign `x` to `a`, then for `a` pop the current binding head and assign `y`.
+  - Multi-sigil chains are generalized: `[x]@a [y]@a [z]@a //a` pops `z`, then `y`, leaving `a == x`.
+  - Intermediate `/` in a chain uses non-cleaning `REMOVE_HEAD` so the live dictionary entry survives until the chain finishes; a terminal `/name` keeps legacy cleanup semantics.
 - Bare `/`
   - Compiles to `POP`.
 - `!`
@@ -80,7 +85,7 @@ Practical implications:
 
 - `x` usually means "the newest value bound to `x`".
 - `f() @x` does not erase older `x`; it adds a new head binding.
-- If you want true whole-binding replacement, use remove-then-assign style such as `f() /@x`.
+- If you want true head-binding replacement, use a concatenated remove-then-assign prefix chain such as `f() /@x`. The `/` and `@` both apply to `x` in order.
 
 ## 5. Truthiness: Use the VM, Not the Old Prose
 The actual truthiness rules are in `edict/edict_vm.cpp::isTrue(...)`.
@@ -294,11 +299,13 @@ llm.catalog ! @catalog
 catalog < preset_name ! > pop
 ```
 
-### Pattern: Whole-binding replacement when needed
+### Pattern: Head-binding replacement when needed
 
 ```edict
 new_value /@provider
 ```
+
+This is a concatenated prefix-sigil chain. It pops the current head value of `provider` without cleaning up the live dictionary entry, then assigns `new_value` to `provider`.
 
 ### Pattern: Avoid object-truthiness bugs
 

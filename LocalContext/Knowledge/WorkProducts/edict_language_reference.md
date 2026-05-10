@@ -270,6 +270,24 @@ x       -- falls back to pushing "x" (the string)
 -- stack: [ "x" ]
 ```
 
+### Concatenated prefix sigils: `/@name`
+
+No-space prefix sigils apply to the same following identifier in left-to-right order.
+
+```edict
+[x]@a [y]/@a a
+-- stack: [ "y" ]
+```
+
+`/@a` is not parsed as bare `/` followed by `@a`. It means: pop the current binding head for `a`, then assign the stack value to `a`. Intermediate `/` operations in a prefix chain preserve the live dictionary entry until the chain completes; a terminal `/name` still performs normal remove-and-cleanup behavior.
+
+Chains are generalized:
+
+```edict
+[x]@a [y]@a [z]@a //a a
+-- stack: [ "x" ]
+```
+
 ### Dotted paths
 
 ```edict
