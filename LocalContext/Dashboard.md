@@ -1,7 +1,7 @@
 # Dashboard
 
 **Project**: AgentC / J3  
-**Last Updated**: 2026-05-09
+**Last Updated**: 2026-05-10
 
 ## Open Goals
 ### Planned / Active
@@ -9,6 +9,7 @@
 - 🔗[G075 — Speculative Edict Native Architectures](./Knowledge/Goals/G075-SpeculativeEdictArchitectures/index.md) — PLANNED
 
 ### Complete (this cycle)
+- 🔗[G077 — Local LLM Demo Request Diagnostics](./Knowledge/Goals/G077-LocalLlmDemoRequestDiagnostics/index.md) — **COMPLETE** (2026-05-10)
 - 🔗[G076 — Generalized Multiline Edict Accumulator](./Knowledge/Goals/G076-GeneralizedMultilineAccumulator/index.md) — **COMPLETE** (2026-05-09)
 - 🔗[G073 — Pure VM Lifecycle & Host Thinning](./Knowledge/Goals/G073-PureVMLifecycleHostThinning/index.md) — **COMPLETE** (2026-05-06)
 - 🔗[G072 — Direct Slab Restore Without Full Library Re-import](./Knowledge/Goals/G072-DirectSlabRestoreWithoutReimport/index.md) — **COMPLETE** (2026-05-06)
@@ -19,6 +20,7 @@ None
 ## Active Context
 - **G074 Streaming Architecture Locked**: We have designed the "Decoupled Ghost Queue" approach. Background LLM network streams will write to standard C++ `std::queue`s (ephemeral, disposable RAM). The Edict VM's main thread will explicitly pull from these queues via `agentc_stream_sync !` to mutate its persistent Listree mailboxes. This guarantees Listree mmap safety and deterministic snapshot resilience.
 - **Resilience**: If the VM restarts, background C++ threads die. The VM handles stuck mailboxes using native timeouts.
+- **Local Runtime Demo Fixed**: `./demo_local_llm.sh` now works against the local OpenAI-compatible server after removing the 30-second SSE timeout, adding outbound request diagnostics, and teaching request normalization to accept `messages[*].content`.
 
 ## Knowledge Inventory
 - **Category Indexes**: `Knowledge/Concepts/index.md`; `Knowledge/Facts/index.md`; `Knowledge/Procedures/index.md`
@@ -26,9 +28,9 @@ None
 ## Handoff Note
 
 **Project**: AgentC
-**Current State**: G074 architecture is locked and documented.
+**Current State**: G074 architecture is locked and documented. Local OpenAI-compatible demo diagnostics are complete and verified.
 **Next Action**: Implement the `StreamManager` class in the C++ runtime to manage thread-safe token queues, then build the `agentc_call_stream` and `agentc_stream_sync` FFI bindings.
-**Key Context**: The FFI stream waiter must be entirely stateless and ephemeral. The VM must decide *when* to sync the Listree.
+**Key Context**: The FFI stream waiter must be entirely stateless and ephemeral. The VM must decide *when* to sync the Listree. The local demo now logs full outbound OpenAI-compatible requests for future debugging.
 
 ## Session Compliance
 - [x] Reviewed Dashboard at session start

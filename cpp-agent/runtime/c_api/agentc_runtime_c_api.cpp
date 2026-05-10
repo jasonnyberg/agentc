@@ -80,7 +80,6 @@ extern "C" char* agentc_runtime_request_json(agentc_runtime_t runtime, const cha
     }
     try {
         std::cerr << "[C-API] Received request_json:\n" << (request_json ? request_json : "null") << std::endl;
-        std::cerr << "[C-API] Hit synchronous request_json" << std::endl;
         const auto response = impl->request_json(request_json ? std::string(request_json) : std::string("{}"));
         return dup_cstr(response.dump());
     } catch (...) {

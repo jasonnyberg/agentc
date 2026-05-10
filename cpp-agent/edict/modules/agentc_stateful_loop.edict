@@ -27,7 +27,7 @@
       "messages": [],
       "last_prompt": null,
       "last_response": null,
-      "assistant_text": "
+      "assistant_text": ""
     } @state
     system_prompt @state.system_prompt
     state
@@ -39,8 +39,8 @@
 
 [
     @prompt @state
-    {"role": "user", "text": ""} @message
-    prompt @message.text
+    {"role": "user", "content": ""} @message
+    prompt @message.content
     / message ^state.messages^
     prompt @state.last_prompt
     / state

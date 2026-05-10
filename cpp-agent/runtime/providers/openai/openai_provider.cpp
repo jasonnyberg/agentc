@@ -6,6 +6,7 @@
 #include "../../common/http_client.h"
 #include "../../common/sse_parser.h"
 
+#include <iostream>
 #include <stdexcept>
 
 namespace agentc::runtime {
@@ -43,6 +44,7 @@ void register_openai_provider() {
         if (model.provider == "github-copilot") {
             auto creds = get_copilot_credentials();
             auth_token = creds.first;
+            req.headers.push_back("Authorization: Bearer " + auth_token);
             req.url = creds.second + "/chat/completions";
 
             req.headers.push_back("User-Agent: GitHubCopilotChat/0.35.0");
@@ -51,12 +53,20 @@ void register_openai_provider() {
             req.headers.push_back("Copilot-Integration-Id: vscode-chat");
             req.headers.push_back("X-Initiator: user");
             req.headers.push_back("Openai-Intent: conversation-edits");
-        } else {
+        } else if (model.provider == "openai") {
             auth_token = opts.api_key.value_or(get_openai_api_key());
+            req.headers.push_back("Authorization: Bearer " + auth_token);
         }
 
-        req.headers.push_back("Authorization: Bearer " + auth_token);
         req.headers.push_back("Content-Type: application/json");
+
+        std::cerr << "[OpenAI Provider] Outbound request:\n"
+                  << "URL: " << req.url << "\n"
+                  << "Headers:" << std::endl;
+        for (const auto& header : req.headers) {
+            std::cerr << "  " << header << std::endl;
+        }
+        std::cerr << "Body:\n" << req.body << std::endl;
 
         AssistantMessage final_msg;
         final_msg.api = model.api;

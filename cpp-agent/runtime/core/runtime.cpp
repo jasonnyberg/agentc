@@ -34,7 +34,7 @@ std::string default_base_url_for_provider(const std::string& provider) {
         return "https://api.openai.com";
     }
     if (provider == "local") {
-        return "http://localhost:1234";
+        return "http://localhost:8081/v1";
     }
     if (provider == "github-copilot") {
         return "https://api.individual.githubcopilot.com";
@@ -56,7 +56,12 @@ Context build_context_from_request(const json& request) {
     if (request.contains("messages") && request["messages"].is_array()) {
         for (const auto& msg : request["messages"]) {
             const std::string role = msg.value("role", "");
-            const std::string text = msg.value("text", std::string{});
+            std::string text;
+            if (msg.contains("text") && msg["text"].is_string()) {
+                text = msg["text"].get<std::string>();
+            } else if (msg.contains("content") && msg["content"].is_string()) {
+                text = msg["content"].get<std::string>();
+            }
             if (role == "system") {
                 if (!ctx.system_prompt && !text.empty()) {
                     ctx.system_prompt = text;
@@ -301,6 +306,7 @@ json Runtime::request_json(const std::string& request_json_text) {
             try {
                 std::rethrow_exception(stream_error);
             } catch (const std::exception& e) {
+                std::cerr << "[Runtime] Error Response (Exception): " << e.what() << std::endl;
                 return error_response("provider_response_invalid", e.what(), false);
             }
         }

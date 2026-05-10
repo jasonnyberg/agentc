@@ -1,3 +1,9 @@
+### 2026-05-10
+- Completed 🔗[G077 — Local LLM Demo Request Diagnostics](./Knowledge/Goals/G077-LocalLlmDemoRequestDiagnostics/index.md): reproduced the failing `./demo_local_llm.sh` path, proved the local server supported streaming, found that `cpp-agent/runtime/common/http_client.cpp` was aborting SSE requests after 30 seconds, and removed that hard stop while adding curl transport diagnostics.
+- Extended local runtime debugging visibility by logging the full outbound OpenAI-compatible request in `cpp-agent/runtime/providers/openai/openai_provider.cpp` including URL, headers, and body.
+- Fixed request normalization in `cpp-agent/runtime/core/runtime.cpp` so runtime requests accept `messages[*].content` as well as `messages[*].text`; this stopped the demo from sending an empty user prompt to the local model.
+- Rebuilt and verified `./demo_local_llm.sh` now sends `{"messages":[{"content":"You are Qwen, created by Alibaba Cloud. You are a helpful assistant.","role":"system"},{"content":"What is the capital of France?","role":"user"}],"model":"qwen","stream":true}` and returns `The capital of France is **Paris**.`
+
 ### 2026-05-05
 - G070 architectural cleanup: Eliminated remaining host-owned state duplicates (`base_runtime_config`, `options.system_prompt`, extra `clear()` calls) from `cpp-agent/main.cpp`. Added `install_vm_agent_root` and `reset_vm_agent_root` to `agent_root_vm_ops.*`. The embedded VM is now the sole live owner of the runtime configuration and session state, resolving the final cleanup goals from the Handoff Note.
 

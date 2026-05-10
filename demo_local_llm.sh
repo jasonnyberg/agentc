@@ -11,7 +11,7 @@ ROOT=$(pwd)
 {"default_provider": "local", "default_model": "qwen"} agentc_runtime_create! @rt
 
 "Initializing agent state..." print
-"You are Qwen, created by Alibaba Cloud. You are a helpful assistant. <|think_on|>" agentc_state_init! @state
+"You are Qwen, created by Alibaba Cloud. You are a helpful assistant." agentc_state_init! @state
 
 "Sending request to local model: 'What is the capital of France?'" print
 agentc_state_turn(rt state "What is the capital of France?") @next_state
