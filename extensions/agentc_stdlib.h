@@ -20,6 +20,11 @@ void* agentc_ext_stdin_read_line_cstr(void);
 void* agentc_ext_stdin_read_line_status_json_cstr(void);
 int agentc_ext_stdout_write_cstr(void* ptr);
 
+void* agentc_ext_file_read_json_cstr(void* path, unsigned long max_bytes);
+void* agentc_ext_file_write_json_cstr(void* path, void* content);
+void* agentc_ext_file_replace_json_cstr(void* path, void* old_text, void* new_text);
+void* agentc_ext_shell_exec_json_cstr(void* command, unsigned long max_bytes);
+
 unsigned long agentc_ext_type_size_ltv(ltv ctype_name);
 int agentc_ext_memory_write_scalar_ltv(void* dest, unsigned long offset, ltv ctype_name, ltv value);
 ltv agentc_ext_memory_read_scalar_ltv(void* src, unsigned long offset, ltv ctype_name);

@@ -1,3 +1,7 @@
+### 2026-05-11
+- Completed 🔗[G079 — Edict Agent Loop Tool Support](./Knowledge/Goals/G079-EdictAgentLoopToolSupport/index.md): added native JSON-envelope file read/write/exact-replace and shell helpers, Edict wrappers plus `agentc_tools`, attached tools as `provider.tools`, and validated direct wrappers plus a curated-launcher provider-context tool flow.
+- HRM archival/reassessment pass: retired 9 completed goals (G068, G071, G072, G073, G076, G077, G081, G082, G083) to `LocalContext/Knowledge/Archive/Goals/`, rebuilt Dashboard around 5 active/open goals, marked G074/G075 deferred, kept G078 active, and promoted G079 as the immediate next implementation slice with G080 planned behind it.
+
 ### 2026-05-10
 - Completed 🔗[G083 — Edict Tail-Prefixed Dictionary History](./Knowledge/Goals/G083-EdictTailPrefixedDictionaryHistory/index.md): fixed leading `-` selectors so `-a`, `@-a`, `/-a`, and `/@-a` operate on the tail/oldest value of dictionary item history; added regression coverage and updated Edict guide docs.
 - Completed 🔗[G082 — Edict Prefix Sigil Chain Semantics](./Knowledge/Goals/G082-EdictPrefixSigilChainSemantics/index.md): fixed `/@name` so concatenated no-space prefix sigils apply to the same identifier left-to-right, added non-cleaning `REMOVE_HEAD` for intermediate chain removal, preserved `^name^`, and updated both Edict guide documents plus regression coverage.

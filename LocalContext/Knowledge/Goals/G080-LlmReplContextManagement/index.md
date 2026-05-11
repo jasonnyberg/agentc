@@ -1,7 +1,8 @@
 # Goal: G080 — LLM REPL Context Management
 
-**Status**: PLANNED  
-**Created**: 2026-05-10
+**Status**: NEXT  
+**Created**: 2026-05-10  
+**Reassessed**: 2026-05-11
 
 ## Objective
 Add explicit context-management behavior to the launcher-backed `llm` provider REPL so long-running chat sessions can manage conversation state intentionally instead of only accumulating raw history.
@@ -25,6 +26,9 @@ Add explicit context-management behavior to the launcher-backed `llm` provider R
 - Respect the current Edict truthiness/control-flow sharp edges documented in the VM guide.
 - Keep provider objects stable and mutating in place.
 - Build on the current launcher-backed `provider.repl()` seam instead of introducing a parallel host loop.
+
+## Reassessment — 2026-05-11
+This is now the immediate next slice after G079 landed the first tool-use surface. Context management becomes more important once the loop can run longer engineering sessions. The first useful slice should likely be simple and inspectable: reset/clear history, summarize older turns, or enforce a retained-history limit through provider-owned state.
 
 ## Relationship To G078
 G078 establishes the Edict-owned loop. G080 makes that loop sustainable for longer-running interactions by adding first-class context management.

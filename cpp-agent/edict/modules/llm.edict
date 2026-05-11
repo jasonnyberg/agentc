@@ -8,6 +8,7 @@
 # - `llm.init([preset-name])` -> provider object
 # - `llm.configure_bootstrap(bootstrap)` -> bootstrap override object
 # - `provider.request([prompt])` mutates provider state in place and returns `[ok]` or `fail`
+# - `provider.tools` exposes the first explicit file/shell tool wrappers from `agentc_tools`
 # - `provider < repl ! > pop /` enters a provider-driven chat loop until EOF
 
 [] @llm_bootstrap_override
@@ -115,12 +116,13 @@ llm_bootstrap_repo_root ! @llm_bootstrap_override
     @preset_name
     llm_ensure_imports ! /
     preset_name llm_resolve_preset ! @preset
-    {"preset_name": "", "runtime": null, "conversation": null, "assistant_text": "", "last_response": null, "last_error": null, "request": "", "repl": "", "ext": null, "runtimeffi": null} @provider
+    {"preset_name": "", "runtime": null, "conversation": null, "assistant_text": "", "last_response": null, "last_error": null, "request": "", "repl": "", "tools": null, "ext": null, "runtimeffi": null} @provider
     preset_name @provider.preset_name
     preset.runtime @provider.runtime
     agentc_state_init(preset.system_prompt) @provider.conversation
     ext @provider.ext
     runtimeffi @provider.runtimeffi
+    agentc_tools @provider.tools
     [@__llm_prompt agentc_state_push_user(conversation __llm_prompt) @conversation runtime.provider_contract @__llm_provider_spec agentc_provider_build_turn_request(__llm_provider_spec runtime conversation) @__llm_request_value agentc_runtime_create(runtime) @__llm_runtime_handle agentc_call_json(__llm_runtime_handle __llm_request_value) @__llm_response_json agentc_last_error_json(__llm_runtime_handle) @__llm_error_json __llm_runtime_handle agentc_destroy ! / __llm_response_json from_json ! @__llm_response __llm_response @last_response __llm_error_json test & / __llm_error_json from_json ! @last_error last_error.message fail | / null @last_error __llm_response @conversation.last_response __llm_response.message @__llm_message / __llm_message.text @conversation.assistant_text / __llm_message ^conversation.messages^ conversation.assistant_text @assistant_text [ok]] @provider.request
     [[Chat ready. Press Ctrl-D to exit.] print llm_provider_repl_loop()] @provider.repl
     provider

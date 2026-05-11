@@ -275,6 +275,26 @@ Notes:
 - `provider.repl` is currently intended for launcher-backed no-arg `./edict.sh` sessions where the underlying process is a real line-oriented `EdictREPL`.
 - The loop reads stdin through `agentc_read_line_status !`, skips blank lines, and exits cleanly on EOF.
 
+### Pattern: Provider-scoped tools
+
+G079 adds a first narrow tool surface through `agentc_tools` and `provider.tools`:
+
+```edict
+llm.init([local-qwen]) @provider
+provider < [/tmp/note.txt] [hello] tools.write_file ! @last_tool > pop /
+provider < [/tmp/note.txt] tools.read_file ! @last_tool > pop /
+provider.last_tool.content print
+```
+
+Available wrappers:
+
+- `agentc_file_read !` / `tools.read_file` — `( path -- result )`
+- `agentc_file_write !` / `tools.write_file` — `( path content -- result )`
+- `agentc_file_replace !` / `tools.replace_file` — `( path old_text new_text -- result )`, exact replacement must match once
+- `agentc_shell !` / `tools.shell` — `( command -- result )`
+
+Each result uses an explicit `ok` list sentinel (`["ok"]` or `[]`), so branch on `result.ok`, not the whole result object.
+
 ### Pattern: Success/failure control flow
 
 ```edict

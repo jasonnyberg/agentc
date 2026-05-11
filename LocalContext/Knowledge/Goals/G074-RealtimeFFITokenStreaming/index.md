@@ -1,7 +1,8 @@
 # Goal: G074 — Real-time FFI Token Streaming
 
-**Status**: PLANNED  
+**Status**: DEFERRED  
 **Created**: 2026-05-09  
+**Reassessed**: 2026-05-11  
 
 ## Objective
 Extend the FFI and Edict VM to support real-time token streaming using an **Actor Model / Decoupled Ghost Queue** architecture. The in-VM agent loop will spawn ephemeral, stateless background FFI requests and explicitly synchronize their results back into the native Listree memory space at its own discretion.
@@ -25,6 +26,9 @@ We are bringing the Actor Model / CSP to the Listree graph database. Because Lis
 - [ ] Bind `agentc_call_stream` to launch a detached LLM request thread.
 - [ ] Bind `agentc_stream_sync` to safely mutate the Listree mailbox on the main thread.
 - [ ] Update `agentc_stateful_loop.edict` to demonstrate a real-time, non-blocking asynchronous stream loop.
+
+## Reassessment — 2026-05-11
+Streaming remains a valid architecture direction, and the Decoupled Ghost Queue design is still the preferred safety model for mmap/Listree integrity. It is deferred because the immediate critical path is the Edict-resident control plane (G078), first tool/action capabilities (G079), and context management for usable provider sessions (G080). Resume after the provider loop has real tool semantics or when UI token latency becomes the top bottleneck.
 
 ## Update
 Implemented test cases bypassing manual stdout match strings because real streaming actors process states continuously. StreamTurnActorLoopExecutesAndSynchronizes verified natively compiled output execution paths.

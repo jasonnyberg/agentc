@@ -3,10 +3,19 @@
 #include "../cartographer/boxing.h"
 #include "../cartographer/ltv_api.h"
 
+#include <algorithm>
+#include <array>
+#include <cerrno>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <string>
+#include <sys/wait.h>
 #include <vector>
 
 namespace {
@@ -41,17 +50,61 @@ static size_t scalar_size_from_ltv(ltv ctype_name) {
 static std::string json_escape(const std::string& input) {
     std::string out;
     out.reserve(input.size() + 8);
-    for (char ch : input) {
+    for (unsigned char ch : input) {
         switch (ch) {
             case '\\': out += "\\\\"; break;
             case '"': out += "\\\""; break;
             case '\n': out += "\\n"; break;
             case '\r': out += "\\r"; break;
             case '\t': out += "\\t"; break;
-            default: out += ch; break;
+            case '\b': out += "\\b"; break;
+            case '\f': out += "\\f"; break;
+            default:
+                if (ch < 0x20) {
+                    std::ostringstream escaped;
+                    escaped << "\\u" << std::hex << std::setw(4) << std::setfill('0') << static_cast<int>(ch);
+                    out += escaped.str();
+                } else {
+                    out += static_cast<char>(ch);
+                }
+                break;
         }
     }
     return out;
+}
+
+static std::string cstr_to_string(void* ptr) {
+    if (!ptr) {
+        return {};
+    }
+    return std::string(static_cast<const char*>(ptr));
+}
+
+static void* malloc_string_copy(const std::string& payload) {
+    char* copy = static_cast<char*>(std::malloc(payload.size() + 1));
+    if (!copy) {
+        return nullptr;
+    }
+    std::memcpy(copy, payload.c_str(), payload.size());
+    copy[payload.size()] = '\0';
+    return copy;
+}
+
+static std::string json_error_object(const std::string& code, const std::string& message) {
+    return std::string("{\"code\":\"") + json_escape(code) + "\",\"message\":\"" + json_escape(message) + "\"}";
+}
+
+static std::string tool_failure_json(const std::string& op,
+                                     const std::string& path_or_command,
+                                     const std::string& code,
+                                     const std::string& message) {
+    return std::string("{\"ok\":[],\"op\":\"") + json_escape(op) +
+           "\",\"target\":\"" + json_escape(path_or_command) +
+           "\",\"error\":" + json_error_object(code, message) + "}";
+}
+
+static std::string errno_message(const std::string& prefix) {
+    return prefix + ": " + std::strerror(errno);
 }
 
 } // namespace
@@ -149,6 +202,186 @@ extern "C" int agentc_ext_stdout_write_cstr(void* ptr) {
     std::cout << static_cast<const char*>(ptr);
     std::cout.flush();
     return 0;
+}
+
+extern "C" void* agentc_ext_file_read_json_cstr(void* path_ptr, unsigned long max_bytes) {
+    const std::string pathText = cstr_to_string(path_ptr);
+    if (pathText.empty()) {
+        return malloc_string_copy(tool_failure_json("file_read", pathText, "path_empty", "Path is empty"));
+    }
+
+    std::ifstream in(pathText, std::ios::binary);
+    if (!in.good()) {
+        return malloc_string_copy(tool_failure_json("file_read", pathText, "open_failed", errno_message("Failed to open file for read")));
+    }
+
+    const size_t limit = static_cast<size_t>(max_bytes == 0 ? 65536ul : max_bytes);
+    std::string content;
+    content.reserve(std::min<size_t>(limit, 4096));
+    std::array<char, 4096> buffer{};
+    bool truncated = false;
+    while (in.good()) {
+        const size_t remaining = limit > content.size() ? limit - content.size() : 0;
+        if (remaining == 0) {
+            truncated = (in.peek() != EOF);
+            break;
+        }
+        const size_t want = std::min(buffer.size(), remaining);
+        in.read(buffer.data(), static_cast<std::streamsize>(want));
+        const std::streamsize got = in.gcount();
+        if (got > 0) {
+            content.append(buffer.data(), static_cast<size_t>(got));
+        }
+        if (static_cast<size_t>(got) < want) {
+            break;
+        }
+    }
+
+    std::string payload = std::string("{\"ok\":[\"ok\"],\"op\":\"file_read\",\"path\":\"") + json_escape(pathText) +
+                          "\",\"content\":\"" + json_escape(content) +
+                          "\",\"bytes\":" + std::to_string(content.size()) +
+                          ",\"truncated\":" + (truncated ? "[\"truncated\"]" : "[]") +
+                          ",\"error\":null}";
+    return malloc_string_copy(payload);
+}
+
+extern "C" void* agentc_ext_file_write_json_cstr(void* path_ptr, void* content_ptr) {
+    const std::string pathText = cstr_to_string(path_ptr);
+    const std::string content = cstr_to_string(content_ptr);
+    if (pathText.empty()) {
+        return malloc_string_copy(tool_failure_json("file_write", pathText, "path_empty", "Path is empty"));
+    }
+
+    std::error_code ec;
+    const std::filesystem::path path(pathText);
+    const auto parent = path.parent_path();
+    if (!parent.empty()) {
+        std::filesystem::create_directories(parent, ec);
+        if (ec) {
+            return malloc_string_copy(tool_failure_json("file_write", pathText, "mkdir_failed", ec.message()));
+        }
+    }
+
+    std::ofstream out(pathText, std::ios::binary | std::ios::trunc);
+    if (!out.good()) {
+        return malloc_string_copy(tool_failure_json("file_write", pathText, "open_failed", errno_message("Failed to open file for write")));
+    }
+    out.write(content.data(), static_cast<std::streamsize>(content.size()));
+    out.close();
+    if (!out.good()) {
+        return malloc_string_copy(tool_failure_json("file_write", pathText, "write_failed", errno_message("Failed to write file")));
+    }
+
+    std::string payload = std::string("{\"ok\":[\"ok\"],\"op\":\"file_write\",\"path\":\"") + json_escape(pathText) +
+                          "\",\"bytes\":" + std::to_string(content.size()) +
+                          ",\"error\":null}";
+    return malloc_string_copy(payload);
+}
+
+extern "C" void* agentc_ext_file_replace_json_cstr(void* path_ptr, void* old_ptr, void* new_ptr) {
+    const std::string pathText = cstr_to_string(path_ptr);
+    const std::string oldText = cstr_to_string(old_ptr);
+    const std::string newText = cstr_to_string(new_ptr);
+    if (pathText.empty()) {
+        return malloc_string_copy(tool_failure_json("file_replace", pathText, "path_empty", "Path is empty"));
+    }
+    if (oldText.empty()) {
+        return malloc_string_copy(tool_failure_json("file_replace", pathText, "old_text_empty", "Old text must be non-empty"));
+    }
+
+    std::ifstream in(pathText, std::ios::binary);
+    if (!in.good()) {
+        return malloc_string_copy(tool_failure_json("file_replace", pathText, "open_failed", errno_message("Failed to open file for replace")));
+    }
+    std::ostringstream buffer;
+    buffer << in.rdbuf();
+    std::string content = buffer.str();
+
+    size_t count = 0;
+    size_t pos = 0;
+    size_t match = std::string::npos;
+    while ((pos = content.find(oldText, pos)) != std::string::npos) {
+        ++count;
+        match = pos;
+        pos += oldText.size();
+        if (count > 1) {
+            break;
+        }
+    }
+    if (count != 1) {
+        return malloc_string_copy(tool_failure_json("file_replace", pathText,
+                                                    count == 0 ? "old_text_not_found" : "old_text_not_unique",
+                                                    count == 0 ? "Old text was not found" : "Old text matched more than once"));
+    }
+
+    content.replace(match, oldText.size(), newText);
+    std::ofstream out(pathText, std::ios::binary | std::ios::trunc);
+    if (!out.good()) {
+        return malloc_string_copy(tool_failure_json("file_replace", pathText, "open_failed", errno_message("Failed to open file for write")));
+    }
+    out.write(content.data(), static_cast<std::streamsize>(content.size()));
+    out.close();
+    if (!out.good()) {
+        return malloc_string_copy(tool_failure_json("file_replace", pathText, "write_failed", errno_message("Failed to write replacement")));
+    }
+
+    std::string payload = std::string("{\"ok\":[\"ok\"],\"op\":\"file_replace\",\"path\":\"") + json_escape(pathText) +
+                          "\",\"replacements\":1,\"bytes\":" + std::to_string(content.size()) +
+                          ",\"error\":null}";
+    return malloc_string_copy(payload);
+}
+
+extern "C" void* agentc_ext_shell_exec_json_cstr(void* command_ptr, unsigned long max_bytes) {
+    const std::string command = cstr_to_string(command_ptr);
+    if (command.empty()) {
+        return malloc_string_copy(tool_failure_json("shell_exec", command, "command_empty", "Command is empty"));
+    }
+
+    const size_t limit = static_cast<size_t>(max_bytes == 0 ? 65536ul : max_bytes);
+    const std::string shellCommand = command + " 2>&1";
+    FILE* pipe = popen(shellCommand.c_str(), "r");
+    if (!pipe) {
+        return malloc_string_copy(tool_failure_json("shell_exec", command, "popen_failed", errno_message("Failed to start command")));
+    }
+
+    std::string output;
+    output.reserve(std::min<size_t>(limit, 4096));
+    std::array<char, 4096> buffer{};
+    bool truncated = false;
+    while (std::fgets(buffer.data(), static_cast<int>(buffer.size()), pipe)) {
+        const std::string chunk(buffer.data());
+        if (output.size() < limit) {
+            const size_t remaining = limit - output.size();
+            output.append(chunk.data(), std::min(chunk.size(), remaining));
+            if (chunk.size() > remaining) {
+                truncated = true;
+            }
+        } else {
+            truncated = true;
+        }
+    }
+
+    const int closeStatus = pclose(pipe);
+    int exitCode = closeStatus;
+    bool exited = false;
+    if (closeStatus != -1) {
+        if (WIFEXITED(closeStatus)) {
+            exited = true;
+            exitCode = WEXITSTATUS(closeStatus);
+        } else if (WIFSIGNALED(closeStatus)) {
+            exitCode = 128 + WTERMSIG(closeStatus);
+        }
+    }
+    const bool ok = (closeStatus != -1 && exited && exitCode == 0);
+    const std::string error = ok ? "null" : json_error_object("command_failed", "Command exited with status " + std::to_string(exitCode));
+    std::string payload = std::string("{\"ok\":") + (ok ? "[\"ok\"]" : "[]") +
+                          ",\"op\":\"shell_exec\",\"command\":\"" + json_escape(command) +
+                          "\",\"exit_code\":" + std::to_string(exitCode) +
+                          ",\"output\":\"" + json_escape(output) +
+                          "\",\"bytes\":" + std::to_string(output.size()) +
+                          ",\"truncated\":" + (truncated ? "[\"truncated\"]" : "[]") +
+                          ",\"error\":" + error + "}";
+    return malloc_string_copy(payload);
 }
 
 extern "C" unsigned long agentc_ext_type_size_ltv(ltv ctype_name) {

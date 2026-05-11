@@ -1,7 +1,8 @@
 # Goal: G078 — Edict-Resident Agent Loop Consolidation
 
-**Status**: IN PROGRESS  
-**Created**: 2026-05-10
+**Status**: ACTIVE  
+**Created**: 2026-05-10  
+**Reassessed**: 2026-05-11
 
 ## Objective
 Consolidate AgentC's duplicated request-shaping, config, root-schema, and UX-loop logic so the Edict VM becomes the authoritative control plane for the user-facing agent experience.
@@ -53,7 +54,20 @@ Keep C++ authoritative only for:
 - persistence and process lifecycle
 - socket attach/detach transport
 
+## Reassessment — 2026-05-11
+G078 remains the top-level active consolidation track, but several implementation slices are now complete enough to retire as separate goals: local demo diagnostics, Codex provider support, prefix-sigil semantics, and tail-prefixed dictionary history. The remaining consolidation debt is narrower:
+
+- temporary C++ mirroring of Edict provider contracts during bootstrap/rehydration;
+- host-owned outer UX responsibilities in `cpp-agent/main.cpp` versus the newer launcher-backed `provider.repl()` path;
+- first Edict-resident tool/action semantics landed through G079; deeper model-driven tool policy remains future work;
+- missing provider-session context management, now tracked as G080;
+- incomplete live-notebook/FFI documentation for LLM usability.
+
+Near-term execution should continue through G079 first, then G080, while keeping G078 as the parent architectural umbrella.
+
 ## Progress Notes
+- 2026-05-11: Completed G079's first tool/action slice: Edict now has file read/write/exact-replace and shell wrappers via `agentc_tools`, and provider objects expose them as `provider.tools` for provider-context use.
+- 2026-05-11: Reassessed after completing G081/G082/G083 and archiving completed goals. G078 stays active as the parent track; G079 is the immediate next implementation slice, G080 follows, and G074/G075 are deferred.
 - 2026-05-10: Landed the first Edict-side provider contract module (`agentc_provider_contracts.edict`) with `local` and `google` as contrasting shapes.
 - 2026-05-10: Refactored `agentc_agent_root_turn` so the root module stages the user turn, builds the canonical request from `runtime.provider_contract`, calls the runtime, and reapplies the response into root-owned conversation state.
 - 2026-05-10: Updated embedded-VM bootstrap/import artifacts and focused regression suites so the provider-contract seam is exercised through root construction, runtime invocation, persistence, and restore.

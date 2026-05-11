@@ -1,60 +1,98 @@
 # Dashboard
 
 **Project**: AgentC / J3  
-**Last Updated**: 2026-05-10
+**Last Updated**: 2026-05-11
+
+## Current Focus
+AgentC/J3 is an advanced research prototype/internal-alpha moving toward an Edict-resident agent loop: Edict should own provider/session/control-plane semantics while C++ remains the native transport, persistence, credential, and lifecycle substrate.
+
+Latest completed slice: 🔗[G079 — Edict Agent Loop Tool Support](./Knowledge/Goals/G079-EdictAgentLoopToolSupport/index.md) added a narrow Edict/FFI tool surface for file read/write-edit and shell/system execution. Immediate next implementation slice: 🔗[G080 — LLM REPL Context Management](./Knowledge/Goals/G080-LlmReplContextManagement/index.md).
 
 ## Open Goals
-### Planned / Active
-- 🔗[G078 — Edict-Resident Agent Loop Consolidation](./Knowledge/Goals/G078-EdictResidentAgentLoopConsolidation/index.md) — **IN PROGRESS**
-- 🔗[G079 — Edict Agent Loop Tool Support](./Knowledge/Goals/G079-EdictAgentLoopToolSupport/index.md) — PLANNED
-- 🔗[G080 — LLM REPL Context Management](./Knowledge/Goals/G080-LlmReplContextManagement/index.md) — PLANNED
-- 🔗[G074 — Real-time FFI Token Streaming](./Knowledge/Goals/G074-RealtimeFFITokenStreaming/index.md) — PLANNED
-- 🔗[G075 — Speculative Edict Native Architectures](./Knowledge/Goals/G075-SpeculativeEdictArchitectures/index.md) — PLANNED
 
-### Complete (this cycle)
-- 🔗[G083 — Edict Tail-Prefixed Dictionary History](./Knowledge/Goals/G083-EdictTailPrefixedDictionaryHistory/index.md) — **COMPLETE** (2026-05-10)
-- 🔗[G082 — Edict Prefix Sigil Chain Semantics](./Knowledge/Goals/G082-EdictPrefixSigilChainSemantics/index.md) — **COMPLETE** (2026-05-10)
-- 🔗[G081 — OpenAI Codex Subscription Provider](./Knowledge/Goals/G081-OpenAICodexSubscriptionProvider/index.md) — **COMPLETE** (2026-05-10)
-- 🔗[G077 — Local LLM Demo Request Diagnostics](./Knowledge/Goals/G077-LocalLlmDemoRequestDiagnostics/index.md) — **COMPLETE** (2026-05-10)
-- 🔗[G076 — Generalized Multiline Edict Accumulator](./Knowledge/Goals/G076-GeneralizedMultilineAccumulator/index.md) — **COMPLETE** (2026-05-09)
-- 🔗[G073 — Pure VM Lifecycle & Host Thinning](./Knowledge/Goals/G073-PureVMLifecycleHostThinning/index.md) — **COMPLETE** (2026-05-06)
-- 🔗[G072 — Direct Slab Restore Without Full Library Re-import](./Knowledge/Goals/G072-DirectSlabRestoreWithoutReimport/index.md) — **COMPLETE** (2026-05-06)
+### Active / Next
+- 🔗[G078 — Edict-Resident Agent Loop Consolidation](./Knowledge/Goals/G078-EdictResidentAgentLoopConsolidation/index.md) — **ACTIVE** parent track; provider contracts, `llm.init(...)`, curated launcher, provider REPL, Codex provider, tool surface, and key VM semantics are landed. Remaining debt: C++ contract mirroring, host-owned outer UX seams, context management, and live notebook/FFI docs.
+- 🔗[G080 — LLM REPL Context Management](./Knowledge/Goals/G080-LlmReplContextManagement/index.md) — **NEXT**; add explicit provider conversation reset/trim/summarize/inspect behavior.
+
+### Recently Completed
+- 🔗[G079 — Edict Agent Loop Tool Support](./Knowledge/Goals/G079-EdictAgentLoopToolSupport/index.md) — **COMPLETE** (2026-05-11); first practical file/shell action surface for the Edict-owned provider loop.
+
+### Planned
+None.
+
+### Deferred
+- 🔗[G074 — Real-time FFI Token Streaming](./Knowledge/Goals/G074-RealtimeFFITokenStreaming/index.md) — **DEFERRED**; Decoupled Ghost Queue design remains preferred, but streaming is behind tool/context work.
+- 🔗[G075 — Speculative Edict Native Architectures](./Knowledge/Goals/G075-SpeculativeEdictArchitectures/index.md) — **DEFERRED** research track; revisit after the Edict agent loop has stable tool and context behavior.
 
 ### Blocked
-None
+None.
 
 ## Active Context
-- **G074 Streaming Architecture Locked**: We have designed the "Decoupled Ghost Queue" approach. Background LLM network streams will write to standard C++ `std::queue`s (ephemeral, disposable RAM). The Edict VM's main thread will explicitly pull from these queues via `agentc_stream_sync !` to mutate its persistent Listree mailboxes. This guarantees Listree mmap safety and deterministic snapshot resilience.
-- **Resilience**: If the VM restarts, background C++ threads die. The VM handles stuck mailboxes using native timeouts.
-- **Local Runtime Demo Fixed**: `./demo_local_llm.sh` now works against the local OpenAI-compatible server after removing the 30-second SSE timeout, adding outbound request diagnostics, teaching request normalization to accept `messages[*].content`, and replacing the older stateful-loop path with the new `llm.init([local-qwen])` plus provider-scoped `request !` pattern.
-- **New High-Priority Consolidation Track**: Request/config/root/UI-loop semantics are currently split across shell demos, Edict modules, host bootstrap, runtime normalization, and provider adapters. The desired direction is to make Edict the authoritative control plane and reduce the runtime/host to thinner execution and lifecycle layers. See 🔗[WP — Edict-Resident Agent Loop Consolidation Plan](./Knowledge/WorkProducts/WP-EdictResidentAgentLoopConsolidation-2026-05-10/index.md).
-- **First Provider-Contract Slice Landed**: `agentc_provider_contracts.edict` now carries contrasting `local` and `google` provider semantics in Edict data, `agentc_agent_root.edict` builds canonical turn requests from `runtime.provider_contract`, embedded-VM bootstrap imports the new module, and targeted regression coverage across root-building, embedded turns, restore, and session persistence is passing.
-- **Bootstrap Direction Refined**: `llm.init(name)` should become the Edict-owned entrypoint for lazy LLM bootstrap, including importing required runtime/extension libraries if absent, resolving a named provider preset such as `local-qwen`, and returning a provider object that scripts can drive explicitly via methods like `provider.request(...)` and `provider.repl()`.
-- **First `llm.init(...)` Slice Landed**: `cpp-agent/edict/modules/llm.edict` now exposes named presets such as `local-qwen`, bootstrap override configuration, and a stable provider object with an in-place mutating `request` thunk. The working Edict-side invocation pattern is `provider < [prompt] request ! > pop /`, which updates provider conversation state and assistant text without rebinding the whole object.
-- **Agent-Oriented Edict Guide Added**: 🔗[WP — LLM's Guide to Edict and the VM](./Knowledge/WorkProducts/WP-LlmsGuideToEdictVm-2026-05-10/index.md) now records the compiler/VM-grounded mental model, truthiness traps, context-frame behavior, assignment history, and quick-start mutation/control-flow patterns discovered during G078.
-- **Strict/Lax Lookup Modes Added**: Edict now has VM-level unresolved lookup modes: `lax!` preserves the old symbolic fallback, `strict!` / `strict_null!` return `null`, and `strict_fail!` returns `null` while entering failure state. This gives Edict code a practical debugging surface without breaking the older metaprogramming behavior by default.
-- **Curated Launcher Landed**: `edict.sh` now injects a stable `EDICT_PATH` object, preloads `agentc_curated.edict`, auto-loads the core AgentC Edict modules, configures `llm` bootstrap paths, and then hands off to REPL, `-e`, stdin, or file execution so provider calls are available without repeating import boilerplate.
-- **First Provider REPL Landed**: `cpp-agent/edict/modules/llm.edict` now exposes `provider.repl` for launcher-backed chat sessions. The working invocation is `provider < repl ! > pop /`, stdin/status packaging now lives partly in `agentc_stdlib`, and focused coverage proves repeated turns plus clean EOF through `./edict.sh` with the mock runtime.
-- **Zero-Code Chat Launcher Landed**: `./edict.sh` now defaults to `EDICT_AUTO_CHAT=1` and `EDICT_DEFAULT_PRESET=local-qwen`, so no-arg launch auto-creates a provider and drops straight into `provider.repl()`. Setting `EDICT_AUTO_CHAT=0` preserves the curated raw REPL path.
-- **Next Big Tracks Formalized**: the next major execution tracks after the current G078 seam are 🔗[G079 — Edict Agent Loop Tool Support](./Knowledge/Goals/G079-EdictAgentLoopToolSupport/index.md) and 🔗[G080 — LLM REPL Context Management](./Knowledge/Goals/G080-LlmReplContextManagement/index.md).
-- **OpenAI Codex Subscription Provider Landed**: 🔗[G081 — OpenAI Codex Subscription Provider](./Knowledge/Goals/G081-OpenAICodexSubscriptionProvider/index.md) added a native `openai-codex-responses` runtime provider that reuses pi's `~/.pi/agent/auth.json` OAuth credentials, an Edict `openai-codex` provider contract/preset, and a live-validated `llm.init([openai-codex])` path. `gpt-5.1-codex-mini` and `gpt-5.1/5.2-codex` were unsupported for the current ChatGPT account; `gpt-5.3-codex` succeeded and is the current lower-than-`gpt-5.5` default with low reasoning effort for cost control.
-- **Prefix Sigil Chain Semantics Fixed**: 🔗[G082 — Edict Prefix Sigil Chain Semantics](./Knowledge/Goals/G082-EdictPrefixSigilChainSemantics/index.md) fixed the critical `/@name` mismatch. Concatenated no-space prefix sigils now apply to the same label left-to-right, so `[x]@a [y]/@a a` returns `y`; intermediate `/` uses non-cleaning `REMOVE_HEAD` so the dictionary entry remains live until the chain completes. The LLM guide and Edict language reference now document this.
-- **Tail-Prefixed Dictionary History Fixed**: 🔗[G083 — Edict Tail-Prefixed Dictionary History](./Knowledge/Goals/G083-EdictTailPrefixedDictionaryHistory/index.md) made leading `-` selectors work consistently for lookup, assignment, removal, and prefix chains. `-a` reads the tail, `@-a` appends to the tail, `/-a` removes the tail, and `/@-a` replaces the tail. The fix routes special names through `Cursor` instead of the direct assignment fast path and preserves selected head/tail state through cursor operations.
-
-## Knowledge Inventory
-- **Category Indexes**: `Knowledge/Concepts/index.md`; `Knowledge/Facts/index.md`; `Knowledge/Procedures/index.md`
-- **Goals**: 🔗[G081 — OpenAI Codex Subscription Provider](./Knowledge/Goals/G081-OpenAICodexSubscriptionProvider/index.md); 🔗[G082 — Edict Prefix Sigil Chain Semantics](./Knowledge/Goals/G082-EdictPrefixSigilChainSemantics/index.md); 🔗[G083 — Edict Tail-Prefixed Dictionary History](./Knowledge/Goals/G083-EdictTailPrefixedDictionaryHistory/index.md)
+- **Completed goals retired**: G068, G071, G072, G073, G076, G077, G081, G082, and G083 were moved to `LocalContext/Knowledge/Archive/Goals/`; see 🔗[Archive Index](./Knowledge/Archive/ARCHIVE_INDEX.md).
+- **Edict provider surface**: `llm.init(name)` returns stable provider objects. Current request pattern is `provider < [prompt] request ! > pop /`; launcher-backed REPL pattern is `provider < repl ! > pop /`.
+- **Curated launcher**: `./edict.sh` injects `EDICT_PATH`, preloads `agentc_curated.edict`, configures the `llm` bootstrap surface, and defaults to `EDICT_AUTO_CHAT=1` with `EDICT_DEFAULT_PRESET=local-qwen`. Set `EDICT_AUTO_CHAT=0` for raw curated Edict execution.
+- **OpenAI Codex provider**: `openai-codex` is live through pi ChatGPT OAuth credentials in `~/.pi/agent/auth.json`; default model is `gpt-5.3-codex` with low reasoning effort. Live smoke test returned `ok`. Lower attempted Codex model names were unsupported for the account.
+- **Important VM semantics now fixed/documented**: concatenated prefix sigils apply to the same identifier left-to-right (`/@name`, `//name`, etc.); leading `-name` selects the tail/oldest dictionary value for lookup, assignment, and removal; strict/lax unresolved lookup modes exist (`lax!`, `strict!`, `strict_null!`, `strict_fail!`).
+- **Tool surface landed (G079)**: `extensions/agentc_stdlib` now exposes JSON-envelope file read/write/exact-replace and shell execution helpers. `agentc.edict` wraps them as `agentc_file_read !`, `agentc_file_write !`, `agentc_file_replace !`, `agentc_shell !`, and `agentc_tools`; `llm.edict` attaches `agentc_tools` as `provider.tools` for provider-context use.
+- **Validation baseline from latest implementation pass**: `./build/edict/edict_tests --gtest_filter='EdictVM.*'` passed 22/22; focused `cpp_agent_tests` for tool wrappers + LLM/root seams passed 17/17. Known unrelated baseline: `EdictAgentcModuleTest.StreamWrapperSpawnsAndSynchronizes` still fails because deferred G074 stream JSON/wrapper work is incomplete.
+- **Documentation direction**: 🔗[WP — LLM's Guide to Edict and the VM](./Knowledge/WorkProducts/WP-LlmsGuideToEdictVm-2026-05-10/index.md) and 🔗[Edict Language Reference](./Knowledge/WorkProducts/edict_language_reference.md) are the key LLM-facing references. Next documentation improvement is a live notebook style with executable examples, especially for FFI/Cartographer.
 
 ## Handoff Note
 
-**Project**: AgentC
-**Current State**: G078 now has the first Edict provider-contract slice, the first working `llm.init(...)` slice, VM-level strict/lax unresolved lookup modes, a curated launcher/preload path, the first launcher-backed `provider.repl()` loop, zero-code default chat through `./edict.sh`, a new live-validated OpenAI Codex subscription provider path, corrected concatenated prefix-sigil semantics, and consistent tail-prefixed dictionary history operations. `llm.init([openai-codex])` uses pi's ChatGPT OAuth credentials, targets `gpt-5.3-codex` by default, and successfully returned `ok` in a live SSE smoke test. `/@name` now means remove-head then assign on the same label; `-name`, `@-name`, `/-name`, and `/@-name` operate on the tail of the binding history.
-**Next Action**: Start G079 by adding the first minimal Edict/FFI tool surface for file read/write-edit and shell/system execution, while keeping G080 queued immediately behind it for explicit context management inside the provider REPL.
-**Key Context**: The current `llm` provider API is intentionally VM-grounded: provider objects are stable, `request !` mutates them in place, `provider < repl ! > pop /` is the current explicit chat-loop pattern, and plain `./edict.sh` now auto-creates a default provider chat session unless `EDICT_AUTO_CHAT=0` is set. `openai-codex` currently implements SSE-only Codex Responses, relies on pi `auth.json`, defaults to low reasoning effort for cost control, and does not yet include pi's WebSocket/cached-context transport. `& |` integration should use explicit success/failure sentinels rather than object truthiness, Edict now supports `lax!`, `strict!` / `strict_null!`, and `strict_fail!`, and `edict.sh` / `agentc_curated.edict` is the canonical way to avoid repeated import/bootstrap boilerplate.
+**Current State**: The foundational persistence/client-host work has been retired to the archive. The live project is now centered on G078: making Edict the authoritative control plane for the agent loop. The codebase has a working curated launcher, Edict-side provider objects, provider REPL, local and Codex provider paths, first file/shell tool surface, strict lookup modes, corrected prefix-chain semantics, and corrected tail-history semantics.
+
+**Next Action**: Start G080. Add explicit context-management behavior to `provider.repl()` / provider-owned conversation state: likely reset/clear, inspect, trim, or summarize as the first narrow slice.
+
+**Key Constraints**: Preserve stable provider-object in-place mutation; avoid expensive Codex `gpt-5.5`; keep Codex default reasoning low; use explicit scalar success/failure sentinels for `& |` control flow; keep Listree mutations on the VM/main thread for any future streaming architecture.
+
+## Active Agents
+None.
+
+## Knowledge Inventory
+
+### Goals — active tree (5)
+- 🔗[G074 — Real-time FFI Token Streaming](./Knowledge/Goals/G074-RealtimeFFITokenStreaming/index.md) — deferred streaming architecture.
+- 🔗[G075 — Speculative Edict Native Architectures](./Knowledge/Goals/G075-SpeculativeEdictArchitectures/index.md) — deferred speculative reasoning architecture.
+- 🔗[G078 — Edict-Resident Agent Loop Consolidation](./Knowledge/Goals/G078-EdictResidentAgentLoopConsolidation/index.md) — active parent track.
+- 🔗[G079 — Edict Agent Loop Tool Support](./Knowledge/Goals/G079-EdictAgentLoopToolSupport/index.md) — completed first tool surface; archive candidate on next cleanup.
+- 🔗[G080 — LLM REPL Context Management](./Knowledge/Goals/G080-LlmReplContextManagement/index.md) — immediate next slice.
+
+### WorkProducts — active references (11)
+- 🔗[AgentLang](./Knowledge/WorkProducts/AgentLang.md)
+- 🔗[Edict Language Reference](./Knowledge/WorkProducts/edict_language_reference.md)
+- 🔗[WP — C++ Agent Runtime File Structure](./Knowledge/WorkProducts/WP_CppAgentRuntimeFileStructure.md)
+- 🔗[WP — Edict Native Agent Module Architecture](./Knowledge/WorkProducts/WP_EdictNativeAgentModuleArchitecture.md)
+- 🔗[WP — Edict-Resident Agent Loop Consolidation Plan](./Knowledge/WorkProducts/WP-EdictResidentAgentLoopConsolidation-2026-05-10/index.md)
+- 🔗[WP — Embedded Persistent Agent Architecture](./Knowledge/WorkProducts/WP_EmbeddedPersistentAgentArchitecture.md)
+- 🔗[WP — G070 Ownership Boundary Map](./Knowledge/WorkProducts/WP_G070_OwnershipBoundaryMap_2026-05-01.md)
+- 🔗[WP — LLM's Guide to Edict and the VM](./Knowledge/WorkProducts/WP-LlmsGuideToEdictVm-2026-05-10/index.md)
+- 🔗[WP — LMDB Surface Area Audit](./Knowledge/WorkProducts/WP_LMDB_SurfaceArea_Audit_2026-04-30.md)
+- 🔗[WP — Native C++ Agent Core Audit](./Knowledge/WorkProducts/WP_NativeCppAgentCore_Audit.md)
+- 🔗[WP — Session Image Persistence Plan](./Knowledge/WorkProducts/WP_SessionImagePersistencePlan_2026-05-01.md)
+
+### Facts / Contracts / Procedures / Prompts
+- 🔗[Concepts Index](./Knowledge/Concepts/index.md)
+- 🔗[Facts Index](./Knowledge/Facts/index.md)
+- 🔗[Listree Traversal Cycle Detection](./Knowledge/Facts/ListreeTraversalCycleDetection.md)
+- 🔗[ListreeValue Serialization Format](./Knowledge/Facts/ListreeValueSerializationFormat.md)
+- 🔗[AgentC Eval Contract](./Knowledge/Contracts/AgentcEvalContract.md)
+- 🔗[AgentC Runtime C ABI](./Knowledge/Contracts/AgentcRuntimeCAbi.md)
+- 🔗[AgentC Runtime JSON Contract](./Knowledge/Contracts/AgentcRuntimeJsonContract.md)
+- 🔗[Procedures Index](./Knowledge/Procedures/index.md)
+- 🔗[AgentC IPC Bridge Ops](./Knowledge/Procedures/AgentC_IPC_Bridge_Ops.md)
+- 🔗[AgentC Socket Ops](./Knowledge/Procedures/AgentC_Socket_Ops.md)
+- 🔗[System Prompt — AgentC](./Knowledge/Prompts/SystemPrompt_AgentC.md)
+
+### Archive
+- 🔗[Archive Index](./Knowledge/Archive/ARCHIVE_INDEX.md) — retired goals/work products preserved outside the active tree.
+
+## Timeline
+See 🔗[Timeline.md](./Timeline.md) for project history.
 
 ## Session Compliance
-- [x] Reviewed Dashboard at session start
-- [x] Created/updated Goal files for multi-step architectural work
-- [x] Persisted durable knowledge needed for future continuation
-- [x] Updated Dashboard with current focus and next action
-- [x] Left a handoff note for the next session
+- [x] Reviewed Dashboard and HRM bootstrap instructions
+- [x] Reassessed incomplete goals
+- [x] Retired completed goals to Archive
+- [x] Updated Archive Index
+- [x] Rebuilt Dashboard around active/open work
+- [x] Updated Timeline

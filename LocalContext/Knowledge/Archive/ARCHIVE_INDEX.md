@@ -1,11 +1,20 @@
 # Archive Index
 
 Retired items. Files preserved in Archive/ subdirectories.
-Last updated: 2026-05-03
+Last updated: 2026-05-11
 
 ## Goals
 | Archived | ID | Title | Status | Summary |
 |---|---|---|---|---|
+| 2026-05-11 | G068 | Client/Agent Split with Embedded Persistent Edict VM | Complete | Foundational embedded-VM/client-host architecture completed; remaining live-loop/tool/context work now tracked by G078/G079/G080 |
+| 2026-05-11 | G071 | Session-Scoped Allocator Image Persistence | Complete | Mmap/file-backed allocator persistence substrate completed and fed into runtime rehydration work |
+| 2026-05-11 | G072 | Direct Slab Restore Without Full Library Re-import | Complete | Warm restore path, library preloading/change detection, and cold-vs-warm parity validation completed |
+| 2026-05-11 | G073 | Pure VM Lifecycle & Host Thinning | Complete | Host-thinning lifecycle slice completed |
+| 2026-05-11 | G076 | Generalized Multiline Edict Accumulator | Complete | Multiline Edict accumulator completed |
+| 2026-05-11 | G077 | Local LLM Demo Request Diagnostics | Complete | Local demo request/timeout/normalization diagnostics fixed and validated |
+| 2026-05-11 | G081 | OpenAI Codex Subscription Provider | Complete | Subscription-backed Codex provider landed and live-validated via Edict `llm.init([openai-codex])` |
+| 2026-05-11 | G082 | Edict Prefix Sigil Chain Semantics | Complete | Concatenated prefix sigils now apply left-to-right to the same identifier with regression coverage |
+| 2026-05-11 | G083 | Edict Tail-Prefixed Dictionary History | Complete | `-name` tail lookup/assignment/removal semantics fixed and regression-covered |
 | 2026-05-03 | G016 | G016 — LMDB Optional Compile-Time Build | Retired | Archived during cleanup |
 | 2026-05-03 | G017 | G017 — Edict Stdin/File Script Mode | Retired | Archived during cleanup |
 | 2026-05-03 | G018 | G018 — FFI LTV Passthrough (Hoist Boxing to Pure FFI) | Retired | Archived during cleanup |
