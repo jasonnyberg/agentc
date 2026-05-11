@@ -7,6 +7,8 @@
 #include <new>
 #include <string>
 
+#include <nlohmann/json.hpp>
+
 namespace {
 
 char* dup_cstr(const std::string& value) {
@@ -103,15 +105,45 @@ extern "C" char* agentc_runtime_stream_request_json(agentc_runtime_t runtime, co
 
 extern "C" char* agentc_runtime_stream_sync_json(agentc_runtime_t runtime, const char* stream_id) {
     auto* impl = cast_runtime(runtime);
+    const std::string sid = stream_id ? std::string(stream_id) : std::string();
     if (!impl) {
-        return nullptr;
+        nlohmann::json error = {
+            {"ok", nlohmann::json::array()},
+            {"stream_id", sid},
+            {"tokens", ""},
+            {"complete", nlohmann::json::array({"complete"})},
+            {"error", {{"code", "runtime_null"}, {"message", "Runtime handle is null"}}}
+        };
+        return dup_cstr(error.dump());
     }
     try {
-        auto result = impl->get_stream_manager()->syncStream(stream_id ? std::string(stream_id) : std::string(""));
-        const std::string response = result.first;
-        return dup_cstr(response);
+        auto result = impl->get_stream_manager()->syncStream(sid);
+        nlohmann::json response = {
+            {"ok", nlohmann::json::array({"ok"})},
+            {"stream_id", sid},
+            {"tokens", result.first},
+            {"complete", result.second ? nlohmann::json::array({"complete"}) : nlohmann::json::array()},
+            {"error", nullptr}
+        };
+        return dup_cstr(response.dump());
+    } catch (const std::exception& e) {
+        nlohmann::json error = {
+            {"ok", nlohmann::json::array()},
+            {"stream_id", sid},
+            {"tokens", ""},
+            {"complete", nlohmann::json::array({"complete"})},
+            {"error", {{"code", "stream_error"}, {"message", e.what()}}}
+        };
+        return dup_cstr(error.dump());
     } catch (...) {
-        return nullptr;
+        nlohmann::json error = {
+            {"ok", nlohmann::json::array()},
+            {"stream_id", sid},
+            {"tokens", ""},
+            {"complete", nlohmann::json::array({"complete"})},
+            {"error", {{"code", "stream_error"}, {"message", "Unknown stream error"}}}
+        };
+        return dup_cstr(error.dump());
     }
 }
 

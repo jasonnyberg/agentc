@@ -9,6 +9,7 @@
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
+#include <thread>
 #include <type_traits>
 
 namespace agentc::runtime {
@@ -151,7 +152,11 @@ bool provider_enabled(const json& provider_block) {
 
 } // namespace
 
-Runtime::Runtime() : config_(json::object()), last_error_(nullptr), last_trace_(nullptr) {
+Runtime::Runtime()
+    : config_(json::object()),
+      last_error_(nullptr),
+      last_trace_(nullptr),
+      stream_manager_(std::make_shared<StreamManager>()) {
     register_builtin_providers_once();
 }
 
@@ -186,22 +191,144 @@ std::string Runtime::stream_request_json(const std::string& request_json_text) {
     clear_error();
     try {
         json request = json::parse(request_json_text.empty() ? "{}" : request_json_text);
-        if (!request.is_object()) return "";
+        if (!request.is_object()) {
+            throw std::runtime_error("Runtime stream request must be a JSON object");
+        }
+        if ((!request.contains("prompt") || !request["prompt"].is_string()) &&
+            (!request.contains("messages") || !request["messages"].is_array())) {
+            throw std::runtime_error("Stream request must provide prompt or messages");
+        }
 
-        std::string provider_name = resolve_provider(request);
-        if (provider_name.empty()) return "";
+        const std::string stream_id = stream_manager_->createStream();
+        auto manager = stream_manager_;
 
-        std::string model = resolve_model(provider_name, request);
-        last_trace_ = build_trace(provider_name, model, request);
+        // Unit-test/synthetic stream hook: exercises the same ghost-queue/sync path
+        // without invoking a network provider.
+        if (request.contains("stream_test_text") && request["stream_test_text"].is_string()) {
+            const std::string text = request["stream_test_text"].get<std::string>();
+            last_trace_ = json{{"stream_id", stream_id}, {"synthetic_stream", true}};
+            manager->pushToken(stream_id, text);
+            manager->markComplete(stream_id);
+            return stream_id;
+        }
 
-        // For now, return a mock stream ID to pass the initial compilation/API tests.
-        // We will implement the actual threaded provider dispatch next.
-        return stream_manager_->createStream();
+        const std::string provider = resolve_provider(request);
+        const std::string model = resolve_model(provider, request);
+        const std::string api = resolve_api(provider);
+        const std::string base_url = resolve_base_url(provider);
+        last_trace_ = build_trace(provider, model, request);
+        last_trace_["stream_id"] = stream_id;
+
+        Model runtime_model{
+            .id = model,
+            .name = model,
+            .api = api,
+            .provider = provider,
+            .base_url = base_url,
+            .headers = {}
+        };
+
+        Context ctx = build_context_from_request(request);
+        StreamOptions opts;
+        const std::string api_key = resolve_api_key(provider, request);
+        if (!api_key.empty()) {
+            opts.api_key = api_key;
+        }
+        if (request.contains("options") && request["options"].is_object()) {
+            const auto& options = request["options"];
+            if (options.contains("max_output_tokens") && options["max_output_tokens"].is_number_integer()) {
+                opts.max_tokens = options["max_output_tokens"].get<int>();
+            }
+            if (options.contains("temperature") && options["temperature"].is_number()) {
+                opts.temperature = options["temperature"].get<double>();
+            }
+            if (options.contains("reasoning_effort") && options["reasoning_effort"].is_string()) {
+                opts.reasoning_effort = options["reasoning_effort"].get<std::string>();
+            }
+        }
+
+        auto provider_fn = agentc::runtime::get_provider(api);
+        std::thread([manager,
+                     stream_id,
+                     runtime_model = std::move(runtime_model),
+                     ctx = std::move(ctx),
+                     opts = std::move(opts),
+                     provider_fn = std::move(provider_fn)]() mutable {
+            bool complete = false;
+            bool failed = false;
+            std::string emitted_text;
+
+            const auto mark_complete_once = [&]() {
+                if (!complete && !failed) {
+                    complete = true;
+                    manager->markComplete(stream_id);
+                }
+            };
+            const auto mark_error_once = [&](const std::string& message) {
+                if (!failed) {
+                    failed = true;
+                    manager->markError(stream_id, message);
+                }
+            };
+            const auto emit_final_if_needed = [&](const AssistantMessage& msg) {
+                const std::string final_text = text_of(msg.content);
+                if (emitted_text.empty() && !final_text.empty()) {
+                    emitted_text += final_text;
+                    manager->pushToken(stream_id, final_text);
+                }
+            };
+
+            AssistantMessageStream stream;
+            stream.on_event([&](AssistantMessageEvent ev) {
+                std::visit([&](auto&& e) {
+                    using T = std::decay_t<decltype(e)>;
+                    if constexpr (std::is_same_v<T, EvTextDelta>) {
+                        if (!e.delta.empty()) {
+                            emitted_text += e.delta;
+                            manager->pushToken(stream_id, e.delta);
+                        }
+                    } else if constexpr (std::is_same_v<T, EvDone>) {
+                        emit_final_if_needed(e.message);
+                        mark_complete_once();
+                    } else if constexpr (std::is_same_v<T, EvError>) {
+                        std::string message = e.message.error_message.value_or("provider stream error");
+                        mark_error_once(message);
+                    }
+                }, ev);
+            });
+            stream.on_complete([&](AssistantMessage msg) {
+                emit_final_if_needed(msg);
+                mark_complete_once();
+            });
+            stream.on_error([&](std::exception_ptr ep) {
+                try {
+                    if (ep) std::rethrow_exception(ep);
+                } catch (const std::exception& e) {
+                    mark_error_once(e.what());
+                    return;
+                } catch (...) {
+                    mark_error_once("unknown provider stream error");
+                    return;
+                }
+                mark_error_once("unknown provider stream error");
+            });
+
+            try {
+                provider_fn(runtime_model, ctx, opts, stream);
+                mark_complete_once();
+            } catch (const std::exception& e) {
+                mark_error_once(e.what());
+            } catch (...) {
+                mark_error_once("unknown provider stream exception");
+            }
+        }).detach();
+
+        return stream_id;
 
     } catch (const json::parse_error& e) {
-        set_error("parse_error", std::string("Invalid JSON request: ") + e.what(), false);
+        set_error("parse_error", std::string("Invalid JSON stream request: ") + e.what(), false);
     } catch (const std::exception& e) {
-        set_error("internal_error", std::string("Internal error: ") + e.what(), false);
+        set_error("internal_error", std::string("Internal stream error: ") + e.what(), false);
     }
     return "";
 }

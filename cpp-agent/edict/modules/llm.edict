@@ -8,6 +8,8 @@
 # - `llm.init([preset-name])` -> provider object
 # - `llm.configure_bootstrap(bootstrap)` -> bootstrap override object
 # - `provider.request([prompt])` mutates provider state in place and returns `[ok]` or `fail`
+# - `provider.stream_start([prompt])` starts an async ghost-queue stream on the provider
+# - `provider.stream_sync()` drains pending stream tokens into provider.stream_last
 # - `provider.tools` exposes the first explicit file/shell tool wrappers from `agentc_tools`
 # - `provider < repl ! > pop /` enters a provider-driven chat loop until EOF
 
@@ -51,12 +53,17 @@ llm_bootstrap_repo_root ! @llm_bootstrap_override
     agentc_provider_local_runtime_config ! @local_qwen.runtime
     {"runtime": null, "system_prompt": "You are a helpful assistant."} @google_gemini
     agentc_provider_google_runtime_config ! @google_gemini.runtime
+    {"runtime": null, "system_prompt": "You are a concise helpful assistant."} @google_gemma
+    agentc_provider_google_runtime_config ! @google_gemma.runtime
+    [gemma-4-31b-it] @google_gemma.runtime.default_model
     {"runtime": null, "system_prompt": "You are a helpful coding assistant."} @openai_codex
     agentc_provider_openai_codex_runtime_config ! @openai_codex.runtime
     {"local-qwen": null,
      "local": null,
      "google-gemini-3-1-pro-preview": null,
      "google": null,
+     "google-gemma-4-31b-it": null,
+     "gemma-4-31b-it": null,
      "openai-codex": null,
      "gpt-5.3-codex": null,
      "gpt-5.1-codex-mini": null,
@@ -66,6 +73,8 @@ llm_bootstrap_repo_root ! @llm_bootstrap_override
     local_qwen @catalog.local
     google_gemini @catalog.google-gemini-3-1-pro-preview
     google_gemini @catalog.google
+    google_gemma @catalog.google-gemma-4-31b-it
+    google_gemma @catalog.gemma-4-31b-it
     openai_codex @catalog.openai-codex
     openai_codex @catalog.gpt-5.3-codex
     openai_codex @catalog.gpt-5.1-codex-mini
@@ -116,7 +125,7 @@ llm_bootstrap_repo_root ! @llm_bootstrap_override
     @preset_name
     llm_ensure_imports ! /
     preset_name llm_resolve_preset ! @preset
-    {"preset_name": "", "runtime": null, "conversation": null, "assistant_text": "", "last_response": null, "last_error": null, "request": "", "repl": "", "tools": null, "ext": null, "runtimeffi": null} @provider
+    {"preset_name": "", "runtime": null, "conversation": null, "assistant_text": "", "last_response": null, "last_error": null, "request": "", "stream_start": "", "stream_sync": "", "stream_id": "", "stream_runtime": null, "stream_last": null, "stream_text": "", "stream_complete": [], "repl": "", "tools": null, "ext": null, "runtimeffi": null} @provider
     preset_name @provider.preset_name
     preset.runtime @provider.runtime
     agentc_state_init(preset.system_prompt) @provider.conversation
@@ -124,6 +133,8 @@ llm_bootstrap_repo_root ! @llm_bootstrap_override
     runtimeffi @provider.runtimeffi
     agentc_tools @provider.tools
     [@__llm_prompt agentc_state_push_user(conversation __llm_prompt) @conversation runtime.provider_contract @__llm_provider_spec agentc_provider_build_turn_request(__llm_provider_spec runtime conversation) @__llm_request_value agentc_runtime_create(runtime) @__llm_runtime_handle agentc_call_json(__llm_runtime_handle __llm_request_value) @__llm_response_json agentc_last_error_json(__llm_runtime_handle) @__llm_error_json __llm_runtime_handle agentc_destroy ! / __llm_response_json from_json ! @__llm_response __llm_response @last_response __llm_error_json test & / __llm_error_json from_json ! @last_error last_error.message fail | / null @last_error __llm_response @conversation.last_response __llm_response.message @__llm_message / __llm_message.text @conversation.assistant_text / __llm_message ^conversation.messages^ conversation.assistant_text @assistant_text [ok]] @provider.request
+    [@__llm_prompt agentc_state_push_user(conversation __llm_prompt) @conversation runtime.provider_contract @__llm_provider_spec agentc_provider_build_turn_request(__llm_provider_spec runtime conversation) @__llm_request_value agentc_runtime_create(runtime) @stream_runtime stream_runtime __llm_request_value agentc_call_stream ! @stream_id "" @stream_text [] @stream_complete null @stream_last null @last_error [ok]] @provider.stream_start
+    [stream_runtime stream_id agentc_stream_sync ! @stream_last stream_last.tokens @assistant_text stream_last.complete @stream_complete stream_last.error test & / stream_last.error @last_error stream_last.error.message fail | / stream_last.complete test & / stream_runtime agentc_destroy ! / null @stream_runtime [ok] | / stream_last.ok] @provider.stream_sync
     [[Chat ready. Press Ctrl-D to exit.] print llm_provider_repl_loop()] @provider.repl
     provider
 ] @llm_init

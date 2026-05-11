@@ -88,14 +88,14 @@ print
     ASSERT_TRUE(parsed["messages"].is_array());
     ASSERT_EQ(parsed["messages"].size(), 2u);
     EXPECT_EQ(parsed["messages"][0]["role"].get<std::string>(), "user");
-    EXPECT_EQ(parsed["messages"][0]["text"].get<std::string>(), "demo prompt");
+    EXPECT_EQ(parsed["messages"][0]["content"].get<std::string>(), "demo prompt");
     EXPECT_EQ(parsed["messages"][1]["text"].get<std::string>(), "hello");
 }
 
 TEST(EdictStatefulLoopTest, StreamTurnActorLoopExecutesAndSynchronizes) {
     std::string extensionsLib = std::string(TEST_BUILD_DIR) + "/extensions/libagentc_extensions.so";
     std::string extensionsHeader = std::string(TEST_SOURCE_DIR) + "/extensions/agentc_stdlib.h";
-    std::string runtimeLib = std::string(TEST_BUILD_DIR) + "/cpp-agent/libagent_runtime.so";
+    std::string runtimeLib = std::string(TEST_BUILD_DIR) + "/cpp-agent/libagent_runtime_mock.so";
     std::string runtimeHeader = std::string(TEST_SOURCE_DIR) + "/cpp-agent/include/agentc_runtime/agentc_runtime.h";
 
     std::ostringstream script;
@@ -104,42 +104,24 @@ TEST(EdictStatefulLoopTest, StreamTurnActorLoopExecutesAndSynchronizes) {
     script << readFile(std::string(TEST_SOURCE_DIR) + "/cpp-agent/edict/modules/agentc.edict") << "\n";
     script << readFile(modulePath()) << "\n";
     
-    script << "    [\"system prompt\"] agentc_state_init ! @state\n";
-    script << "    {\"default_provider\":\"mock\",\"default_model\":\"mock-model\"} to_json ! agentc_runtime_create ! @rt\n";
+    script << "    [system prompt] agentc_state_init ! @state\n";
+    script << "    {\"default_provider\":\"mock\",\"default_model\":\"mock-model\"} agentc_runtime_create ! @rt\n";
     script << R"(
-    
-    # Run the streaming loop
-    rt state {"prompt": "hello"} agentc_state_stream_turn ! @next_state
-    
-    # Actually capture the state for final json print
-    next_state @final_state
-    
-    final_state to_json ! print
-    "DONE" print
+    rt state [hello] agentc_state_stream_start ! @session
+    session agentc_state_stream_sync ! @sync_result
+    {"session": null, "sync": null} @summary
+    session @summary.session
+    sync_result @summary.sync
+    summary to_json ! print
     rt agentc_destroy ! /
     )";
 
     const std::string output = runEdictScript(script.str());
     ASSERT_FALSE(output.empty());
     
-    // The output might have multiple lines due to prints inside the yield loop
-    // find the last line
-    std::istringstream stream(output);
-    std::string line;
-    std::string last_line;
-    while (std::getline(stream, line)) {
-        if (!line.empty()) last_line = line;
-    }
-    
-    std::string json_line;
-    std::istringstream find_stream(output);
-    std::string current;
-    while (std::getline(find_stream, current)) {
-        if (current.find("system_prompt") != std::string::npos) json_line = current;
-    }
-    
-
-    auto parsed = nlohmann::json::parse(json_line);
-    EXPECT_TRUE(parsed.contains("system_prompt"));
+    auto parsed = nlohmann::json::parse(output);
+    EXPECT_EQ(parsed["sync"]["tokens"].get<std::string>(), "mock-stream:hello");
+    EXPECT_FALSE(parsed["sync"]["complete"].empty());
+    EXPECT_EQ(parsed["session"]["state"]["last_prompt"].get<std::string>(), "hello");
 
 }

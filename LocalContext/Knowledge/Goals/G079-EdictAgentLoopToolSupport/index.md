@@ -61,7 +61,7 @@ provider.last_tool.content print
 - `./build/cpp-agent/cpp_agent_tests --gtest_filter='EdictLlmModuleTest.*:EdictAgentcModuleTest.ToolWrappersReadWriteReplaceAndShell:EdictAgentcModuleTest.ProviderCarriesToolSurfaceUnderCuratedLauncher:EdictAgentRootTest.*:AgentRootVmOpsTest.*'` — passed 17/17.
 - `./build/edict/edict_tests --gtest_filter='EdictVM.*'` — passed 22/22.
 
-Known unrelated baseline: `EdictAgentcModuleTest.StreamWrapperSpawnsAndSynchronizes` still fails because the deferred G074 stream wrapper/runtime JSON surface is incomplete.
+Follow-up: the previously noted unrelated stream-wrapper baseline failure was resolved when G074 landed later on 2026-05-11.
 
 ## Relationship To G078
 G078 establishes the Edict-resident loop and provider surface. G079 extends that loop with its first action/tool capabilities.

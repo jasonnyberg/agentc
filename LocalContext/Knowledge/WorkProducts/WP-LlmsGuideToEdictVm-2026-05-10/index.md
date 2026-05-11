@@ -275,6 +275,25 @@ Notes:
 - `provider.repl` is currently intended for launcher-backed no-arg `./edict.sh` sessions where the underlying process is a real line-oriented `EdictREPL`.
 - The loop reads stdin through `agentc_read_line_status !`, skips blank lines, and exits cleanly on EOF.
 
+### Pattern: Provider streaming
+
+G074 adds a first decoupled ghost-queue stream surface:
+
+```edict
+llm.init([gemma-4-31b-it]) @provider
+provider < [Reply exactly ok] stream_start ! > pop /
+-- later / after yielding or doing other work:
+provider < stream_sync ! > pop /
+provider.stream_last.tokens print
+```
+
+Important details:
+
+- `stream_start` creates `provider.stream_runtime` and `provider.stream_id`, then returns immediately after launching a detached native provider worker.
+- The background worker only touches C++ queue state, never Listree/VM memory.
+- `stream_sync` drains pending queue data on the VM/main thread into `provider.stream_last`, `provider.assistant_text`, and `provider.stream_complete`.
+- The low-cost Google preset aliases are `gemma-4-31b-it` and `google-gemma-4-31b-it`.
+
 ### Pattern: Provider-scoped tools
 
 G079 adds a first narrow tool surface through `agentc_tools` and `provider.tools`:

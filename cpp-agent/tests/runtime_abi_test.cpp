@@ -45,7 +45,7 @@ TEST(AgentRuntimeAbiTest, StreamApiReturnsHandlesAndSynchronizes) {
     ASSERT_NE(runtime, nullptr);
 
     // Call the streaming API
-    char* sid = agentc_runtime_stream_request_json(runtime, R"({"prompt":"hello"})");
+    char* sid = agentc_runtime_stream_request_json(runtime, R"({"prompt":"hello","stream_test_text":"hello-stream"})");
     ASSERT_NE(sid, nullptr);
     std::string stream_id = sid;
     agentc_runtime_free_string(sid);
@@ -58,7 +58,9 @@ TEST(AgentRuntimeAbiTest, StreamApiReturnsHandlesAndSynchronizes) {
     json parsed = json::parse(sync_res);
     
     EXPECT_TRUE(parsed.contains("tokens"));
+    EXPECT_EQ(parsed["tokens"].get<std::string>(), "hello-stream");
     EXPECT_TRUE(parsed.contains("complete"));
+    EXPECT_FALSE(parsed["complete"].empty());
     
     agentc_runtime_free_string(sync_res);
     agentc_runtime_destroy(runtime);

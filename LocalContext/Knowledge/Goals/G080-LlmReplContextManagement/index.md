@@ -28,7 +28,7 @@ Add explicit context-management behavior to the launcher-backed `llm` provider R
 - Build on the current launcher-backed `provider.repl()` seam instead of introducing a parallel host loop.
 
 ## Reassessment — 2026-05-11
-This is now the immediate next slice after G079 landed the first tool-use surface. Context management becomes more important once the loop can run longer engineering sessions. The first useful slice should likely be simple and inspectable: reset/clear history, summarize older turns, or enforce a retained-history limit through provider-owned state.
+This is now the immediate next slice after G079 landed the first tool-use surface and G074 landed the first real-time stream surface. Context management becomes more important once the loop can run longer engineering sessions with tools and streams. The first useful slice should likely be simple and inspectable: reset/clear history, summarize older turns, or enforce a retained-history limit through provider-owned state.
 
 ## Relationship To G078
 G078 establishes the Edict-owned loop. G080 makes that loop sustainable for longer-running interactions by adding first-class context management.

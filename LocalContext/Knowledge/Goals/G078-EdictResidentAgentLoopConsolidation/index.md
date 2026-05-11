@@ -60,12 +60,14 @@ G078 remains the top-level active consolidation track, but several implementatio
 - temporary C++ mirroring of Edict provider contracts during bootstrap/rehydration;
 - host-owned outer UX responsibilities in `cpp-agent/main.cpp` versus the newer launcher-backed `provider.repl()` path;
 - first Edict-resident tool/action semantics landed through G079; deeper model-driven tool policy remains future work;
+- first decoupled ghost-queue provider streaming surface landed through G074;
 - missing provider-session context management, now tracked as G080;
 - incomplete live-notebook/FFI documentation for LLM usability.
 
 Near-term execution should continue through G079 first, then G080, while keeping G078 as the parent architectural umbrella.
 
 ## Progress Notes
+- 2026-05-11: Completed G074's first streaming slice: runtime stream requests now launch detached provider workers, `agentc_stream_sync !` returns structured sync envelopes, provider objects expose `stream_start`/`stream_sync`, and a live Google/Gemma `gemma-4-31b-it` smoke test returned `ok`.
 - 2026-05-11: Completed G079's first tool/action slice: Edict now has file read/write/exact-replace and shell wrappers via `agentc_tools`, and provider objects expose them as `provider.tools` for provider-context use.
 - 2026-05-11: Reassessed after completing G081/G082/G083 and archiving completed goals. G078 stays active as the parent track; G079 is the immediate next implementation slice, G080 follows, and G074/G075 are deferred.
 - 2026-05-10: Landed the first Edict-side provider contract module (`agentc_provider_contracts.edict`) with `local` and `google` as contrasting shapes.

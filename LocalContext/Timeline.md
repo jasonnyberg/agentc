@@ -1,4 +1,6 @@
 ### 2026-05-11
+- Added 🔗[WP — G074 Real-time FFI Token Streaming](./Knowledge/WorkProducts/WP-G074-RealtimeFFITokenStreaming-2026-05-11/index.md), documenting the decoupled ghost-queue implementation, C ABI/Edict/provider surfaces, Google/Gemma streaming usage, current capabilities, and follow-up edges.
+- Completed 🔗[G074 — Real-time FFI Token Streaming](./Knowledge/Goals/G074-RealtimeFFITokenStreaming/index.md): implemented detached provider-worker streaming through `StreamManager`, structured `agentc_stream_sync` JSON envelopes, Edict wrappers/provider `stream_start`/`stream_sync`, Google `streamGenerateContent` SSE parsing, and live-validated `gemma-4-31b-it` returning `ok`.
 - Completed 🔗[G079 — Edict Agent Loop Tool Support](./Knowledge/Goals/G079-EdictAgentLoopToolSupport/index.md): added native JSON-envelope file read/write/exact-replace and shell helpers, Edict wrappers plus `agentc_tools`, attached tools as `provider.tools`, and validated direct wrappers plus a curated-launcher provider-context tool flow.
 - HRM archival/reassessment pass: retired 9 completed goals (G068, G071, G072, G073, G076, G077, G081, G082, G083) to `LocalContext/Knowledge/Archive/Goals/`, rebuilt Dashboard around 5 active/open goals, marked G074/G075 deferred, kept G078 active, and promoted G079 as the immediate next implementation slice with G080 planned behind it.
 

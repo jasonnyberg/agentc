@@ -159,6 +159,67 @@ print
     EXPECT_EQ(parsed["system_prompt"].get<std::string>(), "You are a helpful coding assistant.");
 }
 
+TEST(EdictLlmModuleTest, InitBuildsGoogleGemmaCheapPreset) {
+    const auto base = std::filesystem::path(TEST_SOURCE_DIR) / "cpp-agent" / "edict" / "modules";
+    const std::string agentcModule = readFile(base / "agentc.edict");
+    const std::string statefulModule = readFile(base / "agentc_stateful_loop.edict");
+    const std::string providerModule = readFile(base / "agentc_provider_contracts.edict");
+    const std::string llmModule = readFile(base / "llm.edict");
+
+    std::ostringstream script;
+    script << agentcModule << "\n";
+    script << statefulModule << "\n";
+    script << providerModule << "\n";
+    script << llmModule << "\n";
+    script << bootstrapJsonForMockRuntime() << R"( llm.configure_bootstrap ! /
+llm.init([gemma-4-31b-it]) @provider
+{"preset_name":"","runtime":null} @summary
+provider.preset_name @summary.preset_name
+provider.runtime @summary.runtime
+summary to_json !
+print
+)";
+
+    const std::string output = runEdictScript(script.str());
+    auto parsed = nlohmann::json::parse(output);
+    EXPECT_EQ(parsed["preset_name"].get<std::string>(), "gemma-4-31b-it");
+    EXPECT_EQ(parsed["runtime"]["default_provider"].get<std::string>(), "google");
+    EXPECT_EQ(parsed["runtime"]["default_model"].get<std::string>(), "gemma-4-31b-it");
+}
+
+TEST(EdictLlmModuleTest, ProviderStreamStartAndSyncUsesRuntimeStreamApi) {
+    const auto base = std::filesystem::path(TEST_SOURCE_DIR) / "cpp-agent" / "edict" / "modules";
+    const std::string agentcModule = readFile(base / "agentc.edict");
+    const std::string statefulModule = readFile(base / "agentc_stateful_loop.edict");
+    const std::string providerModule = readFile(base / "agentc_provider_contracts.edict");
+    const std::string llmModule = readFile(base / "llm.edict");
+
+    std::ostringstream script;
+    script << agentcModule << "\n";
+    script << statefulModule << "\n";
+    script << providerModule << "\n";
+    script << llmModule << "\n";
+    script << bootstrapJsonForMockRuntime() << R"( llm.configure_bootstrap ! /
+llm.init([local-qwen]) @provider
+provider < [stream prompt] stream_start ! > pop /
+provider < stream_sync ! > pop /
+{"stream_id":"","assistant_text":"","stream_last":null,"stream_complete":[]} @summary
+provider.stream_id @summary.stream_id
+provider.assistant_text @summary.assistant_text
+provider.stream_last @summary.stream_last
+provider.stream_complete @summary.stream_complete
+summary to_json !
+print
+)";
+
+    const std::string output = runEdictScript(script.str());
+    auto parsed = nlohmann::json::parse(output);
+    EXPECT_NE(parsed["stream_id"].get<std::string>().find("mock_stream_"), std::string::npos);
+    EXPECT_EQ(parsed["assistant_text"].get<std::string>(), "mock-stream:stream prompt");
+    EXPECT_EQ(parsed["stream_last"]["tokens"].get<std::string>(), "mock-stream:stream prompt");
+    EXPECT_FALSE(parsed["stream_complete"].empty());
+}
+
 TEST(EdictLlmModuleTest, ProviderRequestRunsTurnAndReturnsUpdatedProvider) {
     const auto base = std::filesystem::path(TEST_SOURCE_DIR) / "cpp-agent" / "edict" / "modules";
     const std::string agentcModule = readFile(base / "agentc.edict");

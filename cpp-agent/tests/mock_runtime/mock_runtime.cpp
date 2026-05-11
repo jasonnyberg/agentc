@@ -2,8 +2,10 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
 #include <new>
 #include <string>
+#include <unordered_map>
 
 #include <nlohmann/json.hpp>
 
@@ -16,6 +18,10 @@ struct MockRuntime {
     json last_error = nullptr;
     json last_trace = nullptr;
 };
+
+std::mutex stream_mutex;
+int next_stream_id = 1;
+std::unordered_map<std::string, std::string> stream_tokens;
 
 char* dup_cstr(const std::string& value) {
     char* out = static_cast<char*>(std::malloc(value.size() + 1));
@@ -124,6 +130,54 @@ char* agentc_runtime_request_json(void* runtime_ptr, const char* request_json) {
     } catch (...) {
         return dup_cstr(error_response(runtime, "internal_error", "mock runtime failed").dump());
     }
+}
+
+char* agentc_runtime_stream_request_json(void* runtime_ptr, const char* request_json) {
+    auto* runtime = static_cast<MockRuntime*>(runtime_ptr);
+    if (!runtime) {
+        return nullptr;
+    }
+
+    try {
+        const auto request = json::parse(request_json ? request_json : "{}");
+        std::string prompt = request.value("prompt", std::string());
+        if (prompt.empty() && request.contains("messages") && request["messages"].is_array() && !request["messages"].empty()) {
+            const auto& last_msg = request["messages"].back();
+            if (last_msg.contains("content") && last_msg["content"].is_string()) {
+                prompt = last_msg["content"].get<std::string>();
+            } else if (last_msg.contains("text") && last_msg["text"].is_string()) {
+                prompt = last_msg["text"].get<std::string>();
+            }
+        }
+        std::lock_guard<std::mutex> lock(stream_mutex);
+        const std::string stream_id = "mock_stream_" + std::to_string(next_stream_id++);
+        stream_tokens[stream_id] = "mock-stream:" + prompt;
+        runtime->last_error = nullptr;
+        runtime->last_trace = json{{"stream_id", stream_id}};
+        return dup_cstr(stream_id);
+    } catch (...) {
+        return dup_cstr("mock_stream_error");
+    }
+}
+
+char* agentc_runtime_stream_sync_json(void* runtime_ptr, const char* stream_id) {
+    (void)runtime_ptr;
+    const std::string sid = stream_id ? stream_id : "";
+    std::lock_guard<std::mutex> lock(stream_mutex);
+    auto it = stream_tokens.find(sid);
+    std::string tokens;
+    if (it != stream_tokens.end()) {
+        tokens = it->second;
+        stream_tokens.erase(it);
+    }
+    const json response = {
+        {"ok", json::array({"ok"})},
+        {"stream_id", sid},
+        {"tokens", tokens},
+        {"complete", json::array({"complete"})},
+        {"error", nullptr}
+    };
+    return dup_cstr(response.dump());
 }
 
 char* agentc_runtime_last_error_json(void* runtime_ptr) {

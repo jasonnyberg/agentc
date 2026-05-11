@@ -14,6 +14,8 @@
 #   agentc_read_json_file !      ( config_path -- config_value )
 #   agentc_call_json !           ( runtime_handle request_value -- response_json_string )
 #   agentc_call !               ( runtime_handle request_value -- response_value )
+#   agentc_call_stream !        ( runtime_handle request_value -- stream_id )
+#   agentc_stream_sync !        ( runtime_handle stream_id -- stream_sync_value )
 #   agentc_last_error_json !     ( runtime_handle -- json_string_or_null )
 #   agentc_last_error !          ( runtime_handle -- value_or_null )
 #   agentc_last_trace_json !     ( runtime_handle -- json_string_or_null )
@@ -42,6 +44,8 @@
 [@config_path @runtime_handle config_path agentc_read_json_file ! runtime_handle swap agentc_configure !] @agentc_configure_path
 [@request_value @runtime_handle request_value to_json ! @request_json request_json ext.agentc_ext_string_to_cstr_ltv ! @request_cstr runtime_handle request_cstr runtimeffi.agentc_runtime_request_json ! @response_cstr request_cstr ext.agentc_ext_memory_free ! / response_cstr ext.agentc_ext_string_from_cstr ! @response_json response_cstr runtimeffi.agentc_runtime_free_string ! / response_json] @agentc_call_json
 [@request_value @runtime_handle runtime_handle request_value agentc_call_json ! @response_json response_json from_json !] @agentc_call
+[@request_value @runtime_handle request_value to_json ! @request_json request_json ext.agentc_ext_string_to_cstr_ltv ! @request_cstr runtime_handle request_cstr runtimeffi.agentc_runtime_stream_request_json ! @stream_cstr request_cstr ext.agentc_ext_memory_free ! / stream_cstr ext.agentc_ext_string_from_cstr ! @stream_id stream_cstr runtimeffi.agentc_runtime_free_string ! / stream_id] @agentc_call_stream
+[@stream_id @runtime_handle stream_id ext.agentc_ext_string_to_cstr_ltv ! @stream_cstr runtime_handle stream_cstr runtimeffi.agentc_runtime_stream_sync_json ! @sync_cstr stream_cstr ext.agentc_ext_memory_free ! / sync_cstr ext.agentc_ext_string_from_cstr ! @sync_json sync_cstr runtimeffi.agentc_runtime_free_string ! / sync_json from_json !] @agentc_stream_sync
 [@runtime_handle runtime_handle runtimeffi.agentc_runtime_last_error_json ! @error_cstr error_cstr ext.agentc_ext_string_from_cstr ! @error_json error_cstr runtimeffi.agentc_runtime_free_string ! / error_json] @agentc_last_error_json
 [@runtime_handle runtime_handle agentc_last_error_json ! @error_json error_json from_json !] @agentc_last_error
 [@runtime_handle runtime_handle runtimeffi.agentc_runtime_last_trace_json ! @trace_cstr trace_cstr ext.agentc_ext_string_from_cstr ! @trace_json trace_cstr runtimeffi.agentc_runtime_free_string ! / trace_json] @agentc_last_trace_json

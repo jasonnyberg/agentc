@@ -219,7 +219,7 @@ TEST(EdictAgentcModuleTest, StreamWrapperSpawnsAndSynchronizes) {
     script << "[" << projectConfigPath() << "] agentc_runtime_create_path ! @rt\n";
     
     script << R"(
-    rt {"prompt": "hello"} agentc_call_stream ! @sid
+    rt {"prompt": "hello", "stream_test_text": "hello-stream"} agentc_call_stream ! @sid
     rt sid agentc_stream_sync ! @sync_result
     sync_result to_json ! print
     rt agentc_destroy ! /
@@ -230,5 +230,7 @@ TEST(EdictAgentcModuleTest, StreamWrapperSpawnsAndSynchronizes) {
     
     auto parsed = nlohmann::json::parse(jsonText);
     ASSERT_TRUE(parsed.contains("complete"));
+    ASSERT_FALSE(parsed["complete"].empty());
     ASSERT_TRUE(parsed.contains("tokens"));
+    EXPECT_EQ(parsed["tokens"].get<std::string>(), "hello-stream");
 }
