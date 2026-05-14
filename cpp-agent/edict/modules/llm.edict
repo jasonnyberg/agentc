@@ -11,7 +11,7 @@
 # - `provider.stream_start([prompt])` starts an async ghost-queue stream on the provider
 # - `provider.stream_sync()` drains pending stream tokens into provider.stream_last
 # - `provider.tools` exposes the first explicit file/shell tool wrappers from `agentc_tools`
-# - `provider < repl! > pop /` enters a provider-driven chat loop until EOF
+# - `provider < repl! > / /` enters a provider-driven chat loop until EOF
 
 [] @llm_bootstrap_override
 
@@ -85,7 +85,7 @@ llm_bootstrap_repo_root! @llm_bootstrap_override
 [
     @preset_name
     llm_preset_catalog! @catalog
-    catalog < preset_name! > pop @preset
+    catalog < preset_name! > / @preset
     preset test &
         [Unknown llm preset] fail
     |
@@ -108,7 +108,7 @@ llm_bootstrap_repo_root! @llm_bootstrap_override
         / [bye]
     |
         / __llm_input.line test &
-            / __llm_input.line @provider.__llm_prompt provider < __llm_prompt request! > pop &
+            / __llm_input.line @provider.__llm_prompt provider < __llm_prompt request! > / &
                 [Assistant] print
                 provider.assistant_text print
                 llm_provider_repl_loop()

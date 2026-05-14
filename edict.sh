@@ -61,7 +61,7 @@ EOF
 emit_default_chat() {
   cat <<EOF
 llm.init([$EDICT_DEFAULT_PRESET]) @provider
-provider < repl! > pop /
+provider < repl! > / /
 EOF
 }
 

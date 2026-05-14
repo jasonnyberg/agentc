@@ -192,8 +192,8 @@ TEST(EdictAgentcModuleTest, ProviderCarriesToolSurfaceUnderCuratedLauncher) {
 
     std::ostringstream script;
     script << "llm.init([local-qwen]) @provider\n";
-    script << "provider < [" << target.string() << "] [provider tool text] tools.write_file! @tool_write_result > pop /\n";
-    script << "provider < [" << target.string() << "] tools.read_file! @tool_read_result > pop /\n";
+    script << "provider < [" << target.string() << "] [provider tool text] tools.write_file! @tool_write_result > / /\n";
+    script << "provider < [" << target.string() << "] tools.read_file! @tool_read_result > / /\n";
     script << R"({"write":null,"read":null} @summary
 provider.tool_write_result @summary.write
 provider.tool_read_result @summary.read

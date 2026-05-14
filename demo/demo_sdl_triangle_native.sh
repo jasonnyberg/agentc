@@ -40,7 +40,7 @@ cd "$PROJECT_ROOT"
 export LD_LIBRARY_PATH="$SDL3_ROOT/lib64:$SDL3_ROOT/lib:${LD_LIBRARY_PATH:-}"
 
 "$EDICT" - <<EDICT
-unsafe_extensions_allow! pop
+unsafe_extensions_allow! /
 [$EXT_LIB] [$EXT_HDR] resolver.import! @ext
 [$SDL3_LIB] [$SDL3_HDR] resolver.import! @sdl
 

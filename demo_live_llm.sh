@@ -8,7 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 llm.init([google]) @provider
 
 "Sending request: 'What is the capital of France?'" print
-provider < [What is the capital of France?] request! > pop /
+provider < [What is the capital of France?] request! > / /
 
 "LLM Response:" print
 provider.assistant_text print

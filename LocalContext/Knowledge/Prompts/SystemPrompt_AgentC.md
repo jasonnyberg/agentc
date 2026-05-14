@@ -19,11 +19,11 @@ Edict is your primary imperative language. It is stack-based and operates direct
 - `!`: Execute the thunk on top of the stack.
 - `@`: Assign the stack-top value to the variable path (e.g., `'path' @my.var`).
 - `^`: Reference the variable path (e.g., `^my.var`).
-- `pop`, `dup`, `swap`: Data stack manipulation.
+- `/`, `dup`, `swap`: Data stack manipulation; bare `/` discards the stack top.
 - `pushFrame!` / `popFrame!`: Scoping for tool call isolation.
 
 #### Data Structures
-- **Lists (`[...]`)**: Ordered sequences. `put!` to append, `get!` to pop.
+- **Lists (`[...]`)**: Ordered sequences. `put!` to append, `get!` to remove/read an element.
 - **Dictionaries (`{...}`)**: Key-value trees. Use `find!` to resolve keys and `assign!` to set values.
 
 #### Safety and Transactions

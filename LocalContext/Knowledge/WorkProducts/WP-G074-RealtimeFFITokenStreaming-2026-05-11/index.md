@@ -75,8 +75,8 @@ Fields:
 Methods/thunks:
 
 ```edict
-provider < [prompt] stream_start! > pop /
-provider < stream_sync! > pop /
+provider < [prompt] stream_start! > / /
+provider < stream_sync! > / /
 ```
 
 `stream_start` appends the user prompt to provider conversation, builds the canonical request, creates a runtime handle, starts the background stream, and records `stream_id` / `stream_runtime`.
@@ -123,13 +123,13 @@ Use the curated launcher and a provider preset:
 
 ```edict
 llm.init([gemma-4-31b-it]) @provider
-provider < [Reply exactly ok] stream_start! > pop /
+provider < [Reply exactly ok] stream_start! > / /
 ```
 
 Later, after yielding, doing other work, or waiting briefly:
 
 ```edict
-provider < stream_sync! > pop /
+provider < stream_sync! > / /
 provider.stream_last.tokens print
 ```
 
@@ -162,7 +162,7 @@ sync.tokens print
 The implementation was live-validated with the inexpensive Google/Gemma preset:
 
 ```bash
-EDICT_AUTO_CHAT=0 ./edict.sh -e 'llm.init([gemma-4-31b-it]) @provider provider < [Reply with exactly two lowercase letters: ok] stream_start! > pop / provider < [sleep 15] tools.shell! @sleep_result > pop / provider < stream_runtime stream_id agentc_stream_sync! @manual_sync > pop / provider.manual_sync to_json! print provider < stream_runtime agentc_destroy! > pop /'
+EDICT_AUTO_CHAT=0 ./edict.sh -e 'llm.init([gemma-4-31b-it]) @provider provider < [Reply with exactly two lowercase letters: ok] stream_start! > / / provider < [sleep 15] tools.shell! @sleep_result > / / provider < stream_runtime stream_id agentc_stream_sync! @manual_sync > / / provider.manual_sync to_json! print provider < stream_runtime agentc_destroy! > / /'
 ```
 
 Observed result:

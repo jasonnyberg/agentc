@@ -31,7 +31,7 @@ echo "--- Sending Logic Setup and Query via Socket ---"
 # We use socat to connect to the Unix Domain Socket
 cat <<EOF | socat - UNIX-CONNECT:$SOCKET_PATH > kanren_demo_socket.log 2>&1
 # 1. Allow FFI Extensions
-unsafe_extensions_allow! pop
+unsafe_extensions_allow! /
 
 # 2. Import the Logic Engine FFI
 [$KANREN_LIB] [$KANREN_HDR] resolver.import! @logicffi

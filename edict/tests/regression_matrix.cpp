@@ -67,7 +67,7 @@ std::string getEdictSyntax(int op) {
         // Stack
         case VMOP_DUP: return "dup";
         case VMOP_SWAP: return "swap";
-        case VMOP_POP: return "pop";
+        case VMOP_POP: return "/";
         
         // Dictionary
         case VMOP_REF: return "$";

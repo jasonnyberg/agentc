@@ -134,7 +134,7 @@ TEST_F(VMStackTest, SpeculateFailureReturnsNullWithoutChangingBaseline) {
 }
 
 TEST_F(VMStackTest, SpeculateRollsBackNestedMutationInRunningVm) {
-    execute("[] @session session speculate ['draft @mode] pop session mode");
+    execute("[] @session session speculate ['draft @mode] / session mode");
 
     auto mode = vm.popData();
     ASSERT_TRUE(mode);
@@ -160,7 +160,7 @@ TEST_F(VMStackTest, SpeculateRollsBackRewriteRulesDefinedInsideProbe) {
 }
 
 TEST_F(VMStackTest, SpeculateRollsBackClosureDrivenMutation) {
-    execute("[] @session [session 'draft @mode] @mark_mode session speculate [mark_mode!] pop session mode");
+    execute("[] @session [session 'draft @mode] @mark_mode session speculate [mark_mode!] / session mode");
 
     auto mode = vm.popData();
     ASSERT_TRUE(mode);
@@ -168,7 +168,7 @@ TEST_F(VMStackTest, SpeculateRollsBackClosureDrivenMutation) {
 }
 
 TEST_F(VMStackTest, NestedSpeculateKeepsInnerMutationIsolatedFromOuterProbe) {
-    execute("[] @session speculate [session speculate ['inner @mode] pop session mode]");
+    execute("[] @session speculate [session speculate ['inner @mode] / session mode]");
 
     auto speculative = vm.popData();
     ASSERT_TRUE(speculative);

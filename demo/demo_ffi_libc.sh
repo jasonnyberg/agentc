@@ -17,7 +17,7 @@ echo
 
 echo "--- Section 1: Integer Math (abs) ---"
 "$EDICT" - <<'EDICT'
-unsafe_extensions_allow! pop
+unsafe_extensions_allow! /
 'libc.so.6 resolver.load!
 '/usr/include/stdlib.h parser.__native.map! @stdlib
 
@@ -41,7 +41,7 @@ EDICT
 echo
 echo "--- Section 2: Char Classification ---"
 "$EDICT" - <<'EDICT'
-unsafe_extensions_allow! pop
+unsafe_extensions_allow! /
 'libc.so.6 resolver.load!
 '/usr/include/ctype.h parser.__native.map! @ctype
 
@@ -105,7 +105,7 @@ EDICT
 echo
 echo "--- Section 3: Randomness (srand / rand) ---"
 "$EDICT" - <<'EDICT'
-unsafe_extensions_allow! pop
+unsafe_extensions_allow! /
 'libc.so.6 resolver.load!
 '/usr/include/stdlib.h parser.__native.map! @stdlib
 
@@ -132,7 +132,7 @@ EDICT
 echo
 echo "--- Section 4: Float Math (sqrt, fabs, ceil, floor, pow) ---"
 "$EDICT" - <<'EDICT'
-unsafe_extensions_allow! pop
+unsafe_extensions_allow! /
 'libc.so.6 resolver.load!
 'libm.so.6 resolver.load!
 '/usr/include/math.h parser.__native.map! @math
@@ -183,7 +183,7 @@ echo "--- Section 5: Double Chaining ---"
 # Double return values are Edict string literals, so they chain directly
 # into subsequent double-taking functions via the stod conversion path.
 "$EDICT" - <<'EDICT'
-unsafe_extensions_allow! pop
+unsafe_extensions_allow! /
 'libc.so.6 resolver.load!
 'libm.so.6 resolver.load!
 '/usr/include/math.h parser.__native.map! @math
@@ -219,7 +219,7 @@ echo
 echo "--- Section 6: Two-Arg Double Functions ---"
 # Functions that consume two double args (both accepted as strings or chained values).
 "$EDICT" - <<'EDICT'
-unsafe_extensions_allow! pop
+unsafe_extensions_allow! /
 'libc.so.6 resolver.load!
 'libm.so.6 resolver.load!
 '/usr/include/math.h parser.__native.map! @math
@@ -264,7 +264,7 @@ echo "=== Demo complete ==="
 echo
 echo "--- Section 7: Heap Utilization (after all sections) ---"
 "$EDICT" - <<'EDICT'
-unsafe_extensions_allow! pop
+unsafe_extensions_allow! /
 'libc.so.6 resolver.load!
 'libm.so.6 resolver.load!
 '/usr/include/stdlib.h parser.__native.map! @stdlib

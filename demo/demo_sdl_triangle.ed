@@ -1,4 +1,4 @@
-unsafe_extensions_allow! pop
+unsafe_extensions_allow! /
 
 [./build/demo/libagentc_sdl_triangle_demo.so] [./demo/demo_sdl_triangle_bridge.h] resolver.import! @sdl
 

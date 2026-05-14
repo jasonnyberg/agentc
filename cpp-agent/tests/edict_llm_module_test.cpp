@@ -248,7 +248,7 @@ TEST(EdictLlmModuleTest, LiveGoogleGemmaRequestReturnsOkWhenCredentialsArePresen
     script << llmModule << "\n";
     script << bootstrapJsonForLiveRuntime() << R"( llm.configure_bootstrap! /
 llm.init([gemma-4-31b-it]) @provider
-provider < [Reply with exactly two lowercase letters: ok] request! > pop /
+provider < [Reply with exactly two lowercase letters: ok] request! > / /
 provider.assistant_text print
 )";
 
@@ -270,8 +270,8 @@ TEST(EdictLlmModuleTest, ProviderStreamStartAndSyncUsesRuntimeStreamApi) {
     script << llmModule << "\n";
     script << bootstrapJsonForMockRuntime() << R"( llm.configure_bootstrap! /
 llm.init([local-qwen]) @provider
-provider < [stream prompt] stream_start! > pop /
-provider < stream_sync! > pop /
+provider < [stream prompt] stream_start! > / /
+provider < stream_sync! > / /
 {"stream_id":"","assistant_text":"","stream_last":null,"stream_complete":[]} @summary
 provider.stream_id @summary.stream_id
 provider.assistant_text @summary.assistant_text
@@ -303,7 +303,7 @@ TEST(EdictLlmModuleTest, ProviderRequestRunsTurnAndReturnsUpdatedProvider) {
     script << llmModule << "\n";
     script << bootstrapJsonForMockRuntime() << R"( llm.configure_bootstrap! /
 llm.init([local-qwen]) @provider
-provider < [What is the capital of France?] request! > pop /
+provider < [What is the capital of France?] request! > / /
 {"assistant_text":"","last_response":null,"messages":[]} @summary
 provider.assistant_text @summary.assistant_text
 provider.conversation.last_response @summary.last_response
@@ -340,8 +340,8 @@ TEST(EdictLlmModuleTest, ProviderRequestSupportsRepeatedTurns) {
     script << llmModule << "\n";
     script << bootstrapJsonForMockRuntime() << R"( llm.configure_bootstrap! /
 llm.init([local-qwen]) @provider
-provider < [first] request! > pop /
-provider < [second] request! > pop /
+provider < [first] request! > / /
+provider < [second] request! > / /
 {"assistant_text":"","last_response":null,"messages":[]} @summary
 provider.assistant_text @summary.assistant_text
 provider.conversation.last_response @summary.last_response
@@ -365,7 +365,7 @@ print
 TEST(EdictLlmModuleTest, ProviderReplHandlesMultiplePromptsAndEof) {
     const std::string output = runLauncherReplScript(
         "llm.init([local-qwen]) @provider\n"
-        "provider < repl! > pop /\n"
+        "provider < repl! > / /\n"
         "Hello from repl\n"
         "\n"
         "Second prompt\n",

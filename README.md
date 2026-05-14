@@ -188,26 +188,26 @@ Object/context mutation:
 {} @provider
 provider <
   [local-qwen] @preset_name
-> pop /                -- CTX_POP returns provider; pop + / discard extra refs
+> / /                  -- CTX_POP returns provider; / / discards return + provider refs
 ```
 
 Provider-style method calls mutate the current provider object in place:
 
 ```edict
 llm.init([gemma-4-31b-it]) @provider
-provider < [Reply with exactly two lowercase letters: ok] request! > pop /
+provider < [Reply with exactly two lowercase letters: ok] request! > / /
 provider.assistant_text print
 ```
 
 Important syntax clarifications:
 
-- Bare `/` is stack discard (`POP`).
+- Bare `/` is stack discard (`VMOP_POP`); `pop` is not a compiler keyword.
 - `/name` removes a dictionary binding.
 - `/ /` discards two stack items.
 - `//name` is a no-space sigil chain over `name`; bare `//` is invalid.
 - `< ... >` enters a value's namespace for in-place mutation, then pushes the context object
   back when leaving.
-- `provider < method! > pop /` is the common fire-and-forget mutating method pattern.
+- `provider < method! > / /` is the common fire-and-forget mutating method pattern.
 
 Logic query example, runnable from the project root as a script. The interactive REPL reads
 one line at a time, so paste multi-line object literals through `edict -`, a file, or `-e`
@@ -364,7 +364,7 @@ EDICT_AUTO_CHAT=0 ./edict.sh -e 'llm.catalog! to_json! print'
 Live Google/Gemma smoke, when credentials are present:
 
 ```bash
-EDICT_AUTO_CHAT=0 ./edict.sh -e 'llm.init([gemma-4-31b-it]) @provider provider < [Reply with exactly two lowercase letters: ok] request! > pop / provider.assistant_text print'
+EDICT_AUTO_CHAT=0 ./edict.sh -e 'llm.init([gemma-4-31b-it]) @provider provider < [Reply with exactly two lowercase letters: ok] request! > / / provider.assistant_text print'
 ```
 
 Optional SDL3 demo:

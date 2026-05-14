@@ -69,18 +69,18 @@ protected:
 };
 
 // Test 1: Stack Isolation
-// A function should not be able to "see" or "pop" items from the parent stack
+// A function should not be able to see or discard items from the parent stack
 // when called via the f(args) syntax.
 TEST_F(CallIsolationTest, StackIsolation) {
-    // Define a function that tries to pop an item
-    execute("[pop] @f");
+    // Define a function that tries to discard an item with bare `/`.
+    execute("[/] @f");
     
     // Push an item to the parent stack
     execute("[parent_item]");
     
-    // Call f with its own arguments
-    // f() should isolate, evaluate its empty args, and then run 'pop'.
-    // Since the frame is isolated, 'pop' should fail or at least NOT pop 'parent_item'.
+    // Call f with its own arguments.
+    // f() should isolate, evaluate its empty args, and then run `/`.
+    // Since the frame is isolated, `/` should not discard `parent_item`.
     execute("f()");
     
     // Check stack

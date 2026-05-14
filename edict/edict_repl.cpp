@@ -131,7 +131,7 @@ void EdictREPL::printHelp() {
     output << "  !          - Evaluate (executes code from the stack)" << std::endl;
     output << "  @          - Assign (assigns a value to a name)" << std::endl;
     output << "  $          - Reference (gets a value by name)" << std::endl;
-    output << "  /          - Remove (removes a name from the dictionary)" << std::endl;
+    output << "  /          - Discard stack top; /name removes a dictionary binding" << std::endl;
     output << "  {}         - Context (creates a new dictionary context)" << std::endl;
     output << std::endl;
 }

@@ -328,7 +328,7 @@ void EdictCompiler::compileTerm() {
                         emitOperation(VMOP_ASSIGN);
                     } else if (sigil == "/") {
                         // In a concatenated prefix chain such as /@name, intermediate removals
-                        // pop the binding head without cleaning up the live dictionary entry.
+                        // remove the binding head without cleaning up the live dictionary entry.
                         // A terminal /name preserves the legacy remove-and-cleanup behavior.
                         emitOperation((i + 1 < sigils.size()) ? VMOP_REMOVE_HEAD : VMOP_REMOVE);
                     }
@@ -460,7 +460,6 @@ void EdictCompiler::compileIdentifier() {
     // Check for keywords
     if (identifier == "dup") { output.addOp(VMOP_DUP); }
     else if (identifier == "swap") { output.addOp(VMOP_SWAP); }
-    else if (identifier == "pop") { output.addOp(VMOP_POP); }
     else if (identifier == "print") { output.addOp(VMOP_PRINT); }
     else if (identifier == "fail") { output.addOp(VMOP_FAIL); }
     else if (identifier == "test") { output.addOp(VMOP_TEST); }

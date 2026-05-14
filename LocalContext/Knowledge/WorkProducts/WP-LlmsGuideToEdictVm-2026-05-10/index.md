@@ -35,7 +35,7 @@ The compiler is very direct.
   - Compiles as push `name` then `REMOVE`.
 - Concatenated no-space prefix sigils such as `/@name`
   - Compile as a single prefix chain over the same identifier, with sigils applied left-to-right.
-  - Example: `[x]@a [y]/@a` means assign `x` to `a`, then for `a` pop the current binding head and assign `y`.
+  - Example: `[x]@a [y]/@a` means assign `x` to `a`, then for `a` remove the current binding head and assign `y`.
   - Multi-sigil chains are generalized: `[x]@a [y]@a [z]@a //a` pops `z`, then `y`, leaving `a == x`.
   - Intermediate `/` in a chain uses non-cleaning `REMOVE_HEAD` so the live dictionary entry survives until the chain finishes; a terminal `/name` keeps legacy cleanup semantics.
 - Bare `/`
@@ -181,7 +181,7 @@ This is the source of a major design trap:
 - So plain `@last_response` or `@assistant_text` will hit the isolated frame, not necessarily the owner object.
 
 ## 9. Context Scopes
-`<` and `>` push/pop dynamic scope.
+`<` and `>` enter and leave dynamic scope.
 
 - `ctx < ... >` makes `ctx` the innermost dictionary scope.
 - Identifier lookup inside the block can resolve against that pushed object.
@@ -193,12 +193,12 @@ Important current VM behavior from `op_CTX_POP()`:
 
 Practical consequence:
 
-- Many useful patterns need a trailing `pop` to discard the returned context object.
+- Many useful patterns need a trailing bare `/` to discard the returned context object.
 
 Example dynamic lookup pattern:
 
 ```edict
-catalog < preset_name! > pop
+catalog < preset_name! > /
 ```
 
 This is the current clean way to resolve a named preset object from a dict catalog when direct string equality is inconvenient or unavailable.
@@ -209,7 +209,7 @@ If you need to mutate an object in place, do not rely on isolated-call syntax al
 Reliable pattern:
 
 ```edict
-provider < [hello] request! > pop /
+provider < [hello] request! > / /
 ```
 
 Why it works:
@@ -217,8 +217,8 @@ Why it works:
 - `provider < ... >` makes `provider` the current scope.
 - `[hello]` pushes the prompt onto the data stack.
 - `request!` evaluates the request thunk in the provider's context, not a fresh method-local context.
-- `pop` discards the context object returned by `CTX_POP`.
-- `/` discards the explicit success sentinel if you do not need it.
+- The first `/` discards the context object returned by `CTX_POP`.
+- The second `/` discards the explicit success sentinel if you do not need it.
 
 Inside a mutating request thunk, avoid temporary named locals on the provider unless you actually want persistent fields.
 
@@ -227,7 +227,7 @@ When a mutating thunk needs helper words that themselves bind locals (for exampl
 Prefer stack-passing style:
 
 ```edict
-[dup @last pop [ok]]
+[dup @last / [ok]]
 ```
 
 That duplicates the prompt, assigns one copy to `last`, drops the extra prompt, and returns `[ok]`.
@@ -261,7 +261,7 @@ Use it for:
 
 ```edict
 llm.init([local-qwen]) @provider
-provider < [What is the capital of France?] request! > pop /
+provider < [What is the capital of France?] request! > / /
 provider.assistant_text print
 ```
 
@@ -269,7 +269,7 @@ provider.assistant_text print
 
 ```edict
 llm.init([local-qwen]) @provider
-provider < repl! > pop /
+provider < repl! > / /
 ```
 
 Notes:
@@ -283,9 +283,9 @@ G074 adds a first decoupled ghost-queue stream surface:
 
 ```edict
 llm.init([gemma-4-31b-it]) @provider
-provider < [Reply exactly ok] stream_start! > pop /
+provider < [Reply exactly ok] stream_start! > / /
 -- later / after yielding or doing other work:
-provider < stream_sync! > pop /
+provider < stream_sync! > / /
 provider.stream_last.tokens print
 ```
 
@@ -302,8 +302,8 @@ G079 adds a first narrow tool surface through `agentc_tools` and `provider.tools
 
 ```edict
 llm.init([local-qwen]) @provider
-provider < [/tmp/note.txt] [hello] tools.write_file! @last_tool > pop /
-provider < [/tmp/note.txt] tools.read_file! @last_tool > pop /
+provider < [/tmp/note.txt] [hello] tools.write_file! @last_tool > / /
+provider < [/tmp/note.txt] tools.read_file! @last_tool > / /
 provider.last_tool.content print
 ```
 
@@ -319,7 +319,7 @@ Each result uses an explicit `ok` list sentinel (`["ok"]` or `[]`), so branch on
 ### Pattern: Success/failure control flow
 
 ```edict
-provider < [prompt text] request! > pop &
+provider < [prompt text] request! > / &
   provider.assistant_text print
 |
   provider.last_error.message print
@@ -349,7 +349,7 @@ lax!
 ```edict
 llm.catalog! @catalog
 [local-qwen] @preset_name
-catalog < preset_name! > pop
+catalog < preset_name! > /
 ```
 
 ### Pattern: Head-binding replacement when needed
@@ -358,7 +358,7 @@ catalog < preset_name! > pop
 new_value /@provider
 ```
 
-This is a concatenated prefix-sigil chain. It pops the current head value of `provider` without cleaning up the live dictionary entry, then assigns `new_value` to `provider`.
+This is a concatenated prefix-sigil chain. It removes the current head value of `provider` without cleaning up the live dictionary entry, then assigns `new_value` to `provider`.
 
 ### Pattern: Avoid object-truthiness bugs
 
@@ -384,7 +384,7 @@ or:
 - Missing symbol lookup returns the symbol string.
 - String booleans are truthy if non-empty.
 - Dict/object truthiness is currently not reliable for branching.
-- `CTX_POP` returns the context object back onto the stack; callers often need `pop`.
+- `CTX_POP` returns the context object back onto the stack; callers often need bare `/` to discard it.
 - Isolated calls are great for local computation, but they are the wrong default tool for mutating owner objects.
 - Rebinding with `@name` adds a new history head; it does not erase prior values.
 

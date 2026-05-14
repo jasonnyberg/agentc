@@ -50,8 +50,8 @@ Provider-scoped usage pattern:
 
 ```edict
 llm.init([local-qwen]) @provider
-provider < [/tmp/note.txt] [hello] tools.write_file! @last_tool > pop /
-provider < [/tmp/note.txt] tools.read_file! @last_tool > pop /
+provider < [/tmp/note.txt] [hello] tools.write_file! @last_tool > / /
+provider < [/tmp/note.txt] tools.read_file! @last_tool > / /
 provider.last_tool.content print
 ```
 

@@ -32,7 +32,7 @@ echo
 echo "--- Section 1: Parse time.h and inspect struct timespec fields ---"
 # ---------------------------------------------------------------------------
 "$EDICT" - <<'EDICT'
-unsafe_extensions_allow! pop
+unsafe_extensions_allow! /
 '/usr/include/time.h parser.__native.map! @timedefs
 
 # Inspect the timespec type definition
@@ -60,7 +60,7 @@ echo
 echo "--- Section 2: Box a struct timespec value ---"
 # ---------------------------------------------------------------------------
 "$EDICT" - <<'EDICT'
-unsafe_extensions_allow! pop
+unsafe_extensions_allow! /
 '/usr/include/time.h parser.__native.map! @timedefs
 
 # Build source LTV using JSON dict literal syntax
@@ -79,7 +79,7 @@ echo
 echo "--- Section 3: Round-trip — box then unbox ---"
 # ---------------------------------------------------------------------------
 "$EDICT" - <<'EDICT'
-unsafe_extensions_allow! pop
+unsafe_extensions_allow! /
 '/usr/include/time.h parser.__native.map! @timedefs
 
 { "tv_sec": "1234567890", "tv_nsec": "500000000" } @src
@@ -101,7 +101,7 @@ echo
 echo "--- Section 4: Free the boxed allocation ---"
 # ---------------------------------------------------------------------------
 "$EDICT" - <<'EDICT'
-unsafe_extensions_allow! pop
+unsafe_extensions_allow! /
 '/usr/include/time.h parser.__native.map! @timedefs
 
 { "tv_sec": "9999999999", "tv_nsec": "123456789" } @src
@@ -118,7 +118,7 @@ echo
 echo "--- Section 5: struct timeval round-trip (different field names) ---"
 # ---------------------------------------------------------------------------
 "$EDICT" - <<'EDICT'
-unsafe_extensions_allow! pop
+unsafe_extensions_allow! /
 '/usr/include/sys/time.h parser.__native.map! @sysTime
 
 # struct timeval { tv_sec: __time_t (long), tv_usec: __suseconds_t (long) }

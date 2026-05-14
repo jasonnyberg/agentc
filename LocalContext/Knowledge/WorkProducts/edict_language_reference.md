@@ -220,19 +220,14 @@ Arrays are only valid inside JSON object literals:
 -- stack: [ "a", "b" ]   (was [ "b", "a" ])
 ```
 
-### `pop` — Discard the top
-
-```edict
-'a 'b pop
--- stack: [ "a" ]
-```
-
-### `/` (bare) — Also discards the top
+### `/` (bare) — Discard the top
 
 ```edict
 'a 'b /
 -- stack: [ "a" ]
 ```
+
+Bare `/` is the only documented stack-discard spelling. The older English alias is intentionally not a compiler keyword. Bare `/` is distinct from `/name`, which removes a dictionary binding, and from no-space sigil chains such as `//name`.
 
 ---
 
@@ -279,7 +274,7 @@ No-space prefix sigils apply to the same following identifier in left-to-right o
 -- stack: [ "y" ]
 ```
 
-`/@a` is not parsed as bare `/` followed by `@a`. It means: pop the current binding head for `a`, then assign the stack value to `a`. Intermediate `/` operations in a prefix chain preserve the live dictionary entry until the chain completes; a terminal `/name` still performs normal remove-and-cleanup behavior.
+`/@a` is not parsed as bare `/` followed by `@a`. It means: remove the current binding head for `a`, then assign the stack value to `a`. Intermediate `/` operations in a prefix chain preserve the live dictionary entry until the chain completes; a terminal `/name` still performs normal remove-and-cleanup behavior.
 
 Chains are generalized:
 
@@ -468,11 +463,11 @@ The syntax `f([args...])` runs `f` in an **isolated stack frame** — arguments 
 ### Empty call
 
 ```edict
-[pop] @f
+[/] @f
 'parent_item
 f()
--- f runs "pop" in an isolated frame (which starts empty)
--- pop on an empty isolated frame is a no-op inside the frame
+-- f runs `/` in an isolated frame (which starts empty)
+-- `/` on an empty isolated frame is a no-op inside the frame
 -- parent stack still has "parent_item"
 ```
 
@@ -519,7 +514,7 @@ g(['nested])
 
 ## 11. Context Scopes
 
-`<` / `>` (or `{` / `}` in non-JSON position) push and pop a **scope frame**. Items produced inside the scope are collected and returned as the scope's result.
+`<` / `>` (or `{` / `}` in non-JSON position) enter and leave a **scope frame**. Items produced inside the scope are collected and returned as the scope's result.
 
 ```edict
 <
@@ -657,7 +652,7 @@ Nested speculation is isolated relative to its enclosing speculation too:
 [] @session
 
 speculate [
-  session speculate ['inner @mode] pop
+  session speculate ['inner @mode] /
   session mode
 ]
 -- returns "mode"
@@ -677,7 +672,7 @@ Rewrite rules define **term-rewriting transformations** over the data stack. Aft
 -- registers: whenever "x" is on the stack, replace with "w"
 ```
 
-The rule object is returned on the stack after registration (pop with `/` if not needed).
+The rule object is returned on the stack after registration (discard it with `/` if not needed).
 
 ### Patterns
 
@@ -976,7 +971,7 @@ cursor.up!     -- move to parent; push "true"/"false"
 cursor.next!   -- move to next sibling; push "true"/"false"
 cursor.prev!   -- move to previous sibling; push "true"/"false"
 cursor.get!    -- push current node's value onto the data stack
-cursor.set!    -- pop data stack top, assign to current node position
+cursor.set!    -- consume data stack top, assign to current node position
 ```
 
 ### Example: navigate and read
@@ -1236,7 +1231,7 @@ reset   -- clear VM_ERROR flag and error message; resume from error state
 | `VMOP_PUSHEXT` | literal / `'word` / `{ }` / `[ ]` | Push a value |
 | `VMOP_DUP` | `dup` | `(a -- a a)` |
 | `VMOP_SWAP` | `swap` | `(a b -- b a)` |
-| `VMOP_POP` | `pop` or bare `/` | `(a --)` |
+| `VMOP_POP` | bare `/` | `(a --)` |
 | `VMOP_REF` | `identifier` (implicit) | `(key -- value)` — dict lookup |
 | `VMOP_ASSIGN` | `@name` or `value key @` | `(value key -- )` — dict store |
 | `VMOP_REMOVE` | `/name` | Remove key from dict |
@@ -1351,8 +1346,8 @@ speculate [
 
 -- Use result if non-null, else keep default:
 dup test
-& [ swap / ]   -- result was good: pop default, use speculative result
-| [ / ]        -- result was null (failed): pop null, keep default
+& [ swap / ]   -- result was good: discard default, use speculative result
+| [ / ]        -- result was null (failed): discard null, keep default
 ```
 
 ### A.5 Capturing stack contents into a list

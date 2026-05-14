@@ -114,6 +114,14 @@ TEST(EdictVM, RemoveTopOfStack) {
     EXPECT_TRUE(bool(top));
 }
 
+TEST(EdictVM, PopIsNotAStackDiscardKeyword) {
+    EdictVM vm;
+    int res = runCode(vm, "'sentinel pop");
+    EXPECT_FALSE(res & 0x02);
+    EXPECT_EQ(vm.getStackSize(), 2);
+    EXPECT_EQ(valueToString(vm.getStackTop()), "pop");
+}
+
 TEST(EdictVM, ConcatenatedPrefixSigilsApplyToSameIdentifierInOrder) {
     EdictVM vm;
     int res = runCode(vm, "[x]@a [y]/@a a");
@@ -220,7 +228,7 @@ TEST(FreezeBuiltin, FreezeMakesValueReadOnly) {
 TEST(FreezeBuiltin, FrozenValueCanStillBeRead) {
     EdictVM vm;
     EdictCompiler compiler;
-    int state = vm.execute(compiler.compile("{\"a\": \"hello\"} freeze! @frozen pop frozen"));
+    int state = vm.execute(compiler.compile("{\"a\": \"hello\"} freeze! @frozen / frozen"));
     ASSERT_FALSE(state & VM_ERROR) << vm.getError();
 
     auto top = vm.getStackTop();
@@ -237,7 +245,7 @@ TEST(FreezeBuiltin, FreezeIsIdempotentOnAlreadyFrozen) {
     EdictVM vm;
     EdictCompiler compiler;
     // Double-freeze should not crash or produce errors.
-    int state = vm.execute(compiler.compile("{} freeze! freeze! @x pop x"));
+    int state = vm.execute(compiler.compile("{} freeze! freeze! @x / x"));
     ASSERT_FALSE(state & VM_ERROR) << vm.getError();
 
     auto top = vm.getStackTop();

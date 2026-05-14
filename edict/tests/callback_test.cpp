@@ -450,7 +450,7 @@ TEST(CallbackTest, Closure) {
     auto applyDef = make_apply_op_definition();
 
     auto callbackSignature = make_callback_signature();
-    auto callbackThunk = agentc::createStringValue("[ pop pop '42 ]");
+    auto callbackThunk = agentc::createStringValue("[ / / '42 ]");
     vm.pushData(callbackSignature);
     vm.pushData(callbackThunk);
 
@@ -494,7 +494,7 @@ TEST(CallbackTest, ClosureFromParamSignature) {
 
     ASSERT_TRUE(vm.ffi->loadLibrary(libPath));
     auto applyDef = make_apply_op_definition_with_signature();
-    auto callbackThunk = agentc::createStringValue("[ pop pop '42 ]");
+    auto callbackThunk = agentc::createStringValue("[ / / '42 ]");
 
     int a = 10;
     int b = 20;
@@ -1073,9 +1073,9 @@ TEST(CallbackTest, ImportResolvedThreadRuntimeSpawnsThunkAndJoinsResult) {
     normalize_thread_runtime_defs(defs);
     const std::string source =
         "{\"return_type\": \"ltv\", \"children\": {\"p0\": {\"kind\": \"Parameter\", \"type\": \"ltv\"}}} "
-        "[pop 'threaded-result] ffi_closure! @worker pop "
-        "worker 'seed threadffi.agentc_thread_spawn_ltv! @handle pop "
-        "handle threadffi.agentc_thread_join_ltv! @result pop "
+        "[/ 'threaded-result] ffi_closure! @worker / "
+        "worker 'seed threadffi.agentc_thread_spawn_ltv! @handle / "
+        "handle threadffi.agentc_thread_join_ltv! @result / "
         "handle threadffi.agentc_thread_destroy! "
         "result";
 
@@ -1139,12 +1139,12 @@ TEST(CallbackTest, ImportResolvedThreadRuntimeUpdatesSharedCellFromThread) {
     auto defs = vm.popData();
     normalize_thread_runtime_defs(defs);
     const std::string source =
-        "{\"status\": \"initial\"} threadffi.agentc_shared_create_ltv! @cell pop "
+        "{\"status\": \"initial\"} threadffi.agentc_shared_create_ltv! @cell / "
         "{\"return_type\": \"ltv\", \"children\": {\"p0\": {\"kind\": \"Parameter\", \"type\": \"ltv\"}}} "
-        "[cell {\"status\": \"threaded\"} threadffi.agentc_shared_write_ltv! pop 'updated] ffi_closure! @worker pop "
-        "worker 'seed threadffi.agentc_thread_spawn_ltv! @handle pop "
-        "handle threadffi.agentc_thread_join_ltv! pop "
-        "cell threadffi.agentc_shared_read_ltv! @stored pop "
+        "[cell {\"status\": \"threaded\"} threadffi.agentc_shared_write_ltv! / 'updated] ffi_closure! @worker / "
+        "worker 'seed threadffi.agentc_thread_spawn_ltv! @handle / "
+        "handle threadffi.agentc_thread_join_ltv! / "
+        "cell threadffi.agentc_shared_read_ltv! @stored / "
         "handle threadffi.agentc_thread_destroy! "
         "cell threadffi.agentc_shared_destroy! "
         "stored";
@@ -1179,11 +1179,11 @@ TEST(CallbackTest, ImportResolvedThreadRuntimeDirectCapturedMutationDoesNotLeakA
     auto defs = vm.popData();
     normalize_thread_runtime_defs(defs);
     const std::string source =
-        "[] @session pop "
+        "[] @session / "
         "{\"return_type\": \"ltv\", \"children\": {\"p0\": {\"kind\": \"Parameter\", \"type\": \"ltv\"}}} "
-        "[session 'threaded @mode pop 'done] ffi_closure! @worker pop "
-        "worker 'seed threadffi.agentc_thread_spawn_ltv! @handle pop "
-        "handle threadffi.agentc_thread_join_ltv! pop "
+        "[session 'threaded @mode / 'done] ffi_closure! @worker / "
+        "worker 'seed threadffi.agentc_thread_spawn_ltv! @handle / "
+        "handle threadffi.agentc_thread_join_ltv! / "
         "handle threadffi.agentc_thread_destroy! "
         "session mode";
 
