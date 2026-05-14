@@ -6,7 +6,7 @@
 ## Current Focus
 AgentC/J3 is an advanced research prototype/internal-alpha moving toward an Edict-resident agent loop: Edict should own provider/session/control-plane semantics while C++ remains the native transport, persistence, credential, and lifecycle substrate.
 
-Latest completed slices: 🔗[G089 — Remove Edict `pop` Keyword](./Knowledge/Goals/G089-RemoveEdictPopKeyword/index.md) normalized stack-discard spelling to `/` and `/ /` while removing the compiler/bootstrap `pop` alias, 🔗[G088 — Refresh README Current State](./Knowledge/Goals/G088-RefreshReadmeCurrentState/index.md) rewrote the README around Edict-resident agent control-plane ownership and intern-worker direction, 🔗[G087 — Prefer Adjacent Edict Eval Sigil](./Knowledge/Goals/G087-PreferAdjacentEvalSigil/index.md) updated Edict docs/scripts/modules/tests to prefer `word!` style, 🔗[G086 — Live Google LLM Regression Coverage](./Knowledge/Goals/G086-LiveGoogleLlmRegressionCoverage/index.md) added credential-gated live Google/Gemma gtest coverage, 🔗[G084 — Remove Dead Dictionary Payload Path](./Knowledge/Goals/G084-RemoveDeadDictionaryPayload/index.md) removed the obsolete compiler-side Dictionary bytecode payload, 🔗[G085 — Split Edict VM Translation Unit](./Knowledge/Goals/G085-SplitEdictVmTranslationUnit/index.md) split the VM implementation into core/FFI/bootstrap units, 🔗[G079 — Edict Agent Loop Tool Support](./Knowledge/Goals/G079-EdictAgentLoopToolSupport/index.md) added a narrow Edict/FFI file/shell tool surface, and 🔗[G074 — Real-time FFI Token Streaming](./Knowledge/Goals/G074-RealtimeFFITokenStreaming/index.md) added the decoupled ghost-queue stream path. Immediate next implementation slice remains 🔗[G080 — LLM REPL Context Management](./Knowledge/Goals/G080-LlmReplContextManagement/index.md).
+Latest completed slices: 🔗[G090 — User-Oriented README](./Knowledge/Goals/G090-UserOrientedReadme/index.md) refocused the README toward potential users, application patterns, maturity, and roadmap, 🔗[G089 — Remove Edict `pop` Keyword](./Knowledge/Goals/G089-RemoveEdictPopKeyword/index.md) normalized stack-discard spelling to `/` and `/ /` while removing the compiler/bootstrap `pop` alias, 🔗[G088 — Refresh README Current State](./Knowledge/Goals/G088-RefreshReadmeCurrentState/index.md) rewrote the README around Edict-resident agent control-plane ownership and intern-worker direction, 🔗[G087 — Prefer Adjacent Edict Eval Sigil](./Knowledge/Goals/G087-PreferAdjacentEvalSigil/index.md) updated Edict docs/scripts/modules/tests to prefer `word!` style, 🔗[G086 — Live Google LLM Regression Coverage](./Knowledge/Goals/G086-LiveGoogleLlmRegressionCoverage/index.md) added credential-gated live Google/Gemma gtest coverage, 🔗[G084 — Remove Dead Dictionary Payload Path](./Knowledge/Goals/G084-RemoveDeadDictionaryPayload/index.md) removed the obsolete compiler-side Dictionary bytecode payload, 🔗[G085 — Split Edict VM Translation Unit](./Knowledge/Goals/G085-SplitEdictVmTranslationUnit/index.md) split the VM implementation into core/FFI/bootstrap units, 🔗[G079 — Edict Agent Loop Tool Support](./Knowledge/Goals/G079-EdictAgentLoopToolSupport/index.md) added a narrow Edict/FFI file/shell tool surface, and 🔗[G074 — Real-time FFI Token Streaming](./Knowledge/Goals/G074-RealtimeFFITokenStreaming/index.md) added the decoupled ghost-queue stream path. Immediate next implementation slice remains 🔗[G080 — LLM REPL Context Management](./Knowledge/Goals/G080-LlmReplContextManagement/index.md).
 
 ## Open Goals
 
@@ -15,6 +15,7 @@ Latest completed slices: 🔗[G089 — Remove Edict `pop` Keyword](./Knowledge/G
 - 🔗[G080 — LLM REPL Context Management](./Knowledge/Goals/G080-LlmReplContextManagement/index.md) — **NEXT**; add explicit provider conversation reset/trim/summarize/inspect behavior.
 
 ### Recently Completed
+- 🔗[G090 — User-Oriented README](./Knowledge/Goals/G090-UserOrientedReadme/index.md) — **COMPLETE** (2026-05-13); refocused README toward potential users, unique value, applications, runnable patterns, maturity, and roadmap.
 - 🔗[G089 — Remove Edict `pop` Keyword](./Knowledge/Goals/G089-RemoveEdictPopKeyword/index.md) — **COMPLETE** (2026-05-13); removed `pop` as a compiler/bootstrap discard alias and updated code/docs to use `/` and `/ /`.
 - 🔗[G088 — Refresh README Current State](./Knowledge/Goals/G088-RefreshReadmeCurrentState/index.md) — **COMPLETE** (2026-05-13); rewrote README to match current AgentC architecture, launcher/provider surface, validation caveats, and intern-worker direction.
 - 🔗[G087 — Prefer Adjacent Edict Eval Sigil](./Knowledge/Goals/G087-PreferAdjacentEvalSigil/index.md) — **COMPLETE** (2026-05-13); updated Edict-facing docs, modules, scripts, demos, and test snippets to prefer adjacent eval spelling and fixed stale-binary IPC prompt-flood validation.
@@ -42,7 +43,7 @@ None.
 - **Tool surface landed (G079)**: `extensions/agentc_stdlib` now exposes JSON-envelope file read/write/exact-replace and shell execution helpers. `agentc.edict` wraps them as `agentc_file_read!`, `agentc_file_write!`, `agentc_file_replace!`, `agentc_shell!`, and `agentc_tools`; `llm.edict` attaches `agentc_tools` as `provider.tools` for provider-context use.
 - **Streaming surface landed (G074)**: `Runtime::stream_request_json(...)` now launches a detached provider worker that pushes text deltas into `StreamManager`. `agentc_runtime_stream_sync_json(...)` returns an `ok`/`complete` JSON envelope, `agentc.edict` wraps it as `agentc_call_stream!` / `agentc_stream_sync!`, and `llm.edict` provider objects expose `stream_start` / `stream_sync`. Live Google/Gemma smoke with `gemma-4-31b-it` returned `ok`.
 - **Validation baseline from latest implementation pass**: `cmake --build build --target edict_tests -j2` passed; focused pop-transition tests passed 19/19; focused `edict_tests` style/regression slice passed 59/59 including `PiSimulationTest.MiniKanrenLogicExample`; `cmake --build build --target cpp_agent_tests -j2` passed; focused cpp-agent Edict/LLM suite passed 19/19 including the live Google/Gemma `gemma-4-31b-it` gtest returning `ok`; launcher smoke with `provider < ... request! > / /` returned `ok`.
-- **Documentation direction**: README now reflects the current Edict-resident control-plane vision, current launcher/provider surface, and intern-worker direction. 🔗[WP — LLM's Guide to Edict and the VM](./Knowledge/WorkProducts/WP-LlmsGuideToEdictVm-2026-05-10/index.md) and 🔗[Edict Language Reference](./Knowledge/WorkProducts/edict_language_reference.md) remain the key LLM-facing deep references. Next documentation improvement is a live notebook style with executable examples, especially for FFI/Cartographer.
+- **Documentation direction**: README now targets potential users with AgentC's unique value, applications, runnable patterns, maturity expectations, and roadmap. 🔗[WP — LLM's Guide to Edict and the VM](./Knowledge/WorkProducts/WP-LlmsGuideToEdictVm-2026-05-10/index.md) and 🔗[Edict Language Reference](./Knowledge/WorkProducts/edict_language_reference.md) remain the key LLM-facing deep references. Next documentation improvement is a live notebook style with executable examples, especially for FFI/Cartographer.
 
 ## Handoff Note
 
@@ -57,7 +58,7 @@ None.
 
 ## Knowledge Inventory
 
-### Goals — active tree (11)
+### Goals — active tree (12)
 - 🔗[G074 — Real-time FFI Token Streaming](./Knowledge/Goals/G074-RealtimeFFITokenStreaming/index.md) — completed first stream surface; archive candidate on next cleanup.
 - 🔗[G075 — Speculative Edict Native Architectures](./Knowledge/Goals/G075-SpeculativeEdictArchitectures/index.md) — deferred speculative reasoning architecture.
 - 🔗[G078 — Edict-Resident Agent Loop Consolidation](./Knowledge/Goals/G078-EdictResidentAgentLoopConsolidation/index.md) — active parent track.
@@ -69,6 +70,7 @@ None.
 - 🔗[G087 — Prefer Adjacent Edict Eval Sigil](./Knowledge/Goals/G087-PreferAdjacentEvalSigil/index.md) — completed documentation/script/module style update to adjacent eval spelling; archive candidate on next cleanup.
 - 🔗[G088 — Refresh README Current State](./Knowledge/Goals/G088-RefreshReadmeCurrentState/index.md) — completed README rewrite to current architecture/status; archive candidate on next cleanup.
 - 🔗[G089 — Remove Edict `pop` Keyword](./Knowledge/Goals/G089-RemoveEdictPopKeyword/index.md) — completed stack-discard spelling cleanup and compiler/bootstrap alias removal; archive candidate on next cleanup.
+- 🔗[G090 — User-Oriented README](./Knowledge/Goals/G090-UserOrientedReadme/index.md) — completed README refocus toward potential users and application patterns; archive candidate on next cleanup.
 
 ### WorkProducts — active references (12)
 - 🔗[AgentLang](./Knowledge/WorkProducts/AgentLang.md)
@@ -105,8 +107,8 @@ See 🔗[Timeline.md](./Timeline.md) for project history.
 
 ## Session Compliance
 - [x] Reviewed Dashboard and HRM bootstrap instructions
-- [x] Created/updated G084, G085, G086, G087, G088, and G089 goal files
-- [x] Implemented VM/compiler cleanup, VM translation-unit split, live Google/Gemma test coverage, adjacent-eval documentation/script style update, README current-state rewrite, and `pop` keyword removal
-- [x] Ran focused build/test validation, including live LLM coverage and launcher smoke; README/link/style and pop-removal inventory checks passed
+- [x] Created/updated G084, G085, G086, G087, G088, G089, and G090 goal files
+- [x] Implemented VM/compiler cleanup, VM translation-unit split, live Google/Gemma test coverage, adjacent-eval documentation/script style update, README rewrites, and `pop` keyword removal
+- [x] Ran focused build/test validation, including live LLM coverage and launcher smoke; README example/link/style and pop-removal inventory checks passed
 - [x] Updated Dashboard
 - [x] Updated Timeline

@@ -1,197 +1,167 @@
-# AgentC: A Cognitive Operating Environment
+# AgentC: Persistent Cognition for AI Agents
 
-AgentC is an experimental C++/Edict runtime for building agents whose working memory,
-control flow, native capabilities, and constraint solving all live in one persistent,
-rollback-safe substrate.
+AgentC is an experimental runtime for agents that need more than prompt text, JSON tool
+calls, and short-lived scratchpads. It gives an agent a persistent memory graph, a compact
+native language ("Edict", for Executable Dictionary), rollback-safe execution, dynamic
+access to C/C++ capabilities, and embedded logic programming in one substrate.
 
-The direction is explicit: **Edict should become the agent control plane**. The current
-LLM/tool-driven outer loop is useful bootstrapping machinery, but AgentC is being built to
-move provider sessions, tool use, context management, speculation, and eventually delegated
-worker agents into a compact VM-resident runtime. C++ remains the native substrate for
-memory, persistence, credentials, transport, and unsafe capabilities; Edict owns the
-cognitive protocol above it.
+Edict, AgentC's VM language, becomes the
+agent control plane. Provider sessions, tool use, context management, speculative branches,
+and delegated worker agents should move into the VM. C++ remains the native layer for memory,
+persistence, credentials, transports, and unsafe system capabilities.
 
-This repository is an internal-alpha research prototype. Many pieces are already working;
-some architectural edges are still being consolidated.
-
----
-
-## Why AgentC Exists
-
-Most agent frameworks serialize cognition through text, JSON, Python, shell commands, and
-stateless tool calls. That creates four recurring failures:
-
-- **Context death**: reasoning disappears when the context window is compacted or a process
-  restarts.
-- **Expensive speculation**: agents reason in prose about what might happen instead of trying
-  branches and rolling them back.
-- **Serialization drag**: every action crosses a JSON/text boundary even when the operation is
-  logically part of the same thought.
-- **Externalized reasoning engines**: constraint solving, native code, and persistent memory
-  are services around the agent rather than operations inside the agent.
-
-AgentC attacks these as one problem: make cognitive state a persistent memory graph, make
-branching O(1), make native functions importable into that graph, and give LLMs a compact
-language designed for VM execution rather than human source files.
+AgentC is currently an internal-alpha research prototype. It is useful for experimentation and
+for building early agent loops, but interfaces are still evolving.
 
 ---
 
-## Unique Properties
+## Why a User Might Want AgentC
 
-### 1. Persistent cognitive state via mmap
+Most agent systems serialize cognition through text and API calls. That works for simple tool
+use, but it becomes expensive when an agent needs durable state, branching reasoning, native
+capabilities, or local helper agents.
 
-AgentC's core state lives in arena-backed Listree nodes. Pointers are relative offsets, so a
-state image can be flushed and restored with file-backed slabs / `mmap` without rebuilding an
-object graph. The long-term goal is that an agent can be killed mid-task and resumed with its
-working memory intact.
+AgentC is designed for applications where an agent should be able to:
 
-### 2. O(1) speculation and rollback
+- **Keep working memory alive across turns and process boundaries** instead of reconstructing
+  state from summaries.
+- **Try a branch and roll it back cheaply** instead of reasoning only in prose about what might
+  happen.
+- **Call native libraries as part of cognition** instead of treating every capability as a
+  separate JSON tool boundary.
+- **Use logic queries for bounded planning problems** such as dependency resolution, migration
+  ordering, or API-shape matching.
+- **Delegate narrow work to local worker agents** without spending the primary model's context
+  window on file reading, filtering, or summarization.
 
-Allocation is sequential. A checkpoint is a slab watermark; rollback is resetting that
-watermark. The same primitive supports transactions, Edict `speculate [...]`, and miniKanren
-backtracking. Branching reasoning is intended to be a cheap runtime operation, not a textual
-exercise.
-
-### 3. Token-efficient Edict language
-
-Edict is a small concatenative language intended for LLM emission and native execution. It is
-usually far more compact than equivalent Python/JSON orchestration, and isolated calls
-(`f(args)`) give generated code a bounded scope so mistakes are less likely to corrupt parent
-state.
-
-### 4. FFI as a cognitive operation
-
-Cartographer parses C/C++ headers at runtime with libclang and reflects symbols into the same
-Listree substrate as agent memory. Native code is not an external tool boundary; imported
-functions become Edict words that can participate in transactions, speculation, and VM state.
-
-### 5. Embedded logic programming
-
-miniKanren is embedded alongside Edict and Listree. Logic queries share the arena and use the
-same rollback machinery as ordinary VM execution. Constraint solving can be a native cognitive
-step rather than a separate service call.
-
-**The synthesis:** speculate over an Edict block that runs a miniKanren query, calls native FFI
-functions, mutates Listree state, and either commits or rolls back by resetting one integer.
-Then persist the resulting cognition by flushing the memory map.
+AgentC is not just another chat wrapper. It is a candidate operating environment for agents
+whose memory, actions, constraints, and provider state should live together.
 
 ---
 
-## Architecture at a Glance
+## What Makes AgentC Different
 
-```
-LLM / user / host shell
-        │
-        ▼
-  edict.sh curated launcher
-        │
-        ▼
-┌─────────────────────────────────────────────────────────┐
-│ Edict VM                                                │
-│  • agent/provider/session control plane                 │
-│  • compact stack language + contexts + transactions     │
-│  • rewrite rules, speculation, miniKanren calls         │
-│  • imported C/C++ functions as callable words           │
-└─────────────────────────────────────────────────────────┘
-        │
-        ▼
-┌─────────────────────────────────────────────────────────┐
-│ C++ native substrate                                    │
-│  • slab/Listree memory and persistence                  │
-│  • Cartographer/libffi/libclang import machinery        │
-│  • provider transports, credentials, streaming queues   │
-│  • file/shell helper libraries and runtime C ABI        │
-└─────────────────────────────────────────────────────────┘
-```
+### Persistent cognitive memory
 
-### Slab + Listree
+AgentC stores state in arena-backed Listree nodes. Pointers are relative offsets, so state can
+be persisted through file-backed slabs and restored without reconstructing an object graph. The
+long-term goal is simple: kill an agent mid-task, restart it, and continue from the same
+cognitive state.
 
-All runtime values are `ListreeValue` nodes: each node can behave as string data, a named-child
-dictionary, and/or a list. Slab allocation gives fast append-style allocation and cheap
-watermark rollback. Relative `CPtr<T>` pointers make the arena relocatable and persistence
-friendly.
+### O(1) speculative execution
 
-### Edict VM
+AgentC allocation is watermark-based. A checkpoint is one integer; rollback is resetting that
+integer. The same primitive supports Edict `speculate [...]`, transactions, and miniKanren
+backtracking. Branch exploration becomes a runtime operation instead of an expensive text-only
+habit.
 
-Edict is the executable control surface. It has:
+### A compact language for agent control
 
-- stack execution and thunks (`[...]` + `!`)
-- object/context mutation with `< ... >`
-- transactions and `speculate [...]`
-- strict/lax lookup modes
-- rewrite rules
-- Cursor-backed Listree traversal
-- runtime FFI imports and callbacks
-- first-slice thread helpers using fresh worker VMs and explicit shared cells
+Edict is a small concatenative language built for VM execution and LLM emission. It is compact,
+stack-oriented, and designed around explicit state effects. This makes it suitable for provider
+loops, tool orchestration, rollback probes, and generated helper code.
 
-The VM implementation is split into core, FFI, and bootstrap translation units while keeping
-the opcode dispatch loop centralized.
+### Native capabilities without glue code
 
-### Cartographer FFI
+Cartographer imports C/C++ headers at runtime using libclang/libffi and reflects functions into
+AgentC memory. Imported functions become Edict-callable words. A structural diff engine, AST
+parser, solver, database binding, or specialized system library can become part of the agent's
+working environment.
 
-Cartographer uses libclang to parse headers and libffi to call dynamically loaded symbols.
-Imported function definitions are reflected as Listree values and invoked from Edict like any
-other word. The import path carries safety metadata and blocks hazardous syscall categories by
-default unless explicitly allowed.
+### Logic programming inside the agent
 
-Cartographer also provides a CLI pipeline:
+miniKanren is embedded alongside Edict. Logic queries share the same memory substrate and use
+the same rollback mechanics. Constraint solving can be part of the agent's thought process, not
+an external microservice.
+
+---
+
+## Applications AgentC Is Aimed At
+
+| Application | Why AgentC helps |
+|-------------|------------------|
+| Persistent coding agents | Durable scratch memory, provider state, and project facts survive context churn. |
+| Refactoring planners | Speculative branches and logic constraints can model alternative edit plans. |
+| Tool-rich local agents | Native libraries can be imported directly instead of wrapped by ad-hoc services. |
+| Long-running research agents | Intermediate findings can live in structured memory, not only in transcript text. |
+| Local intern agents | Secondary models can gather, filter, and summarize while the primary model decides. |
+| Constraint-heavy automation | miniKanren can solve bounded dependency/order/matching problems explicitly. |
+
+---
+
+## Mental Model
+
+AgentC has four user-visible layers:
 
 ```text
-cartographer_dump <header>
-cartographer_parse <header>
-  | cartographer_schema_inspect
-  | cartographer_resolve <lib>
-      | cartographer_resolve_inspect
+Agent / user intent
+        │
+        ▼
+Edict control plane
+  provider loops, tools, memory updates, speculation, logic calls
+        │
+        ▼
+Persistent Listree state
+  one graph for objects, scopes, lists, runtime data, imported capabilities
+        │
+        ▼
+Native substrate
+  mmap/slabs, C/C++ FFI, provider transports, credentials, file/shell helpers
 ```
 
-### miniKanren
-
-The embedded miniKanren engine supports relations including `==`, `membero`, `appendo`,
-`conso`, and `conde`. Results are lazily streamed with trampoline-style execution, and
-backtracking uses slab watermarks.
-
-### C++ agent runtime
-
-`cpp-agent/` contains the current native agent runtime layer:
-
-- provider registry and runtime C ABI (`libagent_runtime.so`)
-- local OpenAI-compatible provider support
-- Google/Gemini/Gemma provider support, including live `gemma-4-31b-it` coverage
-- OpenAI Codex provider support via pi ChatGPT OAuth credentials
-- stream manager for background provider workers → main-thread synchronization
-- session/root persistence helpers for embedded Edict agent roots
+The important shift is that the agent is not just asking a host process to run tools. The agent
+can increasingly *own the loop* inside Edict: maintain provider state, mutate structured memory,
+call native code, probe branches, and decide what to keep.
 
 ---
 
-## Edict Quick Reference
+## Quick Start
 
-Prefer adjacent eval spelling in examples and scripts: `word!`, `module.word!`, `thunk!!`.
-The tokenizer still accepts `!` as a separate token for compatibility, but adjacent spelling is
-the documented style.
+Prerequisites:
 
-```edict
-['hello print] @greet
-greet!                 -- prints "hello"
+- C++17 compiler
+- CMake 3.16+
+- `libffi-dev`
+- `libclang-dev`
+- `libcurl` development package
+- POSIX-like environment with pthreads
+
+Build:
+
+```bash
+cmake -B build
+cmake --build build -j2
 ```
 
-Variables and paths:
+List available LLM/provider presets through the curated launcher:
 
-```edict
-[Paris] @city
-city print             -- Paris
-person.address.city    -- dotted Listree lookup
+```bash
+EDICT_AUTO_CHAT=0 ./edict.sh -e 'llm.catalog! to_json! print'
 ```
 
-Object/context mutation:
+Start the raw Edict REPL:
 
-```edict
-{} @provider
-provider <
-  [local-qwen] @preset_name
-> / /                  -- CTX_POP returns provider; / / discards return + provider refs
+```bash
+./build/edict/edict
 ```
 
-Provider-style method calls mutate the current provider object in place:
+Start the curated AgentC launcher. With the default environment it enters the Edict-owned
+provider chat path:
+
+```bash
+./edict.sh
+```
+
+Use `EDICT_AUTO_CHAT=0` when you want raw curated Edict execution instead of chat mode.
+
+---
+
+## Use Patterns
+
+### 1. Provider object controlled from Edict
+
+The current LLM surface centers on stable provider objects. A provider owns runtime config,
+conversation state, request thunks, streaming thunks, and tool references.
 
 ```edict
 llm.init([gemma-4-31b-it]) @provider
@@ -199,19 +169,39 @@ provider < [Reply with exactly two lowercase letters: ok] request! > / /
 provider.assistant_text print
 ```
 
-Important syntax clarifications:
+The pattern `provider < method! > / /` enters provider scope, invokes the method in place,
+leaves scope, and discards the returned context/sentinel values.
 
-- Bare `/` is stack discard (`VMOP_POP`); `pop` is not a compiler keyword.
-- `/name` removes a dictionary binding.
-- `/ /` discards two stack items.
-- `//name` is a no-space sigil chain over `name`; bare `//` is invalid.
-- `< ... >` enters a value's namespace for in-place mutation, then pushes the context object
-  back when leaving.
-- `provider < method! > / /` is the common fire-and-forget mutating method pattern.
+Live Google/Gemma requests use `GEMINI_API_KEY` or `GOOGLE_API_KEY` when present:
 
-Logic query example, runnable from the project root as a script. The interactive REPL reads
-one line at a time, so paste multi-line object literals through `edict -`, a file, or `-e`
-rather than directly at the `>` prompt.
+```bash
+EDICT_AUTO_CHAT=0 ./edict.sh -e 'llm.init([gemma-4-31b-it]) @provider provider < [Reply with exactly two lowercase letters: ok] request! > / / provider.assistant_text print'
+```
+
+### 2. Rollback-safe probing
+
+`speculate [...]` runs code in an isolated checkpoint. Results can be inspected, but side
+effects do not commit to the caller.
+
+```bash
+./build/edict/edict - <<'EDICT'
+'baseline @answer
+speculate ['candidate @answer answer] to_json! print
+answer print
+EDICT
+```
+
+Expected output:
+
+```text
+"candidate"
+baseline
+```
+
+### 3. Logic query inside the VM
+
+This example asks miniKanren for members of a list and serializes the result as JSON. Run it
+from the project root after building:
 
 ```bash
 ./build/edict/edict - <<'EDICT'
@@ -232,210 +222,138 @@ Expected output:
 ["tea","cake"]
 ```
 
-FFI example:
+Note: the interactive REPL compiles one line at a time. Use `edict -`, a script file, or `-e`
+for multi-line object literals.
+
+### 4. Import a native function at runtime
+
+Cartographer can import a C header and shared library, then expose functions as Edict words:
+
+```bash
+./build/edict/edict - <<'EDICT'
+'./build/cartographer/libagentmath_poc.so './cartographer/tests/libagentmath_poc.h resolver.import! @math
+'3 '4 math.add! print
+EDICT
+```
+
+Expected output:
+
+```text
+7
+```
+
+### 5. File/shell tools attached to provider context
+
+The current standard-library slice exposes JSON-envelope file and shell helpers. Provider
+objects carry `provider.tools`, so tool calls can be scoped to the same provider-owned state.
 
 ```edict
-'./build/cartographer/libagentmath_poc.so './cartographer/tests/libagentmath_poc.h resolver.import! @math
-'3 '4 math.hypot! print
+llm.init([local-qwen]) @provider
+provider < [/tmp/agentc-note.txt] [hello] tools.write_file! @last_tool > / /
+provider < [/tmp/agentc-note.txt] tools.read_file! @last_tool > / /
+provider.last_tool.content print
 ```
 
 ---
 
-## Edict-Resident Agent Loop
+## Current State
 
-The current agent-facing surface is the curated launcher plus Edict modules under
-`cpp-agent/edict/modules/`.
+AgentC is usable today as an experimental local runtime with these working surfaces:
 
-Key modules:
+- Edict compiler, VM, REPL, contexts, rewrite rules, transactions, and `speculate [...]`.
+- Persistent Listree/slab substrate with file-backed persistence work underway.
+- Cartographer FFI imports for C/C++ headers and shared libraries.
+- Embedded miniKanren runtime with Edict-callable query evaluation.
+- Curated `edict.sh` launcher and Edict modules under `cpp-agent/edict/modules/`.
+- Provider objects via `llm.init(...)` for local OpenAI-compatible models, Google/Gemini/Gemma,
+  and OpenAI Codex.
+- File/shell helper surface attached to provider objects.
+- Streaming provider path using background native workers and main-thread synchronization.
+- First thread-helper proof of concept: fresh worker VMs plus explicit shared cells.
 
-- `agentc_curated.edict` — common launcher bootstrap and module loading
-- `agentc.edict` — wrappers for runtime/file/shell/stream helper libraries
-- `agentc_provider_contracts.edict` — provider request/response contract specs
-- `agentc_agent_root.edict` — canonical Edict-owned agent root shape
-- `agentc_stateful_loop.edict` / `agentc_hello_loop.edict` — loop demos
-- `llm.edict` — provider presets, `llm.init(...)`, `request`, `stream_start`, `stream_sync`,
-  and provider REPL support
+Maturity notes:
 
-Launcher usage:
-
-```bash
-./edict.sh --help
-EDICT_AUTO_CHAT=0 ./edict.sh -e 'llm.catalog! to_json! print'
-printf 'llm.init([local-qwen]) @provider\nprovider.preset_name print\n' | ./edict.sh -
-./edict.sh tests/cursor_test.edict
-```
-
-With no arguments, `edict.sh` defaults to an Edict-owned provider chat path:
-
-```bash
-./edict.sh
-```
-
-Environment knobs include `EDICT_AUTO_CHAT`, `EDICT_DEFAULT_PRESET`, `EDICT_PATH`,
-`EDICT_BUILD_DIR`, `EDICT_EXT_LIB`, and `EDICT_RUNTIME_LIB`.
-
-Provider presets currently cover local OpenAI-compatible models, Google/Gemini/Gemma paths,
-and OpenAI Codex. Live Google tests check `GEMINI_API_KEY` or `GOOGLE_API_KEY` and skip when
-credentials are absent.
+- This is an alpha research system, not a stable packaged product.
+- Examples are intended to run from a built checkout.
+- Provider availability depends on credentials and local model/runtime configuration.
+- Focused validation passes; some broad legacy test paths still contain active-investigation
+  FFI callback/parser-map failures.
 
 ---
 
 ## Intern / Worker-Agent Direction
 
-AgentC is also aimed at an "intern" architecture: a primary LLM delegates bounded work to
-secondary local agents without spending primary-agent context on file reading, filtering,
-classification, and summarization.
+A major intended use case is local "intern" agents: smaller or local models that perform narrow
+work for a primary agent without consuming the primary model's context budget.
 
-Good intern tasks are narrow and checkable:
+Good intern tasks are bounded and checkable:
 
 | Task type | Example |
 |-----------|---------|
-| Information gathering | Read files and extract matching signatures |
-| Output classification | Run tests and group failures by category |
-| Search + filter | Find callers of a function and discard irrelevant matches |
-| Compression | Summarize a diff into semantic changes |
-| Context proxy | Hold a large context and answer factual questions about it |
+| Information gathering | Read several files and extract method signatures matching a pattern. |
+| Failure triage | Run tests and classify failures by subsystem. |
+| Search + filter | Find all callers of a function and discard irrelevant matches. |
+| Compression | Summarize a large diff into semantic changes. |
+| Context proxy | Hold a large context and answer factual questions about it. |
 
-The intended concurrency model is:
+The target architecture is:
 
-1. Coordinator VM owns the mutable root.
-2. Shared inputs/import tables are marked ReadOnly before dispatch.
-3. Each intern runs in a fresh EdictVM and private slab workspace.
-4. Stateless/re-entrant FFI can be shared; stateful provider handles must be cloned or kept
-   coordinator-owned.
-5. Workers return structured findings through a queue or copied result Listree.
-6. The coordinator decides what to merge into the main cognitive state.
+1. A coordinator VM owns the mutable root state.
+2. Shared inputs/import tables are marked read-only before dispatch.
+3. Each worker gets a fresh EdictVM and private workspace.
+4. Re-entrant native tools can be shared; stateful provider handles remain coordinator-owned or
+   are cloned per worker.
+5. Workers return structured findings; the coordinator decides what to merge.
 
-Existing building blocks include `LtvFlags::ReadOnly`, the pthread-backed callback/thread POC,
-mutex-protected shared cells, `StreamManager`, `llm.init([local-qwen])`, and `agentc_tools`.
-The full multi-intern scheduler is future work; the design target is clear, scoped delegation —
-interns gather and compress, the primary agent decides.
+Existing pieces already point in this direction: read-only Listree flags, fresh worker VMs,
+shared cells, stream queues, local provider presets, and provider-attached tools. The full
+multi-intern scheduler is future work.
 
 ---
 
-## Directory Layout
+## Roadmap
+
+### Near term
+
+- Provider context management: reset, inspect, trim, and summarize conversation state.
+- Better user-facing examples and notebook-style executable docs.
+- More complete Edict ownership of agent root/session lifecycle.
+- Hardened validation and cleanup of remaining legacy FFI test failures.
+- First practical worker-agent scheduler built on fresh VMs, read-only sharing, and result
+  queues.
+
+### Longer term
+
+- Durable mmap-backed resume for long-running agents.
+- Curated native capability libraries for structural diffing, AST transforms, knowledge graphs,
+  and repository analysis.
+- Cartographer re-entrancy annotations so imported symbols can be safely shared across worker
+  sandboxes.
+- Multi-agent local execution where primary agents spend tokens deciding, not gathering.
+- A tighter application-facing API around Edict-owned provider/session/tool loops.
+
+---
+
+## Repository Map
+
+Most users will start with `edict.sh`, `cpp-agent/edict/modules/`, and the examples above.
 
 ```text
-core/           Arena allocator, Cursor, CPtr, containers, debug helpers
-listree/        Listree value graph and serialization substrate
-edict/          Edict compiler, VM, REPL, builtins, tests
-cartographer/   Header parser, FFI mapper/resolver, CLI pipeline, POCs
-kanren/         Embedded miniKanren runtime and C ABI proof-of-concept
-extensions/     Importable helper libraries / early stdlib surface
-cpp-agent/      Native provider runtime, persistence, Edict modules, agent tests
-demo/           Standalone demos and shell regression scripts
-pi_integration/ pi/TypeScript integration experiments
-LocalContext/   HRM project memory, goals, work products, and timeline
-tests/          Core/listree/cursor unit tests
+edict/          Edict compiler, VM, REPL, and tests
+cpp-agent/      Provider runtime, persistence helpers, and Edict agent modules
+cartographer/   Runtime C/C++ header import and FFI machinery
+kanren/         Embedded miniKanren runtime
+extensions/     File/shell/helper libraries importable from Edict
+listree/        Persistent tree/list/value substrate
+demo/           Demonstrations and shell smoke tests
+LocalContext/   Project memory, design notes, goals, and current status
 ```
 
 ---
 
-## Building & Running
-
-Prerequisites:
-
-- C++17 compiler
-- CMake 3.16+ for the full tree
-- `libffi-dev`
-- `libclang-dev`
-- `libcurl` development package
-- pthreads / POSIX-like environment
-
-Build:
-
-```bash
-cmake -B build
-cmake --build build -j2
-```
-
-Raw Edict REPL:
-
-```bash
-./build/edict/edict
-```
-
-Curated AgentC launcher:
-
-```bash
-EDICT_AUTO_CHAT=0 ./edict.sh -e 'llm.catalog! to_json! print'
-```
-
-Live Google/Gemma smoke, when credentials are present:
-
-```bash
-EDICT_AUTO_CHAT=0 ./edict.sh -e 'llm.init([gemma-4-31b-it]) @provider provider < [Reply with exactly two lowercase letters: ok] request! > / / provider.assistant_text print'
-```
-
-Optional SDL3 demo:
-
-```bash
-cmake -B build -DAGENTC_WITH_SDL_DEMO=ON -DAGENTC_SDL3_ROOT=/path/to/SDL3/install
-cmake --build build
-./demo/demo_sdl_triangle.sh
-```
-
----
-
-## Validation Status
-
-Configured CTest suites:
-
-```bash
-ctest --test-dir build -N
-```
-
-Current focused validation baseline:
-
-```bash
-cmake --build build --target edict_tests -j2
-./build/edict/edict_tests --gtest_filter='EdictVM.*:VMStackTest.*:SimpleAssignTest.*:RewriteLanguageTest.*:RegressionMatrixTest.*:CallbackTest.BootstrapImportCapsuleOwnsImportSurface:CallbackTest.ImportResolvedInjectsDefinitionsAndInvokesImmediately:CallbackTest.InterpretedImportPipelineCanRoundTripThroughJson:CallbackTest.LoadBuiltinReportsMissingLibrary:PiSimulationTest.MiniKanrenLogicExample'
-
-cmake --build build --target cpp_agent_tests -j2
-./build/cpp-agent/cpp_agent_tests --gtest_filter='EdictAgentcModuleTest.*:EdictHelloLoopTest.*:EdictStatefulLoopTest.*:EdictAgentRootTest.*:EdictLlmModuleTest.*'
-```
-
-Recent focused runs passed the Edict style/regression slice and the cpp-agent Edict/LLM suite,
-including credential-gated live Google/Gemma coverage when API keys were available.
-
-Known caveat: the unfiltered legacy `edict_tests` binary still contains active-investigation FFI
-callback/parser-map failures. Use focused filters or the HRM Dashboard for the latest validated
-baseline until those are cleaned up.
-
----
-
-## Current Status and Roadmap
-
-Recently landed:
-
-- Edict-owned provider objects via `llm.init(...)`
-- curated `edict.sh` launcher and auto-chat path
-- file/shell tool surface exposed through Edict wrappers
-- streaming provider path using background workers and main-thread synchronization
-- Google/Gemma live regression coverage (`gemma-4-31b-it`)
-- OpenAI Codex provider preset
-- Edict VM split into core/FFI/bootstrap implementation units
-- removal of the obsolete compiler-side `Dictionary` bytecode payload path
-- adjacent eval-sigil documentation/style pass (`word!`)
-
-Immediate next work:
-
-- explicit provider context management (`reset`, `inspect`, `trim`, summarize) in the Edict
-  provider REPL path
-- tighter Edict ownership of the agent root/session lifecycle
-- cleanup of remaining legacy callback/parser-map test failures
-- first practical intern-worker scheduler on top of fresh VMs, ReadOnly sharing, and result
-  queues
-- Cartographer re-entrancy annotations for safer concurrent FFI sharing
-
----
-
-## Documentation
-
-Primary references:
+## More Documentation
 
 - [`LocalContext/Dashboard.md`](LocalContext/Dashboard.md) — current project state and latest validation baseline
-- [`LocalContext/Timeline.md`](LocalContext/Timeline.md) — project history
-- [`LocalContext/Knowledge/WorkProducts/edict_language_reference.md`](LocalContext/Knowledge/WorkProducts/edict_language_reference.md) — full Edict language reference
+- [`LocalContext/Knowledge/WorkProducts/edict_language_reference.md`](LocalContext/Knowledge/WorkProducts/edict_language_reference.md) — detailed Edict language reference
 - [`LocalContext/Knowledge/WorkProducts/WP-LlmsGuideToEdictVm-2026-05-10/index.md`](LocalContext/Knowledge/WorkProducts/WP-LlmsGuideToEdictVm-2026-05-10/index.md) — LLM-oriented Edict/VM guide
-- [`LocalContext/Knowledge/WorkProducts/WP-EdictResidentAgentLoopConsolidation-2026-05-10/index.md`](LocalContext/Knowledge/WorkProducts/WP-EdictResidentAgentLoopConsolidation-2026-05-10/index.md) — Edict-resident agent loop consolidation plan
+- [`LocalContext/Knowledge/WorkProducts/WP-EdictResidentAgentLoopConsolidation-2026-05-10/index.md`](LocalContext/Knowledge/WorkProducts/WP-EdictResidentAgentLoopConsolidation-2026-05-10/index.md) — Edict-resident agent loop plan
