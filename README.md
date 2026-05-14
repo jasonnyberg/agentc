@@ -145,6 +145,15 @@ Start the raw Edict REPL:
 ./build/edict/edict
 ```
 
+Create or resume a named Edict session. Session images are stored under
+`/tmp/session/<id>/` by default; use `--session-base` or `EDICT_SESSION_BASE` to choose a
+different root.
+
+```bash
+./build/edict/edict --session demo -e "'persisted @answer"
+./build/edict/edict --session demo -e 'answer print'
+```
+
 Start the curated AgentC launcher. With the default environment it enters the Edict-owned
 provider chat path:
 
@@ -261,6 +270,7 @@ provider.last_tool.content print
 AgentC is usable today as an experimental local runtime with these working surfaces:
 
 - Edict compiler, VM, REPL, contexts, rewrite rules, transactions, and `speculate [...]`.
+- `edict --session ID` startup flag for named session create/resume under `/tmp/session/<id>/` by default.
 - Persistent Listree/slab substrate with file-backed persistence work underway.
 - Cartographer FFI imports for C/C++ headers and shared libraries.
 - Embedded miniKanren runtime with Edict-callable query evaluation.

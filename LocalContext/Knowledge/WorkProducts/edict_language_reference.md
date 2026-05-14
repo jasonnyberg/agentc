@@ -87,6 +87,22 @@ stack size: 2 (top first)
 1: hello
 ```
 
+### Named sessions
+
+Use `--session ID` or `--session-id ID` before the execution mode to create or resume a named
+Edict session. By default session images live under `/tmp/session/<id>/`; override the base with
+`--session-base DIR` or `EDICT_SESSION_BASE`.
+
+```sh
+./build/edict/edict --session demo -e "'persisted @answer"
+./build/edict/edict --session demo -e 'answer print'
+```
+
+Session ids are intentionally filesystem-safe: letters, digits, `.`, `-`, and `_` only, and not
+`.` or `..`. The current CLI session path persists the root scope on normal process exit using
+the existing session-image/slab store; full kill-mid-turn authoritative mmap resume remains a
+separate persistence-hardening track.
+
 ### Shell wrappers (`agentc.sh`)
 
 Sourcing `agentc.sh` from the repo root provides convenience wrappers for `edict` and all

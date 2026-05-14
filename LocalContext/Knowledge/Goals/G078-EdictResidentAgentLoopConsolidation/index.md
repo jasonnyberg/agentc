@@ -38,6 +38,7 @@ The current system works, but semantic pieces of an LLM turn are duplicated acro
 - A new agent-oriented reference, 🔗[WP — LLM's Guide to Edict and the VM](../../WorkProducts/WP-LlmsGuideToEdictVm-2026-05-10/index.md), now captures the exact compiler/VM behaviors and quick-start patterns that informed the new provider API.
 - The VM now supports configurable unresolved-lookup modes at the `REF` boundary: `lax!` preserves symbolic fallback, `strict!` / `strict_null!` return `null`, and `strict_fail!` returns `null` plus enters failure state for cleaner debugging and `& |`-driven control flow.
 - The curated launcher is already being used by the runnable local demo: `demo_local_llm.sh` now delegates to `./edict.sh`, and the launcher-backed prelude leaves provider calls immediately available instead of requiring each script to re-import and re-load the same runtime/module stack.
+- Raw Edict now has a user-facing named-session selector from 🔗[G102](../G102-EdictSessionIdStartupFlag/index.md): `./build/edict/edict --session ID` creates/resumes an Edict root scope under `/tmp/session/<id>/` by default, using the current session-image/slab store on normal process exit. This narrows lifecycle/persistence seams for future Edict-resident sessions without completing full kill-mid-turn mmap resume.
 
 ## Primary Direction
 Make Edict the source of truth for:
@@ -67,6 +68,7 @@ G078 remains the top-level active consolidation track, but several implementatio
 Near-term execution should continue through G079 first, then G080, while keeping G078 as the parent architectural umbrella.
 
 ## Progress Notes
+- 2026-05-14: Completed G102's raw Edict session-id slice: `--session` / `--session-base` create/resume support is wired to `SessionStateStore`, session ids are filesystem-safe, CLI regression coverage exists, and root bindings can persist across raw Edict process invocations.
 - 2026-05-11: Completed G074's first streaming slice: runtime stream requests now launch detached provider workers, `agentc_stream_sync!` returns structured sync envelopes, provider objects expose `stream_start`/`stream_sync`, and a live Google/Gemma `gemma-4-31b-it` smoke test returned `ok`.
 - 2026-05-11: Completed G079's first tool/action slice: Edict now has file read/write/exact-replace and shell wrappers via `agentc_tools`, and provider objects expose them as `provider.tools` for provider-context use.
 - 2026-05-11: Reassessed after completing G081/G082/G083 and archiving completed goals. G078 stays active as the parent track; G079 is the immediate next implementation slice, G080 follows, and G074/G075 are deferred.

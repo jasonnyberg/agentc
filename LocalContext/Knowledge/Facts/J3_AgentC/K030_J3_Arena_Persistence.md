@@ -12,6 +12,13 @@ LMDB-backed persistence existed as an earlier experimental adapter. It should no
 
 ## Implemented Pieces
 
+### Raw Edict named sessions (2026-05-14)
+- The raw Edict executable now exposes `--session ID` / `--session-id ID` plus `--session-base DIR`.
+- Default session storage is `/tmp/session/<id>/`, with `EDICT_SESSION_BASE` as the environment override.
+- Session ids are validated as filesystem-safe names (`[A-Za-z0-9._-]+`, excluding `.` and `..`) before any path is used.
+- The CLI path loads the selected root through `SessionStateStore` before VM construction and saves on normal process exit after `-e`, stdin/script, REPL, IPC, or socket execution.
+- Current behavior is create/resume through the existing session-image/slab store; full kill-mid-turn authoritative mmap resume remains future work under 🔗[G096](../../Goals/G096-AuthoritativeMmapSessionResume/index.md).
+
 ### `ArenaCheckpointMetadata`
 - Captures allocator-level checkpoint metadata such as version, slab sizing, live-slot counts, highest live slot, allocation-log size, and checkpoint stack positions.
 - Current restore support is metadata-only; it can revive checkpoint stack state for restart-style validation but does not yet restore raw slab bytes.
@@ -30,6 +37,8 @@ LMDB-backed persistence existed as an earlier experimental adapter. It should no
 - The first working raw slab-image path is validated with `Allocator<int>` rather than full Listree/VM object graphs.
 
 ## Verified Behavior
+- `EdictSessionCliTest.*` covers raw Edict `--session` persistence/resume and unsafe session-id rejection.
+- `SessionStateStoreTest.*` covers named-session isolation, manifest/bootstrap/root restore behavior, file-first mmap-backed slab allocation for allocator families, and native snapshot behavior.
 - `tst/alloc_tests.cpp` covers metadata round trips through memory and file-backed stores.
 - `tst/alloc_tests.cpp` also covers raw slab-image round trips through memory and file-backed stores for slab-backed integer allocations spanning multiple slabs.
 - `tst/alloc_tests.cpp` now also covers a file-backed structured round trip for a non-trivial Listree-side graph rooted at `ListreeItem` with a persisted string value.
@@ -38,8 +47,8 @@ LMDB-backed persistence existed as an earlier experimental adapter. It should no
 - Existing `reflect_tests` and `listree_tests` remain green after the structured restore slice landed.
 
 ## Current Limits
-- Raw slab-image save/load currently works only for trivially copyable allocator types.
-- Full Listree / Edict object-graph restore still needs a safe strategy for non-trivial slab types such as `std::string`-bearing nodes.
+- Raw Edict `--session` persists on normal process exit; it is not yet a guarantee of kill-mid-turn resume.
+- VM-owned startup/builtin names are stripped from restored raw-Edict session roots before fresh VM startup because binary bytecode thunks are transient and lossy through the current session-image snapshot path.
 - Runtime-owned artifacts still need explicit rehydration boundaries during restore.
 
 ## Non-Trivial Restore Direction
@@ -54,5 +63,5 @@ LMDB-backed persistence existed as an earlier experimental adapter. It should no
 - The next persistence problem is integrating structured slab restore with the embedded-agent lifecycle and explicit rehydration of transient runtime artifacts.
 
 ## Follow-On Goals
-- 🔗[`G041_Persistent_Slab_Image_Persistence`](../../../../Knowledge/Goals/G041_Persistent_Slab_Image_Persistence/index.md)
-- 🔗[`G042_Persistent_VM_Root_State_And_Restore_Validation`](../../../../Knowledge/Goals/G042_Persistent_VM_Root_State_And_Restore_Validation/index.md)
+- 🔗[`G041_Persistent_Slab_Image_Persistence`](../../Archive/Goals/G041_Persistent_Slab_Image_Persistence/index.md)
+- 🔗[`G042_Persistent_VM_Root_State_And_Restore_Validation`](../../Archive/Goals/G042_Persistent_VM_Root_State_And_Restore_Validation/index.md)

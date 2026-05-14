@@ -2,7 +2,7 @@
 
 **Scope**: LOCAL  
 **Status**: Active  
-**Last Referenced**: 2026-05-04
+**Last Referenced**: 2026-05-14
 
 ## Slab File Layout (file-backed allocators)
 
@@ -39,6 +39,12 @@ Used by the heap-backed `saveRoot` / `loadRoot` path (`exportSlabImages` / `rest
 6. **size-prefixed blob** — via `appendBytes(payload, ptr, dlen)`, which writes `size_t dlen` then `dlen` bytes
 
 `restoreSlot` always calls `readBytes` for field 6, which reads the size prefix unconditionally. **`appendBytes` must always be called exactly once** even when `dlen == 0`.
+
+## Null Sentinel Restore Invariant
+
+`SlabId(0,0)` is the process-wide null sentinel and must remain reserved after any restore path. A restored session image may include slab 0 without carrying a live `(0,0)` slot if the saved user graph did not reference the sentinel directly. In that case `restoreSlabImages()` must still allocate/reserve `(0,0)` before ordinary post-restore allocation resumes; otherwise the first new value after restore can receive `SlabId(0,0)`, making its `CPtr` evaluate false and causing silent VM no-ops.
+
+This invariant was regression-discovered during G102's raw Edict `--session` work and fixed in `core/alloc.h` by reserving the sentinel whenever slab 0 is missing **or** `refs(SlabId(0,0)) == 0` after slab-image restore.
 
 ## saveRoot and Read-Only Nodes (heap-backed path)
 

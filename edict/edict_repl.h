@@ -42,6 +42,7 @@ public:
     }
     
     void run();
+    EdictVM& getVM() { return vm; }
 
     // Execute edict source from a stream line by line (script/pipe mode).
     // Lines beginning with '#' and blank lines are skipped.

@@ -1220,7 +1220,7 @@ public:
             }
         }
 
-        if (!slabs[0]) {
+        if (!slabs[0] || refs(SlabId(0, 0)) == 0) {
             SlabId nullSentinel = allocRaw();
             (void)nullSentinel;
             allocationLog.clear();
