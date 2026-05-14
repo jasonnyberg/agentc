@@ -73,8 +73,30 @@ The worker runs in a fresh `EdictVM` with these root fields:
 
 Latest focused validation: `./build/edict/edict_tests --gtest_filter='InternWorkerTest.*'` passed 2/2 on 2026-05-14.
 
+## Primary Async Path
+The primary implementation path after the synchronous `intern_run!` slice is to reuse the LLM streaming/ghost-queue mechanics pattern for intern jobs:
+
+```edict
+task intern_start! @job
+-- coordinator continues other work
+job.job_id intern_sync! @status
+```
+
+Target behavior:
+- `intern_start!` freezes/snapshots the task boundary, creates a job id, launches a detached/background worker, and returns immediately.
+- The background worker owns blocking Edict worker execution and publishes events/final result JSON into a mutex-protected result slot.
+- `intern_sync!` runs on the coordinator thread, drains events, observes completion/error, parses final JSON into coordinator-owned Listree state, and removes completed jobs.
+- `intern_run!` remains blocking convenience over the same worker helper.
+
+Preferred implementation approach:
+1. Extract generic queue/result mechanics from `cpp-agent/runtime/core/StreamManager` into a neutral shared component usable by both LLM streaming and Edict intern jobs.
+2. If that extraction is too invasive, create an Edict-local `InternJobManager` modeled on `StreamManager` first and extract common mechanics later.
+3. Do not couple raw `libedict` directly to the full `cpp-agent` runtime/provider stack.
+
+Longer-term memory substrate: 🔗[Layered mmap Micro-VM Architecture](../../Concepts/LayeredMmapMicroVmArchitecture/index.md) records the proposed static read-only core/import slabs, private per-VM overlays, optional published communication slabs, and process-isolated micro-VM cores.
+
 ## Current Limits
-- `intern_run!` is synchronous spawn-and-join; it is not yet a multi-worker scheduler.
+- `intern_run!` is synchronous spawn-and-join; async `intern_start!` / `intern_sync!` are the primary next implementation path.
 - Live local-model intern execution remains out of scope.
 - Re-entrancy metadata for imported native functions is future 🔗[G092 — Cartographer FFI Re-entrancy Metadata](../../Goals/G092-CartographerFfiReentrancyMetadata/index.md).
 - Finer-grained reference-scoped read-only sharing remains deferred in 🔗[G093 — Reference-Scoped ReadOnly Sharing](../../Goals/G093-ReferenceScopedReadOnlySharing/index.md).

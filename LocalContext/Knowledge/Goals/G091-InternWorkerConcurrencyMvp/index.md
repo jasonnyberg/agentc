@@ -28,6 +28,8 @@ The intern model is the clearest application-level payoff for AgentC's substrate
 - [x] Execute a deterministic Edict worker task first; defer live local-model execution until the substrate is stable.
 - [x] Return structured results through a thread-safe join result compatible with the existing StreamManager pattern.
 - [x] Copy/merge the result Listree into the coordinator slab on the coordinator/main thread.
+- [ ] Add async intern jobs as the primary next path, reusing the LLM streaming/ghost-queue mechanics pattern: main thread launches jobs, continues work, and polls for structured results.
+- [ ] Add `intern_start!` / `intern_sync!` while keeping `intern_run!` as blocking convenience over the same worker helper.
 - [ ] Harden explicit private slab/arena cleanup for the later multi-worker scheduler; the first slice uses normal `CPtr`/VM lifetime cleanup and JSON result copying.
 
 ## Acceptance Criteria
@@ -46,7 +48,34 @@ G091 is active. The first deterministic substrate slice is implemented as the `i
 - `edict/tests/intern_worker_test.cpp` proves deterministic worker execution, structured result collection, refused mutation of shared read-only context, private input snapshot behavior, and structured invalid-envelope errors.
 - Documentation now captures the safe intern-task rule in the README, Edict language reference, LLM guide, and 🔗[K032 — Edict Intern Worker Surface](../../Facts/J3_AgentC/K032_Edict_Intern_Worker_Surface.md).
 
-Remaining G091 hardening before closure: decide whether the synchronous first slice is sufficient to retire G091 or whether to add explicit worker arena/slab lifecycle cleanup and/or a minimal multi-worker scheduler before promoting 🔗[G099 — Intern Task Quality Contracts](../G099-InternTaskQualityContracts/index.md).
+Remaining G091 hardening before closure: implement the async polling path below, then decide whether explicit worker arena/slab lifecycle cleanup is required before promoting 🔗[G099 — Intern Task Quality Contracts](../G099-InternTaskQualityContracts/index.md).
+
+## Primary Implementation Path — Async Intern Jobs
+The next G091 slice should reuse the LLM streaming/ghost-queue mechanics pattern rather than inventing a separate scheduler model:
+
+1. Main/coordinator thread creates an intern job id and freezes/snapshots the task boundary.
+2. A background worker thread owns blocking Edict worker execution.
+3. Worker publishes events/final JSON into a mutex-protected queue/result slot.
+4. Main/coordinator thread continues other Edict work and periodically calls `intern_sync!`.
+5. `intern_sync!` drains pending events and, once complete, parses final JSON into coordinator-owned Listree state on the coordinator thread.
+6. Only the coordinator thread mutates coordinator-owned VM/Listree state.
+
+Planned Edict surface:
+
+```edict
+task intern_start! @job
+-- coordinator may keep working here
+job.job_id intern_sync! @status
+```
+
+Preferred implementation options, in order:
+- Extract the generic queue/result mechanics from `cpp-agent/runtime/core/StreamManager` into a neutral shared component that both LLM streaming and Edict intern jobs can use.
+- If extraction is too invasive for the next slice, add an Edict-local `InternJobManager` modeled directly on `StreamManager` and leave common extraction as cleanup.
+- Avoid coupling raw `libedict` directly to the full `cpp-agent` runtime/provider stack.
+
+`intern_run!` should remain as blocking sugar over the same worker helper so existing tests and script examples continue to work.
+
+Related architecture concept: 🔗[Layered mmap Micro-VM Architecture](../../Concepts/LayeredMmapMicroVmArchitecture/index.md) records the longer-term memory-substrate direction: static read-only core/import slabs, private per-VM overlays, optional published communication slabs, and process-isolated micro-VM cores for near-zero-copy intern scaling.
 
 ## Validation — 2026-05-14
 - `cmake --build build --target edict_tests -j2` — passed.

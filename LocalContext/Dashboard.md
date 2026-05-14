@@ -11,7 +11,7 @@ Completed implementation/documentation slices are retired from the open-dashboar
 ## Incomplete Goals — Priority Order
 
 1. 🔗[G078 — Edict-Resident Agent Loop Consolidation](./Knowledge/Goals/G078-EdictResidentAgentLoopConsolidation/index.md) — **ACTIVE** parent track; make Edict the authoritative provider/session/tool/context control plane.
-2. 🔗[G091 — Intern Worker Concurrency MVP](./Knowledge/Goals/G091-InternWorkerConcurrencyMvp/index.md) — **ACTIVE**; first deterministic `intern_run!` worker-VM dispatch slice is implemented; remaining hardening is explicit worker arena/slab lifecycle and/or scheduler scope before closure.
+2. 🔗[G091 — Intern Worker Concurrency MVP](./Knowledge/Goals/G091-InternWorkerConcurrencyMvp/index.md) — **ACTIVE**; first deterministic `intern_run!` worker-VM dispatch slice is implemented; primary next path is async `intern_start!` / `intern_sync!` using the LLM streaming/ghost-queue mechanics pattern.
 3. 🔗[G099 — Intern Task Quality Contracts](./Knowledge/Goals/G099-InternTaskQualityContracts/index.md) — **PLANNED**; bounded/checkable task schemas for local intern agents.
 4. 🔗[G092 — Cartographer FFI Re-entrancy Metadata](./Knowledge/Goals/G092-CartographerFfiReentrancyMetadata/index.md) — **PLANNED**; classify imported symbols so worker VMs share only safe native capabilities.
 5. 🔗[G096 — Authoritative mmap Session Resume](./Knowledge/Goals/G096-AuthoritativeMmapSessionResume/index.md) — **PLANNED**; harden full durable mmap-backed cognitive-state resume beyond current normal-exit sessions.
@@ -30,7 +30,7 @@ None.
 ## Active Context
 - **Completed goals retired from open view**: G074, G079, G080, G084, G085, G086, G087, G088, G089, G090, and G102 are complete and no longer listed in the incomplete-priority backlog. Older completed goals G068, G071, G072, G073, G076, G077, G081, G082, and G083 were moved to `LocalContext/Knowledge/Archive/Goals/`; see 🔗[Archive Index](./Knowledge/Archive/ARCHIVE_INDEX.md). Completed-but-unarchived goals remain archive candidates for the next archival cleanup.
 - **Edict provider surface**: `llm.init(name)` returns stable provider objects. Current request pattern is `provider < [prompt] request! > / /`; launcher-backed REPL pattern is `provider < repl! > / /`. G080 added provider-owned `context_reset!` / `context_inspect!` plus REPL slash commands `/reset`, `/clear`, `/context`, and `/inspect`.
-- **Intern worker surface (G091 first slice)**: raw Edict now has `intern_run!`, which accepts a bounded task envelope, freezes shared `context`/`imports`, snapshots `input`, runs deterministic Edict source in a fresh worker VM with private `workspace`, joins, and returns a structured result copied back on the coordinator thread. See 🔗[K032 — Edict Intern Worker Surface](./Knowledge/Facts/J3_AgentC/K032_Edict_Intern_Worker_Surface.md).
+- **Intern worker surface (G091 first slice)**: raw Edict now has `intern_run!`, which accepts a bounded task envelope, freezes shared `context`/`imports`, snapshots `input`, runs deterministic Edict source in a fresh worker VM with private `workspace`, joins, and returns a structured result copied back on the coordinator thread. Primary next path: add async `intern_start!` / `intern_sync!` using the same ghost-queue polling pattern as LLM streaming. Longer-term memory-substrate concept: 🔗[Layered mmap Micro-VM Architecture](./Knowledge/Concepts/LayeredMmapMicroVmArchitecture/index.md), now refined around build-time Root0 static slab-image generation, runtime Root1 coordination/slab advertisement, declarative meta-library import images, and low-upward core vs high-downward micro-VM slab allocation. See 🔗[K032 — Edict Intern Worker Surface](./Knowledge/Facts/J3_AgentC/K032_Edict_Intern_Worker_Surface.md).
 - **Curated launcher**: `./edict.sh` injects `EDICT_PATH`, preloads `agentc_curated.edict`, configures the `llm` bootstrap surface, and defaults to `EDICT_AUTO_CHAT=1` with `EDICT_DEFAULT_PRESET=local-qwen`. Set `EDICT_AUTO_CHAT=0` for raw curated Edict execution.
 - **OpenAI Codex provider**: `openai-codex` is live through pi ChatGPT OAuth credentials in `~/.pi/agent/auth.json`; default model is `gpt-5.3-codex` with low reasoning effort. Live smoke test returned `ok`. Lower attempted Codex model names were unsupported for the account.
 - **Important VM semantics now fixed/documented**: concatenated prefix sigils apply to the same identifier left-to-right (`/@name`, `//name`, etc.); leading `-name` selects the tail/oldest dictionary value for lookup, assignment, and removal; strict/lax unresolved lookup modes exist (`lax!`, `strict!`, `strict_null!`, `strict_fail!`); bare `/` is the documented stack discard and `pop` is no longer a compiler/bootstrap alias.
@@ -45,7 +45,7 @@ None.
 
 **Current State**: The foundational persistence/client-host work has been retired to the archive. The live project is now centered on G078: making Edict the authoritative control plane for the agent loop. The codebase has a working curated launcher, Edict-side provider objects, provider REPL, local/Codex/Google-Gemma provider paths, provider-owned reset/inspect context management, deterministic `intern_run!` worker dispatch, first file/shell tool surface, first real-time ghost-queue stream surface, strict lookup modes, corrected prefix-chain semantics, and corrected tail-history semantics.
 
-**Next Action**: Continue hardening G091 after the landed deterministic `intern_run!` slice: decide whether to close the MVP now or add explicit worker arena/slab lifecycle cleanup and/or a minimal multi-worker scheduler before promoting G099 task-quality contracts.
+**Next Action**: Continue G091 by discussing/choosing variations on the recorded primary async path: `intern_start!` launches background jobs, coordinator continues work, and `intern_sync!` polls/drains structured results using the LLM streaming/ghost-queue mechanics pattern. Keep `intern_run!` as blocking convenience.
 
 **Key Constraints**: Preserve stable provider-object in-place mutation; avoid expensive Codex `gpt-5.5`; keep Codex default reasoning low; use explicit scalar success/failure sentinels for `& |` control flow; keep Listree mutations on the VM/main thread for any future streaming architecture.
 
@@ -83,8 +83,9 @@ None.
 - 🔗[WP — Native C++ Agent Core Audit](./Knowledge/WorkProducts/WP_NativeCppAgentCore_Audit.md)
 - 🔗[WP — Session Image Persistence Plan](./Knowledge/WorkProducts/WP_SessionImagePersistencePlan_2026-05-01.md)
 
-### Facts / Contracts / Procedures / Prompts
+### Concepts / Facts / Contracts / Procedures / Prompts
 - 🔗[Concepts Index](./Knowledge/Concepts/index.md)
+- 🔗[Layered mmap Micro-VM Architecture](./Knowledge/Concepts/LayeredMmapMicroVmArchitecture/index.md)
 - 🔗[Facts Index](./Knowledge/Facts/index.md)
 - 🔗[Listree Traversal Cycle Detection](./Knowledge/Facts/ListreeTraversalCycleDetection.md)
 - 🔗[ListreeValue Serialization Format](./Knowledge/Facts/ListreeValueSerializationFormat.md)
