@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -91,6 +93,47 @@ std::string bootstrapJsonForMockRuntime() {
         {"runtime_header_path", (sourceRoot / "cpp-agent" / "include" / "agentc_runtime" / "agentc_runtime.h").string()}
     };
     return bootstrap.dump();
+}
+
+std::string bootstrapJsonForLiveRuntime() {
+    const auto buildRoot = std::filesystem::path(TEST_BUILD_DIR);
+    const auto sourceRoot = std::filesystem::path(TEST_SOURCE_DIR);
+    const nlohmann::json bootstrap = {
+        {"extensions_library_path", (buildRoot / "extensions" / "libagentc_extensions.so").string()},
+        {"extensions_header_path", (sourceRoot / "extensions" / "agentc_stdlib.h").string()},
+        {"runtime_library_path", (buildRoot / "cpp-agent" / "libagent_runtime.so").string()},
+        {"runtime_header_path", (sourceRoot / "cpp-agent" / "include" / "agentc_runtime" / "agentc_runtime.h").string()}
+    };
+    return bootstrap.dump();
+}
+
+bool hasGoogleApiKey() {
+    const char* gemini = std::getenv("GEMINI_API_KEY");
+    const char* google = std::getenv("GOOGLE_API_KEY");
+    return (gemini && *gemini) || (google && *google);
+}
+
+std::string trim(std::string value) {
+    value.erase(value.begin(), std::find_if(value.begin(), value.end(), [](unsigned char ch) {
+        return !std::isspace(ch);
+    }));
+    value.erase(std::find_if(value.rbegin(), value.rend(), [](unsigned char ch) {
+        return !std::isspace(ch);
+    }).base(), value.end());
+    return value;
+}
+
+std::string lastNonEmptyLine(const std::string& output) {
+    std::istringstream in(output);
+    std::string line;
+    std::string last;
+    while (std::getline(in, line)) {
+        line = trim(line);
+        if (!line.empty()) {
+            last = line;
+        }
+    }
+    return last;
 }
 
 } // namespace
@@ -185,6 +228,32 @@ print
     EXPECT_EQ(parsed["preset_name"].get<std::string>(), "gemma-4-31b-it");
     EXPECT_EQ(parsed["runtime"]["default_provider"].get<std::string>(), "google");
     EXPECT_EQ(parsed["runtime"]["default_model"].get<std::string>(), "gemma-4-31b-it");
+}
+
+TEST(EdictLlmModuleTest, LiveGoogleGemmaRequestReturnsOkWhenCredentialsArePresent) {
+    if (!hasGoogleApiKey()) {
+        GTEST_SKIP() << "Set GEMINI_API_KEY or GOOGLE_API_KEY to run live Google/Gemma LLM smoke coverage";
+    }
+
+    const auto base = std::filesystem::path(TEST_SOURCE_DIR) / "cpp-agent" / "edict" / "modules";
+    const std::string agentcModule = readFile(base / "agentc.edict");
+    const std::string statefulModule = readFile(base / "agentc_stateful_loop.edict");
+    const std::string providerModule = readFile(base / "agentc_provider_contracts.edict");
+    const std::string llmModule = readFile(base / "llm.edict");
+
+    std::ostringstream script;
+    script << agentcModule << "\n";
+    script << statefulModule << "\n";
+    script << providerModule << "\n";
+    script << llmModule << "\n";
+    script << bootstrapJsonForLiveRuntime() << R"( llm.configure_bootstrap ! /
+llm.init([gemma-4-31b-it]) @provider
+provider < [Reply with exactly two lowercase letters: ok] request ! > pop /
+provider.assistant_text print
+)";
+
+    const std::string output = runEdictScript(script.str());
+    EXPECT_EQ(lastNonEmptyLine(output), "ok") << output;
 }
 
 TEST(EdictLlmModuleTest, ProviderStreamStartAndSyncUsesRuntimeStreamApi) {

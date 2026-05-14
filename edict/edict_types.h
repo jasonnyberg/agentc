@@ -19,8 +19,6 @@
 #include <vector>
 #include <string>
 #include <memory>
-#include <variant>
-#include <unordered_map>
 #include "../core/alloc.h"
 
 namespace agentc::edict {
@@ -138,7 +136,7 @@ enum VMPushextType : uint8_t {
     VMEXT_NULL       = 0, // null value
     VMEXT_BOOL       = 1, // boolean (1 byte follows: 0 or 1)
     VMEXT_STRING     = 2, // string (4-byte length + bytes)
-    VMEXT_DICT       = 3, // serialized dictionary (4-byte length + JSON bytes)
+    // Tag 3 was the removed legacy serialized Dictionary payload.
     VMEXT_LIST       = 4, // empty list (no further bytes)
 };
 
@@ -167,42 +165,11 @@ enum ValueType {
     VALUE_NULL,
     VALUE_BOOL,
     VALUE_STRING,
-    VALUE_REFERENCE,
-    VALUE_DICTIONARY
+    VALUE_REFERENCE
 };
 
 // Forward declarations
-class Value;
 class BytecodeBuffer;
-
-// Dictionary class for storing named values
-class Dictionary {
-private:
-    std::unordered_map<std::string, std::shared_ptr<Value>> entries;
-
-public:
-    Dictionary() = default;
-    
-    // Core dictionary operations
-    void set(const std::string& key, const Value& value);
-    Value get(const std::string& key) const;
-    bool remove(const std::string& key);
-    bool contains(const std::string& key) const;
-    
-    // Serialization support
-    std::string serialize() const;
-    static Dictionary deserialize(const std::string& data);
-    
-    // Iterator access
-    auto begin() { return entries.begin(); }
-    auto end() { return entries.end(); }
-    auto begin() const { return entries.begin(); }
-    auto end() const { return entries.end(); }
-    
-    // Size
-    size_t size() const { return entries.size(); }
-    bool empty() const { return entries.empty(); }
-};
 
 // Value class for storing different types of values
 class Value {
@@ -213,7 +180,6 @@ public:
     Value(bool b) : type(ValueType::VALUE_BOOL), boolValue(b) {}
     Value(const std::string& s) : type(ValueType::VALUE_STRING), stringValue(s) {}
     Value(const char* s) : type(ValueType::VALUE_STRING), stringValue(s) {}
-    Value(const Dictionary& dict);
     
     template<typename T>
     Value(CPtr<T> ptr) : type(ValueType::VALUE_REFERENCE), referenceValue(std::make_shared<CPtr<T>>(ptr)) {}
@@ -223,7 +189,6 @@ public:
     bool isBool() const { return type == ValueType::VALUE_BOOL; }
     bool isString() const { return type == ValueType::VALUE_STRING; }
     bool isReference() const { return type == ValueType::VALUE_REFERENCE; }
-    bool isDictionary() const { return type == ValueType::VALUE_DICTIONARY; }
     
     // Value retrieval
     bool asBool() const { 
@@ -243,9 +208,6 @@ public:
         return *ptr;
     }
     
-    Dictionary& asDictionary();
-    const Dictionary& asDictionary() const;
-    
     // String representation
     std::string toString() const;
     
@@ -259,7 +221,6 @@ private:
     // These can't be in the union because they have non-trivial constructors/destructors
     std::string stringValue;
     std::shared_ptr<void> referenceValue;
-    std::shared_ptr<Dictionary> dictionaryValue;
 };
 
 // Bytecode buffer class

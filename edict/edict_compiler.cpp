@@ -371,7 +371,7 @@ void EdictCompiler::compileTerm() {
 void EdictCompiler::compileJSONObject() {
     tokenizer.setJSONMode(true);
     nextToken(); // consume '{'
-    emitValue(Value(Dictionary())); // New tree/listree object
+    emitValue(Value(nullptr)); // New tree/Listree object for VMOP_CTX_PUSH
     emitOperation(VMOP_CTX_PUSH);
     
     while (currentToken.type != TOKEN_EOF && currentToken.value != "}") {

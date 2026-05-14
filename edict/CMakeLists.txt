@@ -12,6 +12,9 @@ set(LIB_SOURCES
     edict_types.cpp
     edict_compiler.cpp
     edict_vm.cpp
+    edict_vm_core.cpp
+    edict_vm_ffi.cpp
+    edict_vm_bootstrap.cpp
     edict_repl.cpp
     block_accumulator.cpp
 )
