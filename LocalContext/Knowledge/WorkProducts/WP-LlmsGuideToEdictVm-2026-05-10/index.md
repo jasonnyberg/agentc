@@ -276,6 +276,19 @@ Notes:
 
 - `provider.repl` is currently intended for launcher-backed no-arg `./edict.sh` sessions where the underlying process is a real line-oriented `EdictREPL`.
 - The loop reads stdin through `agentc_read_line_status!`, skips blank lines, and exits cleanly on EOF.
+- Context-management slash commands are Edict-owned: `/reset` and `/clear` call `provider.context_reset!`; `/context` and `/inspect` call `provider.context_inspect!` and print a JSON summary.
+
+### Pattern: Provider context management
+
+```edict
+llm.init([local-qwen]) @provider
+provider < [first prompt] request! > / /
+provider < context_inspect! > / @summary
+summary.messages to_json! print
+provider < context_reset! > / /
+```
+
+`context_reset!` mutates the stable provider object in place, clears conversation messages, resets the assistant text, and preserves the system prompt. The REPL command path uses raw string equality through a generic stdlib helper; it does not eval arbitrary user chat text as Edict.
 
 ### Pattern: Provider streaming
 

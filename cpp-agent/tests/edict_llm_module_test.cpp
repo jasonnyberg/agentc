@@ -362,6 +362,42 @@ print
     EXPECT_EQ(parsed["messages"][3]["text"].get<std::string>(), "mock:second");
 }
 
+TEST(EdictLlmModuleTest, ProviderContextResetClearsConversationInPlace) {
+    const auto base = std::filesystem::path(TEST_SOURCE_DIR) / "cpp-agent" / "edict" / "modules";
+    const std::string agentcModule = readFile(base / "agentc.edict");
+    const std::string statefulModule = readFile(base / "agentc_stateful_loop.edict");
+    const std::string providerModule = readFile(base / "agentc_provider_contracts.edict");
+    const std::string llmModule = readFile(base / "llm.edict");
+
+    std::ostringstream script;
+    script << agentcModule << "\n";
+    script << statefulModule << "\n";
+    script << providerModule << "\n";
+    script << llmModule << "\n";
+    script << bootstrapJsonForMockRuntime() << R"( llm.configure_bootstrap! /
+llm.init([local-qwen]) @provider
+provider < [first] request! > / /
+provider < [second] request! > / /
+provider < context_reset! > / @reset
+provider < context_inspect! > / @summary
+{"reset":null,"summary":null} @out
+reset @out.reset
+summary @out.summary
+out to_json!
+print
+)";
+
+    const std::string output = runEdictScript(script.str());
+    auto parsed = nlohmann::json::parse(output);
+    EXPECT_EQ(parsed["reset"]["operation"].get<std::string>(), "reset");
+    EXPECT_EQ(parsed["reset"]["message"].get<std::string>(), "[Context reset]");
+    EXPECT_EQ(parsed["summary"]["assistant_text"].get<std::string>(), "");
+    ASSERT_TRUE(parsed["summary"]["messages"].is_array());
+    EXPECT_TRUE(parsed["summary"]["messages"].empty());
+    EXPECT_EQ(parsed["summary"]["system_prompt"].get<std::string>(),
+              "You are Qwen, created by Alibaba Cloud. You are a helpful assistant.");
+}
+
 TEST(EdictLlmModuleTest, ProviderReplHandlesMultiplePromptsAndEof) {
     const std::string output = runLauncherReplScript(
         "llm.init([local-qwen]) @provider\n"
@@ -373,6 +409,24 @@ TEST(EdictLlmModuleTest, ProviderReplHandlesMultiplePromptsAndEof) {
 
     EXPECT_NE(output.find("Chat ready. Press Ctrl-D to exit."), std::string::npos);
     EXPECT_NE(output.find("mock:Hello from repl"), std::string::npos);
+    EXPECT_NE(output.find("mock:Second prompt"), std::string::npos);
+}
+
+TEST(EdictLlmModuleTest, ProviderReplSupportsContextSlashCommands) {
+    const std::string output = runLauncherReplScript(
+        "llm.init([local-qwen]) @provider\n"
+        "provider < repl! > / /\n"
+        "First prompt\n"
+        "/context\n"
+        "/reset\n"
+        "/context\n"
+        "Second prompt\n",
+        false);
+
+    EXPECT_NE(output.find("mock:First prompt"), std::string::npos);
+    EXPECT_NE(output.find("Context"), std::string::npos);
+    EXPECT_NE(output.find("[Context reset]"), std::string::npos);
+    EXPECT_NE(output.find("\"messages\":[]"), std::string::npos) << output;
     EXPECT_NE(output.find("mock:Second prompt"), std::string::npos);
 }
 

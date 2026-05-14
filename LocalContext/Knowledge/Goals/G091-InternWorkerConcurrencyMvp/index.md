@@ -1,6 +1,7 @@
 # Goal: G091 — Intern Worker Concurrency MVP
 
-**Status**: PLANNED  
+**Status**: NEXT
+
 **Created**: 2026-05-14  
 **Parent**: 🔗[G078 — Edict-Resident Agent Loop Consolidation](../G078-EdictResidentAgentLoopConsolidation/index.md)
 
@@ -35,6 +36,9 @@ The intern model is the clearest application-level payoff for AgentC's substrate
 - [ ] Coordinator-owned Listree state is mutated only on the coordinator/main thread.
 - [ ] Worker output is copied into the main slab with deterministic validation.
 - [ ] Documentation captures the safe intern-task rule: bounded task, explicit inputs, clear success criteria.
+
+## Current Status — 2026-05-14
+G091 is promoted to the next implementation candidate after completion of 🔗[G080 — LLM REPL Context Management](../G080-LlmReplContextManagement/index.md). The first slice should stay deterministic and substrate-focused: coordinator dispatch to a worker VM with a bounded Edict task, read-only shared context, private mutable workspace, and structured result collection. Live local-model intern execution remains out of scope until the VM/slab/thread contract is proven.
 
 ## Constraints
 - Whole-subtree `ReadOnly` is sufficient for the first implementation.

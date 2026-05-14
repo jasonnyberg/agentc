@@ -10,8 +10,11 @@
 # - `provider.request([prompt])` mutates provider state in place and returns `[ok]` or `fail`
 # - `provider.stream_start([prompt])` starts an async ghost-queue stream on the provider
 # - `provider.stream_sync()` drains pending stream tokens into provider.stream_last
+# - `provider.context_reset()` clears provider-owned conversation history in place
+# - `provider.context_inspect()` returns the current provider/context summary
 # - `provider.tools` exposes the first explicit file/shell tool wrappers from `agentc_tools`
 # - `provider < repl! > / /` enters a provider-driven chat loop until EOF
+#   REPL slash commands: `/reset` or `/clear`, `/context` or `/inspect`
 
 [] @llm_bootstrap_override
 
@@ -102,20 +105,51 @@ llm_bootstrap_repo_root! @llm_bootstrap_override
 ] @llm_conversation_apply_response
 
 [
+    @__llm_line
+    __llm_line [/reset] agentc_string_equals! test &
+        / provider < context_reset! > / @__llm_context_result
+        __llm_context_result.message print
+        [handled]
+    |
+        / __llm_line [/clear] agentc_string_equals! test &
+            / provider < context_reset! > / @__llm_context_result
+            __llm_context_result.message print
+            [handled]
+        |
+            / __llm_line [/context] agentc_string_equals! test &
+                / provider < context_inspect! > / @__llm_context_result
+                [Context] print
+                __llm_context_result to_json! print
+                [handled]
+            |
+                / __llm_line [/inspect] agentc_string_equals! test &
+                    / provider < context_inspect! > / @__llm_context_result
+                    [Context] print
+                    __llm_context_result to_json! print
+                    [handled]
+                |
+                    / []
+] @llm_provider_repl_context_command
+
+[
     [You> ] agentc_write! /
     agentc_read_line_status! @__llm_input
     __llm_input.eof test &
         / [bye]
     |
         / __llm_input.line test &
-            / __llm_input.line @provider.__llm_prompt provider < __llm_prompt request! > / &
-                [Assistant] print
-                provider.assistant_text print
+            / __llm_input.line llm_provider_repl_context_command! test &
+                /
                 llm_provider_repl_loop()
             |
-                [Error] print
-                provider.last_error.message print
-                llm_provider_repl_loop()
+                / __llm_input.line @provider.__llm_prompt provider < __llm_prompt request! > / &
+                    [Assistant] print
+                    provider.assistant_text print
+                    llm_provider_repl_loop()
+                |
+                    [Error] print
+                    provider.last_error.message print
+                    llm_provider_repl_loop()
         |
             /
             llm_provider_repl_loop()
@@ -125,7 +159,7 @@ llm_bootstrap_repo_root! @llm_bootstrap_override
     @preset_name
     llm_ensure_imports! /
     preset_name llm_resolve_preset! @preset
-    {"preset_name": "", "runtime": null, "conversation": null, "assistant_text": "", "last_response": null, "last_error": null, "request": "", "stream_start": "", "stream_sync": "", "stream_id": "", "stream_runtime": null, "stream_last": null, "stream_text": "", "stream_complete": [], "repl": "", "tools": null, "ext": null, "runtimeffi": null} @provider
+    {"preset_name": "", "runtime": null, "conversation": null, "assistant_text": "", "last_response": null, "last_error": null, "request": "", "stream_start": "", "stream_sync": "", "stream_id": "", "stream_runtime": null, "stream_last": null, "stream_text": "", "stream_complete": [], "context_reset": "", "context_inspect": "", "repl": "", "tools": null, "ext": null, "runtimeffi": null} @provider
     preset_name @provider.preset_name
     preset.runtime @provider.runtime
     agentc_state_init(preset.system_prompt) @provider.conversation
@@ -133,6 +167,8 @@ llm_bootstrap_repo_root! @llm_bootstrap_override
     runtimeffi @provider.runtimeffi
     agentc_tools @provider.tools
     [@__llm_prompt agentc_state_push_user(conversation __llm_prompt) @conversation runtime.provider_contract @__llm_provider_spec agentc_provider_build_turn_request(__llm_provider_spec runtime conversation) @__llm_request_value agentc_runtime_create(runtime) @__llm_runtime_handle agentc_call_json(__llm_runtime_handle __llm_request_value) @__llm_response_json agentc_last_error_json(__llm_runtime_handle) @__llm_error_json __llm_runtime_handle agentc_destroy! / __llm_response_json from_json! @__llm_response __llm_response @last_response __llm_error_json test & / __llm_error_json from_json! @last_error last_error.message fail | / null @last_error __llm_response @conversation.last_response __llm_response.message @__llm_message / __llm_message.text @conversation.assistant_text / __llm_message ^conversation.messages^ conversation.assistant_text @assistant_text [ok]] @provider.request
+    [conversation.system_prompt agentc_state_init! @conversation {"empty":[]} @__llm_context_defaults "" @assistant_text null @last_response null @last_error null @stream_last "" @stream_text __llm_context_defaults.empty @stream_complete {"ok":["ok"],"operation":"reset","message":"[Context reset]"}] @provider.context_reset
+    [{"preset_name":"","provider":"","model":"","system_prompt":"","messages":[],"assistant_text":"","last_response":null,"last_error":null,"stream_id":"","stream_complete":[]} @__llm_context_summary preset_name @__llm_context_summary.preset_name runtime.default_provider @__llm_context_summary.provider runtime.default_model @__llm_context_summary.model conversation.system_prompt @__llm_context_summary.system_prompt conversation.messages @__llm_context_summary.messages assistant_text @__llm_context_summary.assistant_text last_response @__llm_context_summary.last_response last_error @__llm_context_summary.last_error stream_id @__llm_context_summary.stream_id stream_complete @__llm_context_summary.stream_complete __llm_context_summary] @provider.context_inspect
     [@__llm_prompt agentc_state_push_user(conversation __llm_prompt) @conversation runtime.provider_contract @__llm_provider_spec agentc_provider_build_turn_request(__llm_provider_spec runtime conversation) @__llm_request_value agentc_runtime_create(runtime) @stream_runtime stream_runtime __llm_request_value agentc_call_stream! @stream_id "" @stream_text [] @stream_complete null @stream_last null @last_error [ok]] @provider.stream_start
     [stream_runtime stream_id agentc_stream_sync! @stream_last stream_last.tokens @assistant_text stream_last.complete @stream_complete stream_last.error test & / stream_last.error @last_error stream_last.error.message fail | / stream_last.complete test & / stream_runtime agentc_destroy! / null @stream_runtime [ok] | / stream_last.ok] @provider.stream_sync
     [[Chat ready. Press Ctrl-D to exit.] print llm_provider_repl_loop()] @provider.repl

@@ -181,6 +181,17 @@ provider.assistant_text print
 The pattern `provider < method! > / /` enters provider scope, invokes the method in place,
 leaves scope, and discards the returned context/sentinel values.
 
+Provider-owned context can be managed from Edict. `context_inspect!` returns a summary;
+`context_reset!` clears conversation history while preserving the provider object and system
+prompt. Inside `provider.repl()`, the same behavior is available as `/context` and `/reset`
+slash commands.
+
+```edict
+provider < context_inspect! > / @summary
+summary.messages to_json! print
+provider < context_reset! > / /
+```
+
 Live Google/Gemma requests use `GEMINI_API_KEY` or `GOOGLE_API_KEY` when present:
 
 ```bash
@@ -325,7 +336,7 @@ multi-intern scheduler is future work.
 
 ### Near term
 
-- Provider context management: reset, inspect, trim, and summarize conversation state.
+- Provider context management beyond the landed reset/inspect slice: trim and summarize conversation state.
 - Better user-facing examples and notebook-style executable docs.
 - More complete Edict ownership of agent root/session lifecycle.
 - Hardened validation and cleanup of remaining legacy FFI test failures.

@@ -162,6 +162,14 @@ extern "C" unsigned long agentc_ext_string_length_ltv(ltv value) {
     return static_cast<unsigned long>(ltv_length(decode_ltv_handle(value)));
 }
 
+extern "C" ltv agentc_ext_string_equals_ltv_value(ltv left, ltv right) {
+    const bool equal = ltv_to_string(decode_ltv_handle(left)) == ltv_to_string(decode_ltv_handle(right));
+    if (equal) {
+        return encode_ltv_handle(ltv_create_string("ok", 2));
+    }
+    return encode_ltv_handle(ltv_create_null());
+}
+
 extern "C" void* agentc_ext_stdin_read_line_cstr(void) {
     std::string line;
     if (!std::getline(std::cin, line)) {

@@ -20,6 +20,7 @@
 #   agentc_last_error!          ( runtime_handle -- value_or_null )
 #   agentc_last_trace_json!     ( runtime_handle -- json_string_or_null )
 #   agentc_last_trace!          ( runtime_handle -- value_or_null )
+#   agentc_string_equals!       ( left right -- ok_or_null )
 #   agentc_read_line_status!    ( -- {"line": ..., "eof": [...] } )
 #   agentc_write!               ( text -- status )
 #   agentc_file_read!           ( path -- {"ok": [...], "content": ..., ...} )
@@ -50,6 +51,7 @@
 [@runtime_handle runtime_handle agentc_last_error_json! @error_json error_json from_json!] @agentc_last_error
 [@runtime_handle runtime_handle runtimeffi.agentc_runtime_last_trace_json! @trace_cstr trace_cstr ext.agentc_ext_string_from_cstr! @trace_json trace_cstr runtimeffi.agentc_runtime_free_string! / trace_json] @agentc_last_trace_json
 [@runtime_handle runtime_handle agentc_last_trace_json! @trace_json trace_json from_json!] @agentc_last_trace
+[@right @left left right ext.agentc_ext_string_equals_ltv_value!] @agentc_string_equals
 [ext.agentc_ext_stdin_read_line_status_json_cstr! @status_cstr status_cstr ext.agentc_ext_string_from_cstr! @status_json status_cstr ext.agentc_ext_memory_free! / status_json from_json!] @agentc_read_line_status
 [@text text ext.agentc_ext_string_to_cstr_ltv! @text_cstr text_cstr ext.agentc_ext_stdout_write_cstr! @status text_cstr ext.agentc_ext_memory_free! / status] @agentc_write
 [@path path ext.agentc_ext_string_to_cstr_ltv! @path_cstr path_cstr 65536 ext.agentc_ext_file_read_json_cstr! @result_cstr path_cstr ext.agentc_ext_memory_free! / result_cstr ext.agentc_ext_string_from_cstr! @result_json result_cstr ext.agentc_ext_memory_free! / result_json from_json!] @agentc_file_read
