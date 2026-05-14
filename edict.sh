@@ -53,15 +53,15 @@ require_path() {
 emit_prelude() {
   cat <<EOF
 {"project_root": "$EDICT_PATH", "build_root": "$EDICT_BUILD_DIR", "edict_binary": "$EDICT_BIN", "extensions_library_path": "$EDICT_EXT_LIB", "extensions_header_path": "$EDICT_EXT_HDR", "runtime_library_path": "$EDICT_RUNTIME_LIB", "runtime_header_path": "$EDICT_RUNTIME_HDR", "module_dir": "$EDICT_MODULE_DIR", "modules": {"curated": "$EDICT_CURATED_MODULE", "agentc": "$EDICT_AGENTC_MODULE", "stateful_loop": "$EDICT_STATEFUL_MODULE", "provider_contracts": "$EDICT_PROVIDER_CONTRACTS_MODULE", "agent_root": "$EDICT_AGENT_ROOT_MODULE", "llm": "$EDICT_LLM_MODULE"}} @EDICT_PATH
-EDICT_PATH.modules.curated resolver.__native.read_text ! !
-agentc_curated_init ! /
+EDICT_PATH.modules.curated resolver.__native.read_text!!
+agentc_curated_init! /
 EOF
 }
 
 emit_default_chat() {
   cat <<EOF
 llm.init([$EDICT_DEFAULT_PRESET]) @provider
-provider < repl ! > pop /
+provider < repl! > pop /
 EOF
 }
 

@@ -341,6 +341,8 @@ obj
 
 `!` is the core execution primitive. It pops the top of the data stack and executes it.
 
+Style: prefer adjacent eval spelling (`word!`, `module.word!`, `thunk!!`) in examples and user code. The tokenizer still accepts `!` as a separate token for compatibility, but adjacent spelling is the documented idiom.
+
 **Four dispatch phases (in order):**
 
 1. **Iterator fan-out**: if the value is a cursor (iterator), dispatch once per position
@@ -349,8 +351,8 @@ obj
 4. **Source string**: if the value is a string (including `[bracketed]` thunks), compile and execute it
 
 ```edict
-['hello 'world] !    -- compile and run "'hello 'world"; stack: [ "world", "hello" ]
-dup !                  -- dup is a built-in thunk; stack: [ <top>, <top> ]
+['hello 'world]!    -- compile and run "'hello 'world"; stack: [ "world", "hello" ]
+dup!                  -- dup is a built-in thunk; stack: [ <top>, <top> ]
 ```
 
 ### Tail-call optimization
@@ -365,21 +367,21 @@ Brackets `[...]` push their content as a string without executing it. This is ho
 
 ```edict
 [print] @printer
-'hello printer !
+'hello printer!
 -- prints "hello"
 ```
 
 ```edict
 [dup] @twice
-'foo twice !
+'foo twice!
 -- stack: [ "foo", "foo" ]
 ```
 
 ### Nested evaluation
 
 ```edict
-[[hello] !] !
--- outer ! executes "[hello] !", which runs "hello" (a lookup)
+[[hello]!]!
+-- outer! executes "[hello]!", which runs "hello" (a lookup)
 -- stack: [ "hello" ]
 ```
 
@@ -388,7 +390,7 @@ Brackets `[...]` push their content as a string without executing it. This is ho
 ```edict
 ["do some work"] @task
 -- ... later ...
-task !
+task!
 ```
 
 ---
@@ -479,7 +481,7 @@ f()
 ```edict
 [!] @eval
 eval(['hello])
--- isolated frame has "hello", then ! evaluates it
+-- isolated frame has "hello", then! evaluates it
 -- result "hello" is merged back to parent stack
 ```
 
@@ -507,7 +509,7 @@ f(['hello])
 
 ```edict
 [dup] @f
-[f !] @g
+[f!] @g
 g(['nested])
 -- g's isolated frame: "nested", then f! which dups it
 -- result: "nested" "nested" merged to parent
@@ -630,8 +632,8 @@ speculate [swap]   -- swap fails on an empty speculative stack
 
 ```edict
 'safe
-speculate [risky_operation !]
-test & [use_result !] | [use_fallback !]
+speculate [risky_operation!]
+test & [use_result!] | [use_fallback!]
 ```
 
 ### Isolation examples
@@ -640,7 +642,7 @@ Rewrite rules created inside a probe disappear when the probe rolls back:
 
 ```edict
 speculate [
-  {"pattern": ["x"], "replacement": ["rewritten"]} rewrite_define ! /
+  {"pattern": ["x"], "replacement": ["rewritten"]} rewrite_define! /
   'x
 ]
 -- returns "rewritten"
@@ -671,7 +673,7 @@ Rewrite rules define **term-rewriting transformations** over the data stack. Aft
 ### Defining a rule
 
 ```edict
-{ "pattern": ["x"], "replacement": ["w"] } rewrite_define !
+{ "pattern": ["x"], "replacement": ["w"] } rewrite_define!
 -- registers: whenever "x" is on the stack, replace with "w"
 ```
 
@@ -691,39 +693,39 @@ The rule object is returned on the stack after registration (pop with `/` if not
 ### Multi-token patterns
 
 ```edict
-{ "pattern": ["a", "b"], "replacement": ["b", "a"] } rewrite_define !
+{ "pattern": ["a", "b"], "replacement": ["b", "a"] } rewrite_define!
 -- "a" "b" on stack becomes "b" "a"
 ```
 
 ### Wildcard capture and substitution
 
 ```edict
-{ "pattern": ["$1", "x"], "replacement": ["x", "$1"] } rewrite_define !
+{ "pattern": ["$1", "x"], "replacement": ["x", "$1"] } rewrite_define!
 -- "tea" "x" → "x" "tea"   ($1 captures "tea")
 ```
 
 ### Type-aware patterns
 
 ```edict
-{ "pattern": ["#atom", "x"], "replacement": ["atom-hit"] } rewrite_define !
+{ "pattern": ["#atom", "x"], "replacement": ["atom-hit"] } rewrite_define!
 -- any atom value followed by "x" collapses to "atom-hit"
 ```
 
 ### Rewrite mode
 
 ```edict
-'auto    rewrite_mode !  -- default: auto-trigger after every instruction (up to 16 steps)
-'manual  rewrite_mode !  -- only trigger when rewrite_apply ! is called
-'off     rewrite_mode !  -- never trigger
+'auto    rewrite_mode!  -- default: auto-trigger after every instruction (up to 16 steps)
+'manual  rewrite_mode!  -- only trigger when rewrite_apply! is called
+'off     rewrite_mode!  -- never trigger
 ```
 
 ### Manual apply
 
 ```edict
-'manual rewrite_mode ! /
-{ "pattern": ["x"], "replacement": ["hit"] } rewrite_define ! /
+'manual rewrite_mode! /
+{ "pattern": ["x"], "replacement": ["hit"] } rewrite_define! /
 'x
-rewrite_apply !
+rewrite_apply!
 -- stack: [ <trace object> ]
 -- trace has: status="matched", index="0", mode="manual"
 ```
@@ -731,26 +733,26 @@ rewrite_apply !
 ### Listing rules
 
 ```edict
-rewrite_list !
+rewrite_list!
 -- returns a list of rule objects, each with: index, pattern, replacement
 ```
 
 ### Removing a rule
 
 ```edict
-'0 rewrite_remove !
+'0 rewrite_remove!
 -- removes rule at index 0; returns the removed rule object
 ```
 
 ```edict
-'9 rewrite_remove !
+'9 rewrite_remove!
 -- out-of-range index → VM_ERROR: "rewrite rule index out of range"
 ```
 
 ### Trace inspection
 
 ```edict
-rewrite_trace !
+rewrite_trace!
 -- returns the last rewrite trace object
 -- has: status, reason, index, mode
 ```
@@ -762,7 +764,7 @@ A self-referential rule (`"x" → "x"`) will not loop forever — the VM has a p
 ### Example: algebraic normalization
 
 ```edict
-{ "pattern": ["dup", "dot", "sqrt"], "replacement": ["magnitude"] } rewrite_define !
+{ "pattern": ["dup", "dot", "sqrt"], "replacement": ["magnitude"] } rewrite_define!
 'dup 'dot 'sqrt
 -- stack: [ "magnitude" ]   (rewritten automatically)
 ```
@@ -780,7 +782,7 @@ miniKanren is no longer a VM opcode or compiler-owned language form. The active 
 The examples below assume you have already imported `libkanren.so` and aliased its direct `ltv -> ltv` evaluator to `logic`:
 
 ```edict
-[./libkanren.so] [./kanren_runtime_ffi_poc.h] resolver.import ! @logicffi
+[./libkanren.so] [./kanren_runtime_ffi_poc.h] resolver.import! @logicffi
 logicffi.agentc_logic_eval_ltv @logic
 logic @logic_run   -- optional compatibility alias
 ```
@@ -872,10 +874,10 @@ If you want a more call-shaped authoring style, define wrappers in ordinary Edic
  goal_atom [] @where_clause where_clause ^ @spec.where
  results_list @spec.results
  spec] @logic_spec
-[logicffi.agentc_logic_eval_ltv !] @logic_eval
+[logicffi.agentc_logic_eval_ltv!] @logic_eval
 
 logic_spec(fresh(q) membero(q pair(tea cake)) results(q))
-logic_eval !
+logic_eval!
 -- stack: [ <list: ["tea", "cake"]> ]
 ```
 
@@ -969,20 +971,20 @@ The lambda receives a **copy** of the VM; mutations never affect the original.
 The `cursor` capsule provides navigation over the Listree tree. Each operation pushes a boolean result (`'true` or `'false` as strings).
 
 ```edict
-cursor.down !   -- move to first child; push "true"/"false"
-cursor.up !     -- move to parent; push "true"/"false"
-cursor.next !   -- move to next sibling; push "true"/"false"
-cursor.prev !   -- move to previous sibling; push "true"/"false"
-cursor.get !    -- push current node's value onto the data stack
-cursor.set !    -- pop data stack top, assign to current node position
+cursor.down!   -- move to first child; push "true"/"false"
+cursor.up!     -- move to parent; push "true"/"false"
+cursor.next!   -- move to next sibling; push "true"/"false"
+cursor.prev!   -- move to previous sibling; push "true"/"false"
+cursor.get!    -- push current node's value onto the data stack
+cursor.set!    -- pop data stack top, assign to current node position
 ```
 
 ### Example: navigate and read
 
 ```edict
-cursor.down !
+cursor.down!
 test & [
-  cursor.get !
+  cursor.get!
   print
 ] | []
 ```
@@ -991,7 +993,7 @@ test & [
 
 ```edict
 [new value]
-cursor.set !
+cursor.set!
 ```
 
 ---
@@ -1006,8 +1008,8 @@ The VM automatically initializes two capsules at startup:
 
 ```edict
 -- These are created automatically by the bootstrap prelude:
--- __bootstrap_import.curate_parser ! @parser
--- __bootstrap_import.curate_resolver ! @resolver
+-- __bootstrap_import.curate_parser! @parser
+-- __bootstrap_import.curate_resolver! @resolver
 ```
 
 After boot, `parser` and `resolver` are available in the global scope.
@@ -1015,21 +1017,21 @@ After boot, `parser` and `resolver` are available in the global scope.
 ### Load a shared library
 
 ```edict
-'./libmylib.so resolver.load !
+'./libmylib.so resolver.load!
 -- stack: [ <library handle or status> ]
 ```
 
 ### Parse a header
 
 ```edict
-'./mylib.h parser.map ! @defs
+'./mylib.h parser.map! @defs
 -- defs now contains function definitions parsed from the header
 ```
 
 ### Call an imported function
 
 ```edict
-'10 '32 defs.add !
+'10 '32 defs.add!
 -- calls the native `add(int, int)` function with args "10" and "32"
 -- the FFI layer converts the string arguments to C ints at the call boundary
 -- stack: [ "42" ]
@@ -1038,8 +1040,8 @@ After boot, `parser` and `resolver` are available in the global scope.
 ### Full import (parse + resolve in one step)
 
 ```edict
-'./libmylib.so './mylib.h resolver.import ! @mylib
-'10 '32 mylib.add !
+'./libmylib.so './mylib.h resolver.import! @mylib
+'10 '32 mylib.add!
 -- stack: [ "42" ]
 ```
 
@@ -1050,17 +1052,17 @@ After import, `mylib.__cartographer.status` reflects the import outcome.
 For full control over the parse/resolve pipeline:
 
 ```edict
-'./mylib.h     parser.parse_json !    @schema_json
-'./libmylib.so schema_json resolver.resolve_json !  @resolved_json
-resolved_json   resolver.import_resolved_json ! @mylib
+'./mylib.h     parser.parse_json!    @schema_json
+'./libmylib.so schema_json resolver.resolve_json!  @resolved_json
+resolved_json   resolver.import_resolved_json! @mylib
 ```
 
 ### Materialize pipeline (alternative)
 
 ```edict
-'./mylib.h   parser.parse_json !
-              parser.materialize_json ! @defs
-'10 '32 defs.add !
+'./mylib.h   parser.parse_json!
+              parser.materialize_json! @defs
+'10 '32 defs.add!
 ```
 
 ### Deferred (async) import
@@ -1068,15 +1070,15 @@ resolved_json   resolver.import_resolved_json ! @mylib
 For large libraries, import can run asynchronously:
 
 ```edict
-'./mylib.h './libmylib.so resolver.import_deferred ! @req
+'./mylib.h './libmylib.so resolver.import_deferred! @req
 
 -- Poll status:
-req resolver.import_status ! @status
+req resolver.import_status! @status
 -- status has: request_id, service_boundary, protocol, api_schema_format, status
 
 -- Collect result when ready:
-req resolver.import_collect ! @mylib
-'10 '32 mylib.add !
+req resolver.import_collect! @mylib
+'10 '32 mylib.add!
 ```
 
 The `status` field cycles through `'queued` → `'running` → `'ready`.
@@ -1084,13 +1086,13 @@ The `status` field cycles through `'queued` → `'running` → `'ready`.
 ### Pre-resolved import
 
 ```edict
-resolved_json './libmylib.so resolver.import_resolved ! @mylib
+resolved_json './libmylib.so resolver.import_resolved! @mylib
 ```
 
 ### Reading a text file
 
 ```edict
-'./myfile.txt resolver.__native.read_text !
+'./myfile.txt resolver.__native.read_text!
 -- stack: [ <file contents as string> ]
 ```
 
@@ -1110,8 +1112,8 @@ Imported functions carry a `safety` metadata field:
 `ffi_closure` creates a native function pointer from an edict thunk, suitable for passing to C APIs that expect a callback.
 
 ```edict
--- Build a closure: (signature, edict-function) ffi_closure !
-my_signature_node my_edict_fn ffi_closure !
+-- Build a closure: (signature, edict-function) ffi_closure!
+my_signature_node my_edict_fn ffi_closure!
 -- stack: [ <raw native function pointer> ]
 ```
 
@@ -1135,10 +1137,10 @@ worker thunk in a fresh VM. The supported cross-thread data model is intentional
 ```edict
 -- A thunk that adds its two args and returns the result
 -- (arithmetic is performed by a native function imported via FFI)
-[ARG0 ARG1 native_add ! @RETURN] @my_adder
+[ARG0 ARG1 native_add! @RETURN] @my_adder
 
 -- Build a C-callable closure:
-my_signature my_adder ffi_closure !
+my_signature my_adder ffi_closure!
 -- returns a raw pointer that a C function can call
 ```
 
@@ -1151,15 +1153,15 @@ The signature node is a Listree dictionary that encodes the parameter and return
 By default, unsafe imported functions (those with `safety: "unsafe"` in their metadata) are blocked.
 
 ```edict
-unsafe_extensions_status !   -- push current status: "allow" or "block"
-unsafe_extensions_allow !    -- permit unsafe calls
-unsafe_extensions_block !    -- re-block unsafe calls
+unsafe_extensions_status!   -- push current status: "allow" or "block"
+unsafe_extensions_allow!    -- permit unsafe calls
+unsafe_extensions_block!    -- re-block unsafe calls
 ```
 
 ```edict
-unsafe_extensions_allow !
+unsafe_extensions_allow!
 -- now unsafe functions can be called
-unsafe_extensions_block !
+unsafe_extensions_block!
 -- re-blocked
 ```
 
@@ -1250,29 +1252,29 @@ reset   -- clear VM_ERROR flag and error message; resume from error state
 | `VMOP_FUN_EVAL` | `)` | Evaluate function on VMRES_FUNC |
 | `VMOP_SPLICE` | `^` or `^name` | Splice current frame into named node |
 | `VMOP_SPECULATE` | `speculate [code]` | Run code in isolated snapshot |
-| `VMOP_REWRITE_DEFINE` | `rewrite_define !` | Register a rewrite rule |
-| `VMOP_REWRITE_LIST` | `rewrite_list !` | List all rules |
-| `VMOP_REWRITE_REMOVE` | `rewrite_remove !` | Remove rule by index |
-| `VMOP_REWRITE_APPLY` | `rewrite_apply !` | Manually trigger one rewrite step |
-| `VMOP_REWRITE_MODE` | `rewrite_mode !` | Set mode: `'auto` / `'manual` / `'off` |
-| `VMOP_REWRITE_TRACE` | `rewrite_trace !` | Push last rewrite trace object |
-| `VMOP_CURSOR_DOWN` | `cursor.down !` | Move cursor to first child |
-| `VMOP_CURSOR_UP` | `cursor.up !` | Move cursor to parent |
-| `VMOP_CURSOR_NEXT` | `cursor.next !` | Move cursor to next sibling |
-| `VMOP_CURSOR_PREV` | `cursor.prev !` | Move cursor to previous sibling |
-| `VMOP_CURSOR_GET` | `cursor.get !` | Push current cursor node value |
-| `VMOP_CURSOR_SET` | `cursor.set !` | Assign top-of-stack to cursor position |
-| `VMOP_LOAD` | `resolver.load !` | Load a shared library |
-| `VMOP_MAP` | `parser.map !` | Parse a C header via Cartographer |
-| `VMOP_IMPORT` | `resolver.import !` | Full import: parse + resolve + inject |
-| `VMOP_IMPORT_RESOLVED` | `resolver.import_resolved !` | Import from pre-resolved JSON |
-| `VMOP_IMPORT_DEFERRED` | `resolver.import_deferred !` | Async import; returns request handle |
-| `VMOP_IMPORT_COLLECT` | `resolver.import_collect !` | Collect deferred import result |
-| `VMOP_IMPORT_STATUS` | `resolver.import_status !` | Query status of deferred import |
-| `VMOP_PARSE_JSON` | `parser.parse_json !` | Parse header → schema JSON string |
-| `VMOP_MATERIALIZE_JSON` | `parser.materialize_json !` | Decode schema JSON → Listree |
-| `VMOP_RESOLVE_JSON` | `resolver.resolve_json !` | Resolve schema JSON against library |
-| `VMOP_CLOSURE` | `ffi_closure !` | Build native closure from edict thunk |
+| `VMOP_REWRITE_DEFINE` | `rewrite_define!` | Register a rewrite rule |
+| `VMOP_REWRITE_LIST` | `rewrite_list!` | List all rules |
+| `VMOP_REWRITE_REMOVE` | `rewrite_remove!` | Remove rule by index |
+| `VMOP_REWRITE_APPLY` | `rewrite_apply!` | Manually trigger one rewrite step |
+| `VMOP_REWRITE_MODE` | `rewrite_mode!` | Set mode: `'auto` / `'manual` / `'off` |
+| `VMOP_REWRITE_TRACE` | `rewrite_trace!` | Push last rewrite trace object |
+| `VMOP_CURSOR_DOWN` | `cursor.down!` | Move cursor to first child |
+| `VMOP_CURSOR_UP` | `cursor.up!` | Move cursor to parent |
+| `VMOP_CURSOR_NEXT` | `cursor.next!` | Move cursor to next sibling |
+| `VMOP_CURSOR_PREV` | `cursor.prev!` | Move cursor to previous sibling |
+| `VMOP_CURSOR_GET` | `cursor.get!` | Push current cursor node value |
+| `VMOP_CURSOR_SET` | `cursor.set!` | Assign top-of-stack to cursor position |
+| `VMOP_LOAD` | `resolver.load!` | Load a shared library |
+| `VMOP_MAP` | `parser.map!` | Parse a C header via Cartographer |
+| `VMOP_IMPORT` | `resolver.import!` | Full import: parse + resolve + inject |
+| `VMOP_IMPORT_RESOLVED` | `resolver.import_resolved!` | Import from pre-resolved JSON |
+| `VMOP_IMPORT_DEFERRED` | `resolver.import_deferred!` | Async import; returns request handle |
+| `VMOP_IMPORT_COLLECT` | `resolver.import_collect!` | Collect deferred import result |
+| `VMOP_IMPORT_STATUS` | `resolver.import_status!` | Query status of deferred import |
+| `VMOP_PARSE_JSON` | `parser.parse_json!` | Parse header → schema JSON string |
+| `VMOP_MATERIALIZE_JSON` | `parser.materialize_json!` | Decode schema JSON → Listree |
+| `VMOP_RESOLVE_JSON` | `resolver.resolve_json!` | Resolve schema JSON against library |
+| `VMOP_CLOSURE` | `ffi_closure!` | Build native closure from edict thunk |
 | `VMOP_UNSAFE_EXTENSIONS_ALLOW` | `unsafe_extensions_allow` | Permit unsafe FFI calls |
 | `VMOP_UNSAFE_EXTENSIONS_BLOCK` | `unsafe_extensions_block` | Block unsafe FFI calls |
 | `VMOP_UNSAFE_EXTENSIONS_STATUS` | `unsafe_extensions_status` | Push current unsafe policy |
@@ -1297,15 +1299,15 @@ reset   -- clear VM_ERROR flag and error message; resume from error state
 
 [
   n test & [
-    a b math.add ! @next    -- native add: a + b
+    a b math.add! @next    -- native add: a + b
     b @a
     next @b
-    n '1 math.sub ! @n     -- native sub: n - 1
-    fib !                   -- tail-recursive call
+    n '1 math.sub! @n     -- native sub: n - 1
+    fib!                   -- tail-recursive call
   ] | []
 ] @fib
 
-fib !
+fib!
 -- result: a contains fib(10) as a string
 ```
 
@@ -1317,7 +1319,7 @@ fib !
 
 -- Build a greeting string via rewrite rule
 { "pattern": ["$1", "$2", "greet"], "replacement": ["$1 $2"] }
-rewrite_define ! /
+rewrite_define! /
 
 greeting subject 'greet
 -- rewrite fires automatically: stack now has "hello world"
@@ -1373,8 +1375,8 @@ results
 ```edict
 -- Define normalization rules (strings only — no native arithmetic)
 -- Note: the pattern token "" (empty string) is a JSON string in the pattern array
-{ "pattern": ["", "concat"], "replacement": [] } rewrite_define ! /
-{ "pattern": ["concat", ""], "replacement": [] } rewrite_define ! /
+{ "pattern": ["", "concat"], "replacement": [] } rewrite_define! /
+{ "pattern": ["concat", ""], "replacement": [] } rewrite_define! /
 
 -- In auto mode, these fire after each instruction:
 [] 'hello concat

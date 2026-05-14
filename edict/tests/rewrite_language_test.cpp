@@ -59,7 +59,7 @@ TEST(RewriteLanguageTest, SourceDefinedRuleRegistersSuccessfully) {
     EdictVM vm;
     executeScript(vm, R"(
         {"pattern": ["x"], "replacement": ["w"]}
-        rewrite_define !
+        rewrite_define!
     )");
 
     auto result = vm.popData();
@@ -72,7 +72,7 @@ TEST(RewriteLanguageTest, MalformedRuleIsRejected) {
     EdictVM vm;
     auto code = EdictCompiler().compile(R"(
         {"pattern": ["x"], "replacement": [{}]}
-        rewrite_define !
+        rewrite_define!
     )");
 
     EXPECT_TRUE(vm.execute(code) & VM_ERROR);
@@ -83,9 +83,9 @@ TEST(RewriteLanguageTest, MultipleSourceRulesPreserveRegistrationOrder) {
     EdictVM vm;
     executeScript(vm, R"(
         {"pattern": ["alpha"], "replacement": ["first"]}
-        rewrite_define ! /
+        rewrite_define! /
         {"pattern": ["beta"], "replacement": ["second"]}
-        rewrite_define ! /
+        rewrite_define! /
     )");
 
     ASSERT_EQ(vm.getRewriteRuleCount(), 2u);
@@ -99,7 +99,7 @@ TEST(RewriteLanguageTest, EndToEndSourceRuleAffectsExecution) {
     EdictVM vm;
     executeScript(vm, R"(
         {"pattern": ["dup", "dot", "sqrt"], "replacement": ["magnitude"]}
-        rewrite_define ! /
+        rewrite_define! /
         'dup 'dot 'sqrt
     )");
 
@@ -112,10 +112,10 @@ TEST(RewriteLanguageTest, RewriteListReportsRegisteredRules) {
     EdictVM vm;
     executeScript(vm, R"(
         {"pattern": ["alpha"], "replacement": ["first"]}
-        rewrite_define ! /
+        rewrite_define! /
         {"pattern": ["beta", "$1"], "replacement": ["$1", "done"]}
-        rewrite_define ! /
-        rewrite_list !
+        rewrite_define! /
+        rewrite_list!
     )");
 
     ASSERT_EQ(vm.getStackSize(), 1u) << vm.getError();
@@ -135,11 +135,11 @@ TEST(RewriteLanguageTest, RewriteRemoveDeletesRuleByIndex) {
     EdictVM vm;
     executeScript(vm, R"(
         {"pattern": ["alpha"], "replacement": ["first"]}
-        rewrite_define ! /
+        rewrite_define! /
         {"pattern": ["beta"], "replacement": ["second"]}
-        rewrite_define ! /
-        '0 rewrite_remove ! /
-        rewrite_list !
+        rewrite_define! /
+        '0 rewrite_remove! /
+        rewrite_list!
     )");
 
     auto listed = vm.popData();
@@ -167,8 +167,8 @@ TEST(RewriteLanguageTest, RewriteRemoveRejectsOutOfRangeIndex) {
     EdictVM vm;
     auto code = EdictCompiler().compile(R"(
         {"pattern": ["alpha"], "replacement": ["first"]}
-        rewrite_define ! /
-        '9 rewrite_remove !
+        rewrite_define! /
+        '9 rewrite_remove!
     )");
 
     EXPECT_TRUE(vm.execute(code) & VM_ERROR);
@@ -179,8 +179,8 @@ TEST(RewriteLanguageTest, RewriteModeManualRequiresExplicitApply) {
     EdictVM vm;
     executeScript(vm, R"(
         {"pattern": ["x"], "replacement": ["manual-hit"]}
-        rewrite_define ! /
-        'manual rewrite_mode ! /
+        rewrite_define! /
+        'manual rewrite_mode! /
         'x
     )");
 
@@ -190,7 +190,7 @@ TEST(RewriteLanguageTest, RewriteModeManualRequiresExplicitApply) {
 
     executeScript(vm, R"(
         'x
-        rewrite_apply !
+        rewrite_apply!
     )");
 
     auto trace = vm.popData();
@@ -206,8 +206,8 @@ TEST(RewriteLanguageTest, RewriteModeOffDisablesAutomaticRewrites) {
     EdictVM vm;
     executeScript(vm, R"(
         {"pattern": ["x"], "replacement": ["off-hit"]}
-        rewrite_define ! /
-        'off rewrite_mode ! /
+        rewrite_define! /
+        'off rewrite_mode! /
         'x
     )");
 
@@ -216,7 +216,7 @@ TEST(RewriteLanguageTest, RewriteModeOffDisablesAutomaticRewrites) {
     EXPECT_EQ(stringValue(result), "x");
 
     executeScript(vm, R"(
-        rewrite_trace !
+        rewrite_trace!
     )");
     auto trace = vm.popData();
     ASSERT_TRUE(trace);
@@ -228,7 +228,7 @@ TEST(RewriteLanguageTest, TypeAwarePatternAndTraceReportMatchDetails) {
     EdictVM vm;
     executeScript(vm, R"(
         {"pattern": ["#atom", "x"], "replacement": ["atom-hit"]}
-        rewrite_define ! /
+        rewrite_define! /
         'tea 'x
     )");
 

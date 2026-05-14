@@ -61,12 +61,12 @@ TEST(EdictStatefulLoopTest, BuildsStructuredTurnStateWithHistory) {
 
     std::ostringstream script;
     script << moduleSource << "\n";
-    script << R"([system prompt] agentc_state_init ! @state
-state [demo prompt] agentc_state_push_user ! @state
+    script << R"([system prompt] agentc_state_init! @state
+state [demo prompt] agentc_state_push_user! @state
 {} @response
 'hello @response.message.text
-state response agentc_state_apply_response ! @state
-state to_json !
+state response agentc_state_apply_response! @state
+state to_json!
 print
 )";
 
@@ -99,21 +99,21 @@ TEST(EdictStatefulLoopTest, StreamTurnActorLoopExecutesAndSynchronizes) {
     std::string runtimeHeader = std::string(TEST_SOURCE_DIR) + "/cpp-agent/include/agentc_runtime/agentc_runtime.h";
 
     std::ostringstream script;
-    script << "[" << extensionsLib << "] [" << extensionsHeader << "] resolver.import ! @ext\n";
-    script << "[" << runtimeLib << "] [" << runtimeHeader << "] resolver.import ! @runtimeffi\n";
+    script << "[" << extensionsLib << "] [" << extensionsHeader << "] resolver.import! @ext\n";
+    script << "[" << runtimeLib << "] [" << runtimeHeader << "] resolver.import! @runtimeffi\n";
     script << readFile(std::string(TEST_SOURCE_DIR) + "/cpp-agent/edict/modules/agentc.edict") << "\n";
     script << readFile(modulePath()) << "\n";
     
-    script << "    [system prompt] agentc_state_init ! @state\n";
-    script << "    {\"default_provider\":\"mock\",\"default_model\":\"mock-model\"} agentc_runtime_create ! @rt\n";
+    script << "    [system prompt] agentc_state_init! @state\n";
+    script << "    {\"default_provider\":\"mock\",\"default_model\":\"mock-model\"} agentc_runtime_create! @rt\n";
     script << R"(
-    rt state [hello] agentc_state_stream_start ! @session
-    session agentc_state_stream_sync ! @sync_result
+    rt state [hello] agentc_state_stream_start! @session
+    session agentc_state_stream_sync! @sync_result
     {"session": null, "sync": null} @summary
     session @summary.session
     sync_result @summary.sync
-    summary to_json ! print
-    rt agentc_destroy ! /
+    summary to_json! print
+    rt agentc_destroy! /
     )";
 
     const std::string output = runEdictScript(script.str());

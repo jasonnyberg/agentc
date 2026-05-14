@@ -7,7 +7,7 @@ Stabilized the first G049 implementation slice enough that regression coverage, 
 ## Work Completed
 
 - Corrected raw ABI `ltv` handle encode/decode in `cartographer/tests/libagentthreads_poc.cpp` so the helper consistently treats the C ABI handle as packed `(index << 16) | offset` data and only decodes at `ltv_api` boundaries.
-- Cleaned up the threaded spawn-result test in `edict/tests/callback_test.cpp` so it no longer leaves an extra literal on the stack before `ffi_closure !`, removing a source of mixed-run pollution.
+- Cleaned up the threaded spawn-result test in `edict/tests/callback_test.cpp` so it no longer leaves an extra literal on the stack before `ffi_closure!`, removing a source of mixed-run pollution.
 - Rebuilt both `agentthreads_poc` and `edict_tests` together before validation so the helper library and test binary no longer drift during G049 iteration.
 
 ## Validation

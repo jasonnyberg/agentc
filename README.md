@@ -44,12 +44,12 @@ operations. Programs are sequences; results accumulate on the data stack.
 ```
 
 **Thunks and eval.** Square brackets push their contents as a literal string (a thunk). `!`
-pops and executes whatever is on top — a thunk, a built-in, or an FFI function. If `!` is
+pops and executes whatever is on top — a thunk, a built-in, or an FFI function. Prefer adjacent spelling (`word!`, `module.word!`) in user code. If `!` is
 the last instruction in the current frame, it tail-calls.
 
 ```edict
 ['hello print] @greet
-greet !                 -- executes the thunk; prints "hello"
+greet!                 -- executes the thunk; prints "hello"
 ```
 
 **Variables and dotted paths.** `@name` stores, bare `name` looks up. Paths like
@@ -60,7 +60,7 @@ themselves as strings (soft failure, no exceptions).
 pattern. This composes cleanly and supports nesting:
 
 ```edict
-value test & [do_this !] | [do_that !]
+value test & [do_this!] | [do_that!]
 ```
 
 **Speculative execution.** `speculate` runs a code block in a full VM snapshot. On
@@ -68,7 +68,7 @@ success, the result is returned; on failure, null. The host VM is never mutated:
 
 ```edict
 'default
-speculate [risky_op !]
+speculate [risky_op!]
 dup test & [swap /] | [/]    -- use result if non-null, else keep default
 ```
 
@@ -77,7 +77,7 @@ input is an object/Listree query spec, and you can alias the imported evaluator 
 `logic` like any other word:
 
 ```edict
-[./libkanren.so] [./kanren_runtime_ffi_poc.h] resolver.import ! @logicffi
+[./libkanren.so] [./kanren_runtime_ffi_poc.h] resolver.import! @logicffi
 logicffi.agentc_logic_eval_ltv @logic
 
 {
@@ -95,8 +95,8 @@ call-shaped authoring style.
 like any other word:
 
 ```edict
-'./libmath.so './math.h resolver.import ! @math
-'3 '4 math.hypot !    -- stack: [ "5" ]
+'./libmath.so './math.h resolver.import! @math
+'3 '4 math.hypot!    -- stack: [ "5" ]
 ```
 
 Rewrite rules, transactions, cursor navigation, FFI closures, and the full opcode set are

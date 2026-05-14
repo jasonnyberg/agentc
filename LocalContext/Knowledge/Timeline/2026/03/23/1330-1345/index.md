@@ -12,8 +12,8 @@ Completed the next G048 detachment slice: kanren is no longer VM-owned by defaul
 - Removed `logic` and `logic_run` from `EdictVM::loadCoreBuiltins()` in `edict/edict_vm.cpp`.
 - Reduced `EdictVM::op_LOGIC_RUN()` to a legacy error stub that tells callers to import the kanren capability through FFI.
 - Removed the direct `kanren` dependency from `libedict` in `edict/CMakeLists.txt`.
-- Updated `edict/tests/callback_test.cpp` so imported capability tests use direct `logicffi.agentc_logic_eval_ltv !` evaluation, and kept the pure Edict wrapper-construction proof.
-- Updated `edict/tests/logic_surface_test.cpp` to import `libkanren.so` in a test prelude and alias `logic` / `logic_run` to imported `agentc_logic_eval_ltv`, so native `logic(...)`, `logic { ... }`, object-spec `logic!`, and compatibility `logic_run !` all execute through imported capability plumbing rather than VM builtins.
+- Updated `edict/tests/callback_test.cpp` so imported capability tests use direct `logicffi.agentc_logic_eval_ltv!` evaluation, and kept the pure Edict wrapper-construction proof.
+- Updated `edict/tests/logic_surface_test.cpp` to import `libkanren.so` in a test prelude and alias `logic` / `logic_run` to imported `agentc_logic_eval_ltv`, so native `logic(...)`, `logic { ... }`, object-spec `logic!`, and compatibility `logic_run!` all execute through imported capability plumbing rather than VM builtins.
 - Updated `edict/tests/cognitive_validation_test.cpp` similarly so transaction + rewrite coverage exercises imported logic capability rather than builtin VM logic.
 
 ## Validation

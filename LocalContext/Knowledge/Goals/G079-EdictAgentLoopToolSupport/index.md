@@ -39,10 +39,10 @@ This is now the immediate next implementation slice. The provider loop is usable
   - `agentc_ext_shell_exec_json_cstr(command, max_bytes)`
 - Each function returns a JSON envelope with an explicit `ok` list sentinel, operation metadata, result fields, and structured error object on failure.
 - Added Edict wrappers in `cpp-agent/edict/modules/agentc.edict`:
-  - `agentc_file_read !`
-  - `agentc_file_write !`
-  - `agentc_file_replace !`
-  - `agentc_shell !`
+  - `agentc_file_read!`
+  - `agentc_file_write!`
+  - `agentc_file_replace!`
+  - `agentc_shell!`
   - `agentc_tools.{read_file,write_file,replace_file,shell}`
 - Added `provider.tools = agentc_tools` in `llm.edict` so provider-scoped loops can invoke tools in the provider context where imported `ext` bindings are available.
 
@@ -50,8 +50,8 @@ Provider-scoped usage pattern:
 
 ```edict
 llm.init([local-qwen]) @provider
-provider < [/tmp/note.txt] [hello] tools.write_file ! @last_tool > pop /
-provider < [/tmp/note.txt] tools.read_file ! @last_tool > pop /
+provider < [/tmp/note.txt] [hello] tools.write_file! @last_tool > pop /
+provider < [/tmp/note.txt] tools.read_file! @last_tool > pop /
 provider.last_tool.content print
 ```
 

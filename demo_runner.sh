@@ -4,8 +4,8 @@ ROOT=$(pwd)
 [$ROOT/build/extensions/libagentc_extensions.so] [$ROOT/extensions/agentc_stdlib.h] resolver.import! @ext
 [$ROOT/build/cpp-agent/libagent_runtime.so] [$ROOT/cpp-agent/include/agentc_runtime/agentc_runtime.h] resolver.import! @runtimeffi
 
-"$ROOT/cpp-agent/edict/modules/agentc.edict" resolver.__native.read_text! !
-"$ROOT/cpp-agent/edict/modules/agentc_stateful_loop.edict" resolver.__native.read_text! !
+"$ROOT/cpp-agent/edict/modules/agentc.edict" resolver.__native.read_text!!
+"$ROOT/cpp-agent/edict/modules/agentc_stateful_loop.edict" resolver.__native.read_text!!
 
 {} @cfg "google" @cfg.default_provider "$GEMINI_DEFAULT_MODEL" @cfg.default_model
 cfg agentc_runtime_create! @rt

@@ -1,33 +1,33 @@
 # agentc.edict — first Edict-side wrapper layer for libagent_runtime.so
 #
 # Prerequisites before loading/using these wrappers:
-#   [<extensions_lib>] [<extensions_header>] resolver.import ! @ext
-#   [<agent_runtime_lib>] [<agent_runtime_header>] resolver.import ! @runtimeffi
+#   [<extensions_lib>] [<extensions_header>] resolver.import! @ext
+#   [<agent_runtime_lib>] [<agent_runtime_header>] resolver.import! @runtimeffi
 #
 # Defined wrappers:
-#   agentc_runtime_create !      ( config_value -- runtime_handle )
-#   agentc_runtime_create_file ! ( config_path -- runtime_handle )
-#   agentc_runtime_create_path ! ( config_path -- runtime_handle )
-#   agentc_configure !           ( runtime_handle config_value -- status )
-#   agentc_configure_file !      ( runtime_handle config_path -- status )
-#   agentc_configure_path !      ( runtime_handle config_path -- status )
-#   agentc_read_json_file !      ( config_path -- config_value )
-#   agentc_call_json !           ( runtime_handle request_value -- response_json_string )
-#   agentc_call !               ( runtime_handle request_value -- response_value )
-#   agentc_call_stream !        ( runtime_handle request_value -- stream_id )
-#   agentc_stream_sync !        ( runtime_handle stream_id -- stream_sync_value )
-#   agentc_last_error_json !     ( runtime_handle -- json_string_or_null )
-#   agentc_last_error !          ( runtime_handle -- value_or_null )
-#   agentc_last_trace_json !     ( runtime_handle -- json_string_or_null )
-#   agentc_last_trace !          ( runtime_handle -- value_or_null )
-#   agentc_read_line_status !    ( -- {"line": ..., "eof": [...] } )
-#   agentc_write !               ( text -- status )
-#   agentc_file_read !           ( path -- {"ok": [...], "content": ..., ...} )
-#   agentc_file_write !          ( path content -- result )
-#   agentc_file_replace !        ( path old_text new_text -- result )
-#   agentc_shell !               ( command -- result )
+#   agentc_runtime_create!      ( config_value -- runtime_handle )
+#   agentc_runtime_create_file! ( config_path -- runtime_handle )
+#   agentc_runtime_create_path! ( config_path -- runtime_handle )
+#   agentc_configure!           ( runtime_handle config_value -- status )
+#   agentc_configure_file!      ( runtime_handle config_path -- status )
+#   agentc_configure_path!      ( runtime_handle config_path -- status )
+#   agentc_read_json_file!      ( config_path -- config_value )
+#   agentc_call_json!           ( runtime_handle request_value -- response_json_string )
+#   agentc_call!               ( runtime_handle request_value -- response_value )
+#   agentc_call_stream!        ( runtime_handle request_value -- stream_id )
+#   agentc_stream_sync!        ( runtime_handle stream_id -- stream_sync_value )
+#   agentc_last_error_json!     ( runtime_handle -- json_string_or_null )
+#   agentc_last_error!          ( runtime_handle -- value_or_null )
+#   agentc_last_trace_json!     ( runtime_handle -- json_string_or_null )
+#   agentc_last_trace!          ( runtime_handle -- value_or_null )
+#   agentc_read_line_status!    ( -- {"line": ..., "eof": [...] } )
+#   agentc_write!               ( text -- status )
+#   agentc_file_read!           ( path -- {"ok": [...], "content": ..., ...} )
+#   agentc_file_write!          ( path content -- result )
+#   agentc_file_replace!        ( path old_text new_text -- result )
+#   agentc_shell!               ( command -- result )
 #   agentc_tools                 object exposing read_file/write_file/replace_file/shell thunks
-#   agentc_destroy !             ( runtime_handle -- )
+#   agentc_destroy!             ( runtime_handle -- )
 #
 # `*_file` wrappers call the runtime C ABI file helpers directly.
 # `*_path` wrappers use Edict's native `read_text` + `from_json` path, which keeps
@@ -35,30 +35,30 @@
 #
 # Note: Edict script mode is line-oriented, so each quoted thunk is defined on one line.
 
-[to_json ! @config_json config_json ext.agentc_ext_string_to_cstr_ltv ! @config_cstr config_cstr runtimeffi.agentc_runtime_create_json ! @runtime_handle config_cstr ext.agentc_ext_memory_free ! / runtime_handle] @agentc_runtime_create
-[@config_path config_path ext.agentc_ext_string_to_cstr_ltv ! @config_path_cstr config_path_cstr runtimeffi.agentc_runtime_create_file ! @runtime_handle config_path_cstr ext.agentc_ext_memory_free ! / runtime_handle] @agentc_runtime_create_file
-[@config_path config_path resolver.__native.read_text ! @config_json_text config_json_text from_json !] @agentc_read_json_file
-[@config_path config_path agentc_read_json_file ! agentc_runtime_create !] @agentc_runtime_create_path
-[@config_value @runtime_handle config_value to_json ! @config_json config_json ext.agentc_ext_string_to_cstr_ltv ! @config_cstr runtime_handle config_cstr runtimeffi.agentc_runtime_configure_json ! @status config_cstr ext.agentc_ext_memory_free ! / status] @agentc_configure
-[@config_path @runtime_handle config_path ext.agentc_ext_string_to_cstr_ltv ! @config_path_cstr runtime_handle config_path_cstr runtimeffi.agentc_runtime_configure_file ! @status config_path_cstr ext.agentc_ext_memory_free ! / status] @agentc_configure_file
-[@config_path @runtime_handle config_path agentc_read_json_file ! runtime_handle swap agentc_configure !] @agentc_configure_path
-[@request_value @runtime_handle request_value to_json ! @request_json request_json ext.agentc_ext_string_to_cstr_ltv ! @request_cstr runtime_handle request_cstr runtimeffi.agentc_runtime_request_json ! @response_cstr request_cstr ext.agentc_ext_memory_free ! / response_cstr ext.agentc_ext_string_from_cstr ! @response_json response_cstr runtimeffi.agentc_runtime_free_string ! / response_json] @agentc_call_json
-[@request_value @runtime_handle runtime_handle request_value agentc_call_json ! @response_json response_json from_json !] @agentc_call
-[@request_value @runtime_handle request_value to_json ! @request_json request_json ext.agentc_ext_string_to_cstr_ltv ! @request_cstr runtime_handle request_cstr runtimeffi.agentc_runtime_stream_request_json ! @stream_cstr request_cstr ext.agentc_ext_memory_free ! / stream_cstr ext.agentc_ext_string_from_cstr ! @stream_id stream_cstr runtimeffi.agentc_runtime_free_string ! / stream_id] @agentc_call_stream
-[@stream_id @runtime_handle stream_id ext.agentc_ext_string_to_cstr_ltv ! @stream_cstr runtime_handle stream_cstr runtimeffi.agentc_runtime_stream_sync_json ! @sync_cstr stream_cstr ext.agentc_ext_memory_free ! / sync_cstr ext.agentc_ext_string_from_cstr ! @sync_json sync_cstr runtimeffi.agentc_runtime_free_string ! / sync_json from_json !] @agentc_stream_sync
-[@runtime_handle runtime_handle runtimeffi.agentc_runtime_last_error_json ! @error_cstr error_cstr ext.agentc_ext_string_from_cstr ! @error_json error_cstr runtimeffi.agentc_runtime_free_string ! / error_json] @agentc_last_error_json
-[@runtime_handle runtime_handle agentc_last_error_json ! @error_json error_json from_json !] @agentc_last_error
-[@runtime_handle runtime_handle runtimeffi.agentc_runtime_last_trace_json ! @trace_cstr trace_cstr ext.agentc_ext_string_from_cstr ! @trace_json trace_cstr runtimeffi.agentc_runtime_free_string ! / trace_json] @agentc_last_trace_json
-[@runtime_handle runtime_handle agentc_last_trace_json ! @trace_json trace_json from_json !] @agentc_last_trace
-[ext.agentc_ext_stdin_read_line_status_json_cstr ! @status_cstr status_cstr ext.agentc_ext_string_from_cstr ! @status_json status_cstr ext.agentc_ext_memory_free ! / status_json from_json !] @agentc_read_line_status
-[@text text ext.agentc_ext_string_to_cstr_ltv ! @text_cstr text_cstr ext.agentc_ext_stdout_write_cstr ! @status text_cstr ext.agentc_ext_memory_free ! / status] @agentc_write
-[@path path ext.agentc_ext_string_to_cstr_ltv ! @path_cstr path_cstr 65536 ext.agentc_ext_file_read_json_cstr ! @result_cstr path_cstr ext.agentc_ext_memory_free ! / result_cstr ext.agentc_ext_string_from_cstr ! @result_json result_cstr ext.agentc_ext_memory_free ! / result_json from_json !] @agentc_file_read
-[@content @path path ext.agentc_ext_string_to_cstr_ltv ! @path_cstr content ext.agentc_ext_string_to_cstr_ltv ! @content_cstr path_cstr content_cstr ext.agentc_ext_file_write_json_cstr ! @result_cstr path_cstr ext.agentc_ext_memory_free ! / content_cstr ext.agentc_ext_memory_free ! / result_cstr ext.agentc_ext_string_from_cstr ! @result_json result_cstr ext.agentc_ext_memory_free ! / result_json from_json !] @agentc_file_write
-[@new_text @old_text @path path ext.agentc_ext_string_to_cstr_ltv ! @path_cstr old_text ext.agentc_ext_string_to_cstr_ltv ! @old_cstr new_text ext.agentc_ext_string_to_cstr_ltv ! @new_cstr path_cstr old_cstr new_cstr ext.agentc_ext_file_replace_json_cstr ! @result_cstr path_cstr ext.agentc_ext_memory_free ! / old_cstr ext.agentc_ext_memory_free ! / new_cstr ext.agentc_ext_memory_free ! / result_cstr ext.agentc_ext_string_from_cstr ! @result_json result_cstr ext.agentc_ext_memory_free ! / result_json from_json !] @agentc_file_replace
-[@command command ext.agentc_ext_string_to_cstr_ltv ! @command_cstr command_cstr 65536 ext.agentc_ext_shell_exec_json_cstr ! @result_cstr command_cstr ext.agentc_ext_memory_free ! / result_cstr ext.agentc_ext_string_from_cstr ! @result_json result_cstr ext.agentc_ext_memory_free ! / result_json from_json !] @agentc_shell
+[to_json! @config_json config_json ext.agentc_ext_string_to_cstr_ltv! @config_cstr config_cstr runtimeffi.agentc_runtime_create_json! @runtime_handle config_cstr ext.agentc_ext_memory_free! / runtime_handle] @agentc_runtime_create
+[@config_path config_path ext.agentc_ext_string_to_cstr_ltv! @config_path_cstr config_path_cstr runtimeffi.agentc_runtime_create_file! @runtime_handle config_path_cstr ext.agentc_ext_memory_free! / runtime_handle] @agentc_runtime_create_file
+[@config_path config_path resolver.__native.read_text! @config_json_text config_json_text from_json!] @agentc_read_json_file
+[@config_path config_path agentc_read_json_file! agentc_runtime_create!] @agentc_runtime_create_path
+[@config_value @runtime_handle config_value to_json! @config_json config_json ext.agentc_ext_string_to_cstr_ltv! @config_cstr runtime_handle config_cstr runtimeffi.agentc_runtime_configure_json! @status config_cstr ext.agentc_ext_memory_free! / status] @agentc_configure
+[@config_path @runtime_handle config_path ext.agentc_ext_string_to_cstr_ltv! @config_path_cstr runtime_handle config_path_cstr runtimeffi.agentc_runtime_configure_file! @status config_path_cstr ext.agentc_ext_memory_free! / status] @agentc_configure_file
+[@config_path @runtime_handle config_path agentc_read_json_file! runtime_handle swap agentc_configure!] @agentc_configure_path
+[@request_value @runtime_handle request_value to_json! @request_json request_json ext.agentc_ext_string_to_cstr_ltv! @request_cstr runtime_handle request_cstr runtimeffi.agentc_runtime_request_json! @response_cstr request_cstr ext.agentc_ext_memory_free! / response_cstr ext.agentc_ext_string_from_cstr! @response_json response_cstr runtimeffi.agentc_runtime_free_string! / response_json] @agentc_call_json
+[@request_value @runtime_handle runtime_handle request_value agentc_call_json! @response_json response_json from_json!] @agentc_call
+[@request_value @runtime_handle request_value to_json! @request_json request_json ext.agentc_ext_string_to_cstr_ltv! @request_cstr runtime_handle request_cstr runtimeffi.agentc_runtime_stream_request_json! @stream_cstr request_cstr ext.agentc_ext_memory_free! / stream_cstr ext.agentc_ext_string_from_cstr! @stream_id stream_cstr runtimeffi.agentc_runtime_free_string! / stream_id] @agentc_call_stream
+[@stream_id @runtime_handle stream_id ext.agentc_ext_string_to_cstr_ltv! @stream_cstr runtime_handle stream_cstr runtimeffi.agentc_runtime_stream_sync_json! @sync_cstr stream_cstr ext.agentc_ext_memory_free! / sync_cstr ext.agentc_ext_string_from_cstr! @sync_json sync_cstr runtimeffi.agentc_runtime_free_string! / sync_json from_json!] @agentc_stream_sync
+[@runtime_handle runtime_handle runtimeffi.agentc_runtime_last_error_json! @error_cstr error_cstr ext.agentc_ext_string_from_cstr! @error_json error_cstr runtimeffi.agentc_runtime_free_string! / error_json] @agentc_last_error_json
+[@runtime_handle runtime_handle agentc_last_error_json! @error_json error_json from_json!] @agentc_last_error
+[@runtime_handle runtime_handle runtimeffi.agentc_runtime_last_trace_json! @trace_cstr trace_cstr ext.agentc_ext_string_from_cstr! @trace_json trace_cstr runtimeffi.agentc_runtime_free_string! / trace_json] @agentc_last_trace_json
+[@runtime_handle runtime_handle agentc_last_trace_json! @trace_json trace_json from_json!] @agentc_last_trace
+[ext.agentc_ext_stdin_read_line_status_json_cstr! @status_cstr status_cstr ext.agentc_ext_string_from_cstr! @status_json status_cstr ext.agentc_ext_memory_free! / status_json from_json!] @agentc_read_line_status
+[@text text ext.agentc_ext_string_to_cstr_ltv! @text_cstr text_cstr ext.agentc_ext_stdout_write_cstr! @status text_cstr ext.agentc_ext_memory_free! / status] @agentc_write
+[@path path ext.agentc_ext_string_to_cstr_ltv! @path_cstr path_cstr 65536 ext.agentc_ext_file_read_json_cstr! @result_cstr path_cstr ext.agentc_ext_memory_free! / result_cstr ext.agentc_ext_string_from_cstr! @result_json result_cstr ext.agentc_ext_memory_free! / result_json from_json!] @agentc_file_read
+[@content @path path ext.agentc_ext_string_to_cstr_ltv! @path_cstr content ext.agentc_ext_string_to_cstr_ltv! @content_cstr path_cstr content_cstr ext.agentc_ext_file_write_json_cstr! @result_cstr path_cstr ext.agentc_ext_memory_free! / content_cstr ext.agentc_ext_memory_free! / result_cstr ext.agentc_ext_string_from_cstr! @result_json result_cstr ext.agentc_ext_memory_free! / result_json from_json!] @agentc_file_write
+[@new_text @old_text @path path ext.agentc_ext_string_to_cstr_ltv! @path_cstr old_text ext.agentc_ext_string_to_cstr_ltv! @old_cstr new_text ext.agentc_ext_string_to_cstr_ltv! @new_cstr path_cstr old_cstr new_cstr ext.agentc_ext_file_replace_json_cstr! @result_cstr path_cstr ext.agentc_ext_memory_free! / old_cstr ext.agentc_ext_memory_free! / new_cstr ext.agentc_ext_memory_free! / result_cstr ext.agentc_ext_string_from_cstr! @result_json result_cstr ext.agentc_ext_memory_free! / result_json from_json!] @agentc_file_replace
+[@command command ext.agentc_ext_string_to_cstr_ltv! @command_cstr command_cstr 65536 ext.agentc_ext_shell_exec_json_cstr! @result_cstr command_cstr ext.agentc_ext_memory_free! / result_cstr ext.agentc_ext_string_from_cstr! @result_json result_cstr ext.agentc_ext_memory_free! / result_json from_json!] @agentc_shell
 {"read_file": "", "write_file": "", "replace_file": "", "shell": ""} @agentc_tools
-[@path path agentc_file_read !] @agentc_tools.read_file
-[@content @path path content agentc_file_write !] @agentc_tools.write_file
-[@new_text @old_text @path path old_text new_text agentc_file_replace !] @agentc_tools.replace_file
-[@command command agentc_shell !] @agentc_tools.shell
-[runtimeffi.agentc_runtime_destroy !] @agentc_destroy
+[@path path agentc_file_read!] @agentc_tools.read_file
+[@content @path path content agentc_file_write!] @agentc_tools.write_file
+[@new_text @old_text @path path old_text new_text agentc_file_replace!] @agentc_tools.replace_file
+[@command command agentc_shell!] @agentc_tools.shell
+[runtimeffi.agentc_runtime_destroy!] @agentc_destroy

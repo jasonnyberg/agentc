@@ -11,21 +11,21 @@
 # - `openai-codex` : ChatGPT Plus/Pro Codex subscription path
 #
 # Defined wrappers:
-#   agentc_provider_local_spec !           ( -- spec )
-#   agentc_provider_openai_spec !          ( -- spec )
-#   agentc_provider_openai_codex_spec !    ( -- spec )
-#   agentc_provider_google_spec !          ( -- spec )
-#   agentc_provider_catalog !              ( -- catalog )
-#   agentc_provider_local_runtime_config ! ( -- runtime_config )
-#   agentc_provider_openai_runtime_config !( -- runtime_config )
-#   agentc_provider_openai_codex_runtime_config !( -- runtime_config )
-#   agentc_provider_google_runtime_config !( -- runtime_config )
-#   agentc_provider_default_runtime_config !( -- runtime_config )
-#   agentc_provider_resolve_name !         ( runtime_config -- provider_name )
-#   agentc_provider_resolve_spec !         ( runtime_config -- spec )
-#   agentc_provider_resolve_model !        ( runtime_config provider_spec -- model )
-#   agentc_provider_build_turn_request !   ( provider_spec runtime_config conversation -- request )
-#   agentc_provider_project_text !         ( provider_spec response -- assistant_text )
+#   agentc_provider_local_spec!           ( -- spec )
+#   agentc_provider_openai_spec!          ( -- spec )
+#   agentc_provider_openai_codex_spec!    ( -- spec )
+#   agentc_provider_google_spec!          ( -- spec )
+#   agentc_provider_catalog!              ( -- catalog )
+#   agentc_provider_local_runtime_config! ( -- runtime_config )
+#   agentc_provider_openai_runtime_config!( -- runtime_config )
+#   agentc_provider_openai_codex_runtime_config!( -- runtime_config )
+#   agentc_provider_google_runtime_config!( -- runtime_config )
+#   agentc_provider_default_runtime_config!( -- runtime_config )
+#   agentc_provider_resolve_name!         ( runtime_config -- provider_name )
+#   agentc_provider_resolve_spec!         ( runtime_config -- spec )
+#   agentc_provider_resolve_model!        ( runtime_config provider_spec -- model )
+#   agentc_provider_build_turn_request!   ( provider_spec runtime_config conversation -- request )
+#   agentc_provider_project_text!         ( provider_spec response -- assistant_text )
 
 [
     {"id": "local",
@@ -89,42 +89,42 @@
 
 [
     {"local": null, "openai": null, "openai-codex": null, "google": null} @catalog
-    agentc_provider_local_spec ! @catalog.local
-    agentc_provider_openai_spec ! @catalog.openai
-    agentc_provider_openai_codex_spec ! @catalog.openai-codex
-    agentc_provider_google_spec ! @catalog.google
+    agentc_provider_local_spec! @catalog.local
+    agentc_provider_openai_spec! @catalog.openai
+    agentc_provider_openai_codex_spec! @catalog.openai-codex
+    agentc_provider_google_spec! @catalog.google
     catalog
 ] @agentc_provider_catalog
 
-[agentc_provider_local_spec ! @spec {"default_provider": "", "default_model": "", "provider_contract": null} @runtime_config
+[agentc_provider_local_spec! @spec {"default_provider": "", "default_model": "", "provider_contract": null} @runtime_config
     spec.runtime_provider @runtime_config.default_provider
     spec.default_model @runtime_config.default_model
     spec @runtime_config.provider_contract
     runtime_config
 ] @agentc_provider_local_runtime_config
 
-[agentc_provider_openai_spec ! @spec {"default_provider": "", "default_model": "", "provider_contract": null} @runtime_config
+[agentc_provider_openai_spec! @spec {"default_provider": "", "default_model": "", "provider_contract": null} @runtime_config
     spec.runtime_provider @runtime_config.default_provider
     spec.default_model @runtime_config.default_model
     spec @runtime_config.provider_contract
     runtime_config
 ] @agentc_provider_openai_runtime_config
 
-[agentc_provider_google_spec ! @spec {"default_provider": "", "default_model": "", "provider_contract": null} @runtime_config
+[agentc_provider_google_spec! @spec {"default_provider": "", "default_model": "", "provider_contract": null} @runtime_config
     spec.runtime_provider @runtime_config.default_provider
     spec.default_model @runtime_config.default_model
     spec @runtime_config.provider_contract
     runtime_config
  ] @agentc_provider_google_runtime_config
 
-[agentc_provider_openai_codex_spec ! @spec {"default_provider": "", "default_model": "", "provider_contract": null} @runtime_config
+[agentc_provider_openai_codex_spec! @spec {"default_provider": "", "default_model": "", "provider_contract": null} @runtime_config
     spec.runtime_provider @runtime_config.default_provider
     spec.default_model @runtime_config.default_model
     spec @runtime_config.provider_contract
     runtime_config
  ] @agentc_provider_openai_codex_runtime_config
 
-[agentc_provider_google_runtime_config !] @agentc_provider_default_runtime_config
+[agentc_provider_google_runtime_config!] @agentc_provider_default_runtime_config
 
 [
     @runtime_config

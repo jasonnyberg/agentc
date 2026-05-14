@@ -15,5 +15,5 @@ The `AgentC` substrate provides a persistent, logical cognitive layer for the `p
 
 ## Integration Knowledge
 - **Persistence Strategy**: The VM's state is held in-memory by the `edict` process. To persist state across process restarts, `pi` must use `agentc.export()` to serialize the VM state as JSON.
-- **MiniKanren Capability**: Logic evaluations are performed via the `logicffi.agentc_logic_eval_ltv !` thunk, which maps standard relational logic queries into the VM execution context.
+- **MiniKanren Capability**: Logic evaluations are performed via the `logicffi.agentc_logic_eval_ltv!` thunk, which maps standard relational logic queries into the VM execution context.
 - **Verification**: The system has been validated via end-to-end integration tests (C++ GTest) and direct shell I/O testing, ensuring full round-trip logic capability.

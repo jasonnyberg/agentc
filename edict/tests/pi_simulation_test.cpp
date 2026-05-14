@@ -11,7 +11,12 @@
 #include <errno.h>
 #include <limits.h>
 #include <chrono>
+#include <filesystem>
 #include <thread>
+
+#ifndef TEST_EDICT_BIN_DIR
+#define TEST_EDICT_BIN_DIR "."
+#endif
 
 TEST(PiSimulationTest, MiniKanrenLogicExample) {
     const char* inPipe = "/tmp/agentc_in.pipe";
@@ -23,9 +28,8 @@ TEST(PiSimulationTest, MiniKanrenLogicExample) {
 
     pid_t pid = fork();
     if (pid == 0) {
-        char path[PATH_MAX];
-        realpath("./edict/edict", path);
-        execl(path, "edict", "--ipc", inPipe, outPipe, (char*)NULL);
+        const auto edictPath = (std::filesystem::path(TEST_EDICT_BIN_DIR) / "edict").string();
+        execl(edictPath.c_str(), "edict", "--ipc", inPipe, outPipe, (char*)NULL);
         exit(1);
     }
 
@@ -33,10 +37,17 @@ TEST(PiSimulationTest, MiniKanrenLogicExample) {
     int fdIn = open(inPipe, O_WRONLY);
     int fdOut = open(outPipe, O_RDONLY);
     
+    const auto sourceDir = std::filesystem::path(TEST_SOURCE_DIR);
+    const auto rootBuildDir = std::filesystem::path(TEST_BUILD_DIR).parent_path();
+    const auto kanrenLib = rootBuildDir / "kanren" / "libkanren.so";
+    const auto kanrenHeader = sourceDir / "kanren_runtime_ffi_poc.h";
+
     // MiniKanren query: membero(q, [tea, cake])
     // The Edict VM interprets this via the `logicffi.agentc_logic_eval_ltv` thunk.
-    std::string query = "{\"fresh\": [\"q\"], \"where\": [[\"membero\", \"q\", [\"tea\", \"cake\"]]], \"results\": [\"q\"]} logicffi.agentc_logic_eval_ltv !\n";
-    write(fdIn, query.c_str(), query.size());
+    std::string script =
+        "[" + kanrenLib.string() + "] [" + kanrenHeader.string() + "] resolver.import! @logicffi\n"
+        "{\"fresh\": [\"q\"], \"where\": [[\"membero\", \"q\", [\"tea\", \"cake\"]]], \"results\": [\"q\"]} logicffi.agentc_logic_eval_ltv! to_json!\n";
+    write(fdIn, script.c_str(), script.size());
     write(fdIn, "exit\n", 5);
 
     char buffer[4096];

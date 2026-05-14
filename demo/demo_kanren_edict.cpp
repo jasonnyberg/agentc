@@ -57,7 +57,7 @@ int main() {
     output.close();
 
     std::string script = R"(
-        [)" + resolvedPath.string() + R"(] resolver.import_resolved ! @logicffi
+        [)" + resolvedPath.string() + R"(] resolver.import_resolved! @logicffi
         logicffi.agentc_logic_eval_ltv @logic
         {
           "fresh": ["q"],

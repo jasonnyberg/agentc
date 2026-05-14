@@ -142,9 +142,9 @@ json runtime_rehydration_metadata(const json& /*base_runtime_config*/,
 std::string runtime_bootstrap_script_for_artifacts(const VmRuntimeImportArtifacts& artifacts) {
     std::ostringstream script;
     script << shell_literal(artifacts.extensions_library_path) << " "
-           << shell_literal(artifacts.extensions_header_path) << " resolver.import ! @ext\n";
+           << shell_literal(artifacts.extensions_header_path) << " resolver.import! @ext\n";
     script << shell_literal(artifacts.runtime_library_path) << " "
-           << shell_literal(artifacts.runtime_header_path) << " resolver.import ! @runtimeffi\n";
+           << shell_literal(artifacts.runtime_header_path) << " resolver.import! @runtimeffi\n";
     script << read_text_file_or_throw(artifacts.agentc_module_path) << "\n";
     script << read_text_file_or_throw(artifacts.agentc_stateful_loop_module_path) << "\n";
     script << read_text_file_or_throw(artifacts.agentc_provider_contracts_module_path) << "\n";
@@ -239,9 +239,9 @@ void run_vm_agent_turn_native(agentc::edict::EdictVM& vm, const std::string& pro
     const std::string script = R"(
         @prompt
         @root
-        root agentc_agent_root_create_runtime ! @runtime_handle
-        runtime_handle root prompt agentc_agent_root_turn ! @next_root
-        runtime_handle agentc_destroy ! /
+        root agentc_agent_root_create_runtime! @runtime_handle
+        runtime_handle root prompt agentc_agent_root_turn! @next_root
+        runtime_handle agentc_destroy! /
         next_root
     )";
 

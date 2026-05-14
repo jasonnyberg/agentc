@@ -21,7 +21,7 @@ The protocol is line-based. To ensure deterministic results:
 ## Example Interaction
 **Pi (via `agentc_eval`):**
 ```
-1 2 + !
+1 2 +!
 ```
 **AgentC Backend Output (via `out` pipe):**
 ```

@@ -100,20 +100,20 @@ Cartographer is the reflection and FFI subsystem of AgentC. It maps C/C++ header
 
 ## Current Edict Surface
 - Edict now exposes the transitional native import family through the reserved `__bootstrap_import` object rather than the ordinary root built-in namespace.
-- Startup now curates ordinary root-level `parser` and `resolver` objects by executing `__bootstrap_import.curate_parser ! @parser __bootstrap_import.curate_resolver ! @resolver` inside `EdictVM` initialization.
-- `parser.materialize_json !` now exposes the `parser_json_v1`-to-definitions stage as an interpreted wrapper over `parser.__native.materialize_json !`.
-- `parser.map !` now composes multiple interpreted stages: it parses a header to `parser_json_v1` via `parser.parse_json !` and then materializes that schema to definitions via `parser.materialize_json !`.
-- `parser.parse_json !` now exposes the header-to-`parser_json_v1` stage as an interpreted wrapper over `parser.__native.parse_json !`.
-- `resolver.resolve_json !` now exposes the library-plus-`parser_json_v1`-to-`resolver_json_v1` stage as an interpreted wrapper over `resolver.__native.resolve_json !`.
-- `resolver.import_resolved_json !` now exposes in-memory `resolver_json_v1` materialization as an interpreted wrapper over `resolver.__native.import_resolved_json !`.
-- `resolver.import !` is now the first normal resolver/import-facing source surface that composes multiple interpreted stages: it parses headers to `parser_json_v1`, resolves that schema against the target library to `resolver_json_v1`, and then materializes the returned import object from in-memory resolved JSON.
-- `resolver.import_resolved !` now also composes multiple stages: it reads a resolved-artifact file through `resolver.__native.read_text !` and then materializes the returned import object through `resolver.import_resolved_json !`.
-- `resolver.import_status !` now composes multiple stages: it first normalizes either a deferred handle or raw request-id string through `resolver.__native.request_id !` and then queries the narrower native status helper.
-- `resolver.import_collect !` now follows the same interpreted request-id normalization path before delegating to the narrower native collection helper.
-- `resolver.import_deferred !` now also composes multiple stages: it queues through `resolver.__native.import_deferred !`, normalizes the returned request identity through `resolver.__native.request_id !`, performs an immediate status poll through `resolver.__native.import_status !`, discards that first status snapshot, and returns the deferred handle object.
-- `resolver.load !` now also routes through interpreted wrapper shape (`@library ... resolver.__native.load !`) rather than direct one-hop delegation, aligning it with the same interpreted-boundary contract as the other public parser/resolver surfaces.
+- Startup now curates ordinary root-level `parser` and `resolver` objects by executing `__bootstrap_import.curate_parser! @parser __bootstrap_import.curate_resolver! @resolver` inside `EdictVM` initialization.
+- `parser.materialize_json!` now exposes the `parser_json_v1`-to-definitions stage as an interpreted wrapper over `parser.__native.materialize_json!`.
+- `parser.map!` now composes multiple interpreted stages: it parses a header to `parser_json_v1` via `parser.parse_json!` and then materializes that schema to definitions via `parser.materialize_json!`.
+- `parser.parse_json!` now exposes the header-to-`parser_json_v1` stage as an interpreted wrapper over `parser.__native.parse_json!`.
+- `resolver.resolve_json!` now exposes the library-plus-`parser_json_v1`-to-`resolver_json_v1` stage as an interpreted wrapper over `resolver.__native.resolve_json!`.
+- `resolver.import_resolved_json!` now exposes in-memory `resolver_json_v1` materialization as an interpreted wrapper over `resolver.__native.import_resolved_json!`.
+- `resolver.import!` is now the first normal resolver/import-facing source surface that composes multiple interpreted stages: it parses headers to `parser_json_v1`, resolves that schema against the target library to `resolver_json_v1`, and then materializes the returned import object from in-memory resolved JSON.
+- `resolver.import_resolved!` now also composes multiple stages: it reads a resolved-artifact file through `resolver.__native.read_text!` and then materializes the returned import object through `resolver.import_resolved_json!`.
+- `resolver.import_status!` now composes multiple stages: it first normalizes either a deferred handle or raw request-id string through `resolver.__native.request_id!` and then queries the narrower native status helper.
+- `resolver.import_collect!` now follows the same interpreted request-id normalization path before delegating to the narrower native collection helper.
+- `resolver.import_deferred!` now also composes multiple stages: it queues through `resolver.__native.import_deferred!`, normalizes the returned request identity through `resolver.__native.request_id!`, performs an immediate status poll through `resolver.__native.import_status!`, discards that first status snapshot, and returns the deferred handle object.
+- `resolver.load!` now also routes through interpreted wrapper shape (`@library ... resolver.__native.load!`) rather than direct one-hop delegation, aligning it with the same interpreted-boundary contract as the other public parser/resolver surfaces.
 - `__bootstrap_import` is now narrowed to curation entrypoints only (`curate_parser`, `curate_resolver`); raw helper thunks are no longer published there.
 - Hidden helper scaffolding was narrowed as well: `parser.__native.map`, `resolver.__native.import`, and `resolver.__native.import_resolved` were removed because those public surfaces now stage through interpreted choreography built from lower-level helpers.
 - Deferred handle metadata now also exposes `protocol = "protocol_v1"` and `api_schema_format = "parser_json_v1"` so source-visible results reflect the current service-contract format.
-- `resolver.import_resolved !` consumes a resolved artifact file path plus scope name, reloads the target library in-process, decodes the embedded `parser_json_v1` schema, and returns the resulting self-contained import object for explicit source-level binding.
-- `edict/tests/callback_test.cpp` now also proves the built `edict` CLI can run that `resolver.import_resolved !` demo end to end as a spawned process and print the expected stack result.
+- `resolver.import_resolved!` consumes a resolved artifact file path plus scope name, reloads the target library in-process, decodes the embedded `parser_json_v1` schema, and returns the resulting self-contained import object for explicit source-level binding.
+- `edict/tests/callback_test.cpp` now also proves the built `edict` CLI can run that `resolver.import_resolved!` demo end to end as a spawned process and print the expected stack result.

@@ -35,6 +35,6 @@ Split the large `edict/edict_vm.cpp` implementation into smaller, purpose-orient
 - `cmake --build build --target edict_tests -j2`
 - `./build/edict/edict_tests --gtest_filter='SimpleAssignTest.*:RewriteLanguageTest.*:EdictVM.*:RegressionMatrixTest.*:CallbackTest.BootstrapImportCapsuleOwnsImportSurface'` — passed 37/37.
 - `./build/edict/edict_tests --gtest_filter='CallbackTest.LoadBuiltinReportsMissingLibrary:CallbackTest.InterpretedImportPipelineCanRoundTripThroughJson:CallbackTest.ImportResolvedInjectsDefinitionsAndInvokesImmediately'` — passed 3/3.
-- Live Google/Gemma smoke: `EDICT_AUTO_CHAT=0 ./edict.sh -e 'llm.init([gemma-4-31b-it]) @provider provider < [Reply with exactly two lowercase letters: ok] request ! > pop / provider.assistant_text print'` — returned `ok`.
+- Live Google/Gemma smoke: `EDICT_AUTO_CHAT=0 ./edict.sh -e 'llm.init([gemma-4-31b-it]) @provider provider < [Reply with exactly two lowercase letters: ok] request! > pop / provider.assistant_text print'` — returned `ok`.
 
 Note: an unfiltered `./build/edict/edict_tests` run was attempted but timed out after producing excessive prompt output from another test path, so focused regression slices were used for validation. An exploratory `CallbackTest.ParserMapCanRoundTripThroughJson` run still fails with `32` vs `42`; that appears separate from this split and was not fixed in this cleanup slice.

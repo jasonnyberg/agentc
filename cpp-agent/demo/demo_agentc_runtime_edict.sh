@@ -35,14 +35,14 @@ echo
 
 {
   cat <<EDICT
-[$EXT_LIB] [$EXT_HDR] resolver.import ! @ext
-[$RUNTIME_LIB] [$RUNTIME_HDR] resolver.import ! @runtimeffi
+[$EXT_LIB] [$EXT_HDR] resolver.import! @ext
+[$RUNTIME_LIB] [$RUNTIME_HDR] resolver.import! @runtimeffi
 EDICT
   cat "$MODULE"
   cat <<EDICT
-[$CONFIG] agentc_runtime_create_path ! @rt
-rt {} agentc_call ! to_json !
+[$CONFIG] agentc_runtime_create_path! @rt
+rt {} agentc_call! to_json!
 print
-rt agentc_destroy ! /
+rt agentc_destroy! /
 EDICT
 } | "$EDICT" -

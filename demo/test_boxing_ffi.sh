@@ -61,12 +61,12 @@ assert_not_contains() {
 echo "--- Test 1: struct timespec round-trip ---"
 # ---------------------------------------------------------------------------
 out=$("$EDICT" - 2>&1 <<EDICT
-unsafe_extensions_allow ! pop
-'/usr/include/time.h parser.__native.map ! @timedefs
+unsafe_extensions_allow! pop
+'/usr/include/time.h parser.__native.map! @timedefs
 
 { "tv_sec": "1234567890", "tv_nsec": "500000000" } @src
-src timedefs.timespec cartographer.box ! @boxed
-boxed cartographer.unbox ! @unboxed
+src timedefs.timespec cartographer.box! @boxed
+boxed cartographer.unbox! @unboxed
 
 unboxed.tv_sec print
 unboxed.tv_nsec print
@@ -80,12 +80,12 @@ assert_contains "timespec tv_nsec round-trip" "500000000"  "$out"
 echo "--- Test 2: struct timeval round-trip (different typedef aliases) ---"
 # ---------------------------------------------------------------------------
 out=$("$EDICT" - 2>&1 <<EDICT
-unsafe_extensions_allow ! pop
-'/usr/include/sys/time.h parser.__native.map ! @sysTime
+unsafe_extensions_allow! pop
+'/usr/include/sys/time.h parser.__native.map! @sysTime
 
 { "tv_sec": "7777", "tv_usec": "333" } @src
-src sysTime.timeval cartographer.box ! @boxed
-boxed cartographer.unbox ! @unboxed
+src sysTime.timeval cartographer.box! @boxed
+boxed cartographer.unbox! @unboxed
 
 unboxed.tv_sec print
 unboxed.tv_usec print
@@ -99,12 +99,12 @@ assert_contains "timeval tv_usec round-trip" "333"  "$out"
 echo "--- Test 3: agentc_box_free does not crash ---"
 # ---------------------------------------------------------------------------
 out=$("$EDICT" - 2>&1 <<EDICT
-unsafe_extensions_allow ! pop
-'/usr/include/time.h parser.__native.map ! @timedefs
+unsafe_extensions_allow! pop
+'/usr/include/time.h parser.__native.map! @timedefs
 
 { "tv_sec": "99", "tv_nsec": "1" } @src
-src timedefs.timespec cartographer.box ! @boxed
-boxed cartographer.box_free !
+src timedefs.timespec cartographer.box! @boxed
+boxed cartographer.box_free!
 'box_free_ok print
 EDICT
 )
@@ -116,11 +116,11 @@ assert_not_contains "box_free produces no error"   "error"        "$out"
 echo "--- Test 4: boxed LTV contains __ptr (binary:8) field ---"
 # ---------------------------------------------------------------------------
 out=$("$EDICT" - 2>&1 <<EDICT
-unsafe_extensions_allow ! pop
-'/usr/include/time.h parser.__native.map ! @timedefs
+unsafe_extensions_allow! pop
+'/usr/include/time.h parser.__native.map! @timedefs
 
 { "tv_sec": "42", "tv_nsec": "0" } @src
-src timedefs.timespec cartographer.box ! @boxed
+src timedefs.timespec cartographer.box! @boxed
 boxed.__ptr print
 EDICT
 )
@@ -131,13 +131,13 @@ assert_contains "boxed __ptr is 8-byte binary" "<binary:8>" "$out"
 echo "--- Test 5: zero-fill when source field is absent ---"
 # ---------------------------------------------------------------------------
 out=$("$EDICT" - 2>&1 <<EDICT
-unsafe_extensions_allow ! pop
-'/usr/include/time.h parser.__native.map ! @timedefs
+unsafe_extensions_allow! pop
+'/usr/include/time.h parser.__native.map! @timedefs
 
 # Source has no tv_nsec — should unbox as "0"
 { "tv_sec": "5" } @src
-src timedefs.timespec cartographer.box ! @boxed
-boxed cartographer.unbox ! @unboxed
+src timedefs.timespec cartographer.box! @boxed
+boxed cartographer.unbox! @unboxed
 
 unboxed.tv_sec print
 unboxed.tv_nsec print
@@ -151,12 +151,12 @@ assert_contains "partial source: tv_nsec is zero" "0" "$out"
 echo "--- Test 6: max-value int64 round-trip ---"
 # ---------------------------------------------------------------------------
 out=$("$EDICT" - 2>&1 <<EDICT
-unsafe_extensions_allow ! pop
-'/usr/include/time.h parser.__native.map ! @timedefs
+unsafe_extensions_allow! pop
+'/usr/include/time.h parser.__native.map! @timedefs
 
 { "tv_sec": "9223372036854775807", "tv_nsec": "999999999" } @src
-src timedefs.timespec cartographer.box ! @boxed
-boxed cartographer.unbox ! @unboxed
+src timedefs.timespec cartographer.box! @boxed
+boxed cartographer.unbox! @unboxed
 
 unboxed.tv_sec print
 unboxed.tv_nsec print
@@ -170,13 +170,13 @@ assert_contains "max tv_nsec round-trip"        "999999999"          "$out"
 echo "--- Test 7: varied scalar types (ComplexStruct) ---"
 # ---------------------------------------------------------------------------
 out=$("$EDICT" - 2>&1 <<EDICT
-unsafe_extensions_allow ! pop
-'${DEMO_COMPLEX_H} parser.__native.map ! @ns
+unsafe_extensions_allow! pop
+'${DEMO_COMPLEX_H} parser.__native.map! @ns
 
 { "byte_val": "-42", "ubyte_val": "200", "short_val": "-1000", "ushort_val": "60000", "int_val": "-100000", "uint_val": "4000000000", "long_val": "-9000000000000", "ulong_val": "9000000000000", "float_val": "3.5", "double_val": "2.71828182845905" } @src
 
-src ns.ComplexStruct cartographer.box ! @boxed
-boxed cartographer.unbox ! @unboxed
+src ns.ComplexStruct cartographer.box! @boxed
+boxed cartographer.unbox! @unboxed
 
 unboxed.byte_val print
 unboxed.ubyte_val print
@@ -206,13 +206,13 @@ assert_contains "double_val round-trip"  "2.71828182845905" "$out"
 echo "--- Test 8: nested struct round-trip (ComplexStruct.origin) ---"
 # ---------------------------------------------------------------------------
 out=$("$EDICT" - 2>&1 <<EDICT
-unsafe_extensions_allow ! pop
-'${DEMO_COMPLEX_H} parser.__native.map ! @ns
+unsafe_extensions_allow! pop
+'${DEMO_COMPLEX_H} parser.__native.map! @ns
 
 { "int_val": "42", "origin": { "x": "100", "y": "200" } } @src
 
-src ns.ComplexStruct cartographer.box ! @boxed
-boxed cartographer.unbox ! @unboxed
+src ns.ComplexStruct cartographer.box! @boxed
+boxed cartographer.unbox! @unboxed
 
 unboxed.int_val print
 unboxed.origin.x print

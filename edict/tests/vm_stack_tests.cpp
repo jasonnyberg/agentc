@@ -144,7 +144,7 @@ TEST_F(VMStackTest, SpeculateRollsBackNestedMutationInRunningVm) {
 TEST_F(VMStackTest, SpeculateRollsBackRewriteRulesDefinedInsideProbe) {
     execute(R"(
         speculate [
-          {"pattern": ["x"], "replacement": ["rewritten"]} rewrite_define ! /
+          {"pattern": ["x"], "replacement": ["rewritten"]} rewrite_define! /
           'x
         ]
     )");
@@ -160,7 +160,7 @@ TEST_F(VMStackTest, SpeculateRollsBackRewriteRulesDefinedInsideProbe) {
 }
 
 TEST_F(VMStackTest, SpeculateRollsBackClosureDrivenMutation) {
-    execute("[] @session [session 'draft @mode] @mark_mode session speculate [mark_mode !] pop session mode");
+    execute("[] @session [session 'draft @mode] @mark_mode session speculate [mark_mode!] pop session mode");
 
     auto mode = vm.popData();
     ASSERT_TRUE(mode);

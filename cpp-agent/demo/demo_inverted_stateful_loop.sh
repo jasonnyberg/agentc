@@ -41,8 +41,8 @@ echo
 
 {
   cat <<EDICT
-[$EXT_LIB] [$EXT_HDR] resolver.import ! @ext
-[$RUNTIME_LIB] [$RUNTIME_HDR] resolver.import ! @runtimeffi
+[$EXT_LIB] [$EXT_HDR] resolver.import! @ext
+[$RUNTIME_LIB] [$RUNTIME_HDR] resolver.import! @runtimeffi
 EDICT
   cat "$AGENTC_MODULE"
   echo
@@ -52,11 +52,11 @@ EDICT
   printf '{"text": %s} @prompt1_input\n' "$PROMPT1_JSON"
   printf '{"text": %s} @prompt2_input\n' "$PROMPT2_JSON"
   echo "[$CONFIG] @config_path"
-  echo 'config_path agentc_runtime_create_path ! @runtime'
-  echo 'system_input.text agentc_state_init ! @state'
-  echo 'runtime state prompt1_input.text agentc_state_turn ! @state'
-  echo 'runtime state prompt2_input.text agentc_state_turn ! @state'
-  echo 'runtime agentc_destroy ! /'
-  echo 'state to_json !'
+  echo 'config_path agentc_runtime_create_path! @runtime'
+  echo 'system_input.text agentc_state_init! @state'
+  echo 'runtime state prompt1_input.text agentc_state_turn! @state'
+  echo 'runtime state prompt2_input.text agentc_state_turn! @state'
+  echo 'runtime agentc_destroy! /'
+  echo 'state to_json!'
   echo 'print'
 } | "$EDICT" -

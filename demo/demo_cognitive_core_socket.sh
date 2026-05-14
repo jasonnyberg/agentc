@@ -31,14 +31,14 @@ echo "--- Sending Logic Setup and Query via Socket ---"
 # We use socat to connect to the Unix Domain Socket
 cat <<EOF | socat - UNIX-CONNECT:$SOCKET_PATH > kanren_demo_socket.log 2>&1
 # 1. Allow FFI Extensions
-unsafe_extensions_allow ! pop
+unsafe_extensions_allow! pop
 
 # 2. Import the Logic Engine FFI
-[$KANREN_LIB] [$KANREN_HDR] resolver.import ! @logicffi
+[$KANREN_LIB] [$KANREN_HDR] resolver.import! @logicffi
 logicffi.agentc_logic_eval_ltv @logic
 
 # 3. Execute a Mini-Kanren Query (finds 'tea', 'cake', 'jam')
-{ "fresh": ["q"], "conde": [[["==", "q", "tea"]], [["membero", "q", ["cake", "jam"]]]], "results": ["q"] } logic !
+{ "fresh": ["q"], "conde": [[["==", "q", "tea"]], [["membero", "q", ["cake", "jam"]]]], "results": ["q"] } logic!
 print
 
 # 4. Graceful Shutdown

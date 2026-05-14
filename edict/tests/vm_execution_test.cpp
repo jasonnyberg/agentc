@@ -172,7 +172,7 @@ TEST(EdictVM, TailPrefixedRemoveCleansUpWhenHistoryBecomesEmpty) {
 
 TEST(EdictVM, SpliceNameSyntaxStillWorksAfterPrefixChainParsing) {
     EdictVM vm;
-    int res = runCode(vm, "[] @collector [^collector^] @capture capture([one] [two]) collector to_json !");
+    int res = runCode(vm, "[] @collector [^collector^] @capture capture([one] [two]) collector to_json!");
     EXPECT_FALSE(res & 0x02);
     EXPECT_NE(valueToString(vm.getStackTop()).find("one"), std::string::npos);
     EXPECT_NE(valueToString(vm.getStackTop()).find("two"), std::string::npos);
@@ -195,7 +195,7 @@ TEST(EdictVM, DeferredEvalWithMethodCall) {
 
 TEST(EdictVM, NestedEvalUsesCodeStack) {
     EdictVM vm;
-    int res = runCode(vm, "[[hello] !] !");
+    int res = runCode(vm, "[[hello]!]!");
     EXPECT_FALSE(res & 0x02);
     auto top = vm.getStackTop();
     EXPECT_EQ(valueToString(top), "hello");
@@ -209,7 +209,7 @@ TEST(FreezeBuiltin, FreezeMakesValueReadOnly) {
     EdictVM vm;
     EdictCompiler compiler;
     // Push a dict, then freeze it.  The frozen value is still on the stack.
-    int state = vm.execute(compiler.compile("{\"a\": \"1\"} freeze !"));
+    int state = vm.execute(compiler.compile("{\"a\": \"1\"} freeze!"));
     ASSERT_FALSE(state & VM_ERROR) << vm.getError();
 
     auto top = vm.getStackTop();
@@ -220,7 +220,7 @@ TEST(FreezeBuiltin, FreezeMakesValueReadOnly) {
 TEST(FreezeBuiltin, FrozenValueCanStillBeRead) {
     EdictVM vm;
     EdictCompiler compiler;
-    int state = vm.execute(compiler.compile("{\"a\": \"hello\"} freeze ! @frozen pop frozen"));
+    int state = vm.execute(compiler.compile("{\"a\": \"hello\"} freeze! @frozen pop frozen"));
     ASSERT_FALSE(state & VM_ERROR) << vm.getError();
 
     auto top = vm.getStackTop();
@@ -237,7 +237,7 @@ TEST(FreezeBuiltin, FreezeIsIdempotentOnAlreadyFrozen) {
     EdictVM vm;
     EdictCompiler compiler;
     // Double-freeze should not crash or produce errors.
-    int state = vm.execute(compiler.compile("{} freeze ! freeze ! @x pop x"));
+    int state = vm.execute(compiler.compile("{} freeze! freeze! @x pop x"));
     ASSERT_FALSE(state & VM_ERROR) << vm.getError();
 
     auto top = vm.getStackTop();
@@ -250,7 +250,7 @@ TEST(FreezeBuiltin, CopyOfFrozenValueReturnsSameSlab) {
     EdictCompiler compiler;
     // After freezing, the value is on the stack.  Pop it, check that
     // copy() returns the same node (O(1) share path).
-    int state = vm.execute(compiler.compile("{\"k\": \"v\"} freeze !"));
+    int state = vm.execute(compiler.compile("{\"k\": \"v\"} freeze!"));
     ASSERT_FALSE(state & VM_ERROR) << vm.getError();
 
     auto frozen = vm.popData();

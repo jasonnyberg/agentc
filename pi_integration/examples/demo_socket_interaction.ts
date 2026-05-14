@@ -9,7 +9,7 @@ async function runDemo() {
     const substrate = await AgentCSubstrate.createSocket(socketPath, edictPath);
     
     console.log("--- 2. Interacting with VM ---");
-    const result = await substrate.eval("'Socket-Verified-Live' ! stack");
+    const result = await substrate.eval("'Socket-Verified-Live'! stack");
     console.log("Result received:", result);
     
     console.log("--- 3. Exiting VM ---");

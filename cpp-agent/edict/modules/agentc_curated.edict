@@ -3,20 +3,20 @@
 # Expected launcher contract:
 # - inject a global `EDICT_PATH` object with concrete filesystem paths
 # - load this module
-# - call `agentc_curated_init ! /`
+# - call `agentc_curated_init! /`
 #
 # Public surface:
-# - `edict_eval_file !`                ( path -- )
-# - `agentc_bootstrap_from_path !`     ( edict_path -- bootstrap )
-# - `agentc_load_curated_modules !`    ( edict_path -- [ok] )
-# - `agentc_configure_curated_llm !`   ( edict_path -- bootstrap )
-# - `agentc_curated_init !`            ( -- [ok] )
+# - `edict_eval_file!`                ( path -- )
+# - `agentc_bootstrap_from_path!`     ( edict_path -- bootstrap )
+# - `agentc_load_curated_modules!`    ( edict_path -- [ok] )
+# - `agentc_configure_curated_llm!`   ( edict_path -- bootstrap )
+# - `agentc_curated_init!`            ( -- [ok] )
 
 "" @agentc_curated_modules_loaded
 
 [
     @path
-    path resolver.__native.read_text ! !
+    path resolver.__native.read_text!!
 ] @edict_eval_file
 
 [
@@ -34,25 +34,25 @@
     agentc_curated_modules_loaded test &
         [ok]
     |
-        edict_path.modules.agentc edict_eval_file !
-        edict_path.modules.stateful_loop edict_eval_file !
-        edict_path.modules.provider_contracts edict_eval_file !
-        edict_path.modules.agent_root edict_eval_file !
-        edict_path.modules.llm edict_eval_file !
+        edict_path.modules.agentc edict_eval_file!
+        edict_path.modules.stateful_loop edict_eval_file!
+        edict_path.modules.provider_contracts edict_eval_file!
+        edict_path.modules.agent_root edict_eval_file!
+        edict_path.modules.llm edict_eval_file!
         [true] @agentc_curated_modules_loaded
         [ok]
 ] @agentc_load_curated_modules
 
 [
     @edict_path
-    edict_path agentc_bootstrap_from_path ! @bootstrap
-    bootstrap llm.configure_bootstrap ! /
+    edict_path agentc_bootstrap_from_path! @bootstrap
+    bootstrap llm.configure_bootstrap! /
     bootstrap
 ] @agentc_configure_curated_llm
 
 [
     EDICT_PATH @edict_path
-    edict_path agentc_load_curated_modules ! /
-    edict_path agentc_configure_curated_llm ! /
+    edict_path agentc_load_curated_modules! /
+    edict_path agentc_configure_curated_llm! /
     [ok]
 ] @agentc_curated_init

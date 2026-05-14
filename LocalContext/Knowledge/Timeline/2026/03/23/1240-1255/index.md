@@ -8,7 +8,7 @@ Added Edict-side imported-capability coverage for the G048 runtime ABI: Edict no
 
 - Added `cartographer/tests/kanren_runtime_ffi_poc.h`, a dedicated import header for the runtime ABI using Cartographer-friendly surface types (`agentc_runtime_ctx*`, `unsigned long long`, `ltv`).
 - Added `CallbackTest.ImportResolvedKanrenRuntimeAbiEvaluatesLogicSpec` in `edict/tests/callback_test.cpp`.
-- The new test resolves `libkanren.so`, writes a resolved JSON file, imports it with `resolver.import_resolved !`, constructs a canonical Listree query spec in Edict, passes it through the imported runtime ABI, and verifies the imported capability returns `tea`, `cake`.
+- The new test resolves `libkanren.so`, writes a resolved JSON file, imports it with `resolver.import_resolved!`, constructs a canonical Listree query spec in Edict, passes it through the imported runtime ABI, and verifies the imported capability returns `tea`, `cake`.
 - Added local list-result decoding helper in `edict/tests/callback_test.cpp` for the new assertion path.
 
 ## Validation

@@ -520,9 +520,9 @@ TEST(CallbackTest, EdictBuiltinsMapLoadAndInvokeCartographerFunction) {
     const std::string libPath = std::string(TEST_BUILD_DIR) + "/libagentmath_poc.so";
     const std::string headerPath = std::string(TEST_SOURCE_DIR) + "/libagentmath_poc.h";
     const std::string source =
-        "[" + libPath + "] resolver.load ! "
-        "[" + headerPath + "] parser.map ! @defs "
-        "10 32 defs.add !";
+        "[" + libPath + "] resolver.load! "
+        "[" + headerPath + "] parser.map! @defs "
+        "10 32 defs.add!";
 
     BytecodeBuffer bc = compiler.compile(source);
     int state = vm.execute(bc);
@@ -536,7 +536,7 @@ TEST(CallbackTest, LoadBuiltinReportsMissingLibrary) {
     EdictVM vm;
     EdictCompiler compiler;
 
-    BytecodeBuffer bc = compiler.compile("'/tmp/definitely_missing_j3_lib.so resolver.load !");
+    BytecodeBuffer bc = compiler.compile("'/tmp/definitely_missing_j3_lib.so resolver.load!");
     int state = vm.execute(bc);
 
     ASSERT_TRUE(state & VM_ERROR);
@@ -629,9 +629,9 @@ TEST(CallbackTest, ImportBuiltinInjectsDefinitionsAndInvokesImmediately) {
     const std::string source =
         "[" + libPath + "] "
         "[" + headerPath + "] "
-        "resolver.import ! @defs "
+        "resolver.import! @defs "
         "defs.add.safety "
-        "10 32 defs.add !";
+        "10 32 defs.add!";
 
     BytecodeBuffer bc = compiler.compile(source);
     int state = vm.execute(bc);
@@ -652,11 +652,11 @@ TEST(CallbackTest, InterpretedImportPipelineCanRoundTripThroughJson) {
     const std::string libPath = std::string(TEST_BUILD_DIR) + "/libagentmath_poc.so";
     const std::string headerPath = std::string(TEST_SOURCE_DIR) + "/libagentmath_poc.h";
     const std::string source =
-        "[" + headerPath + "] parser.parse_json ! @schema "
-        "[" + libPath + "] schema resolver.resolve_json ! @resolved "
-        "resolved resolver.import_resolved_json ! @defs "
+        "[" + headerPath + "] parser.parse_json! @schema "
+        "[" + libPath + "] schema resolver.resolve_json! @resolved "
+        "resolved resolver.import_resolved_json! @defs "
         "defs.add.safety "
-        "10 32 defs.add !";
+        "10 32 defs.add!";
 
     BytecodeBuffer bc = compiler.compile(source);
     int state = vm.execute(bc);
@@ -687,9 +687,9 @@ TEST(CallbackTest, ParserMapCanRoundTripThroughJson) {
     const std::string libPath = std::string(TEST_BUILD_DIR) + "/libagentmath_poc.so";
     const std::string headerPath = std::string(TEST_SOURCE_DIR) + "/libagentmath_poc.h";
     const std::string source =
-        "[" + libPath + "] resolver.load ! "
-        "[" + headerPath + "] parser.parse_json ! parser.materialize_json ! @defs "
-        "10 32 defs.add !";
+        "[" + libPath + "] resolver.load! "
+        "[" + headerPath + "] parser.parse_json! parser.materialize_json! @defs "
+        "10 32 defs.add!";
 
     BytecodeBuffer bc = compiler.compile(source);
     int state = vm.execute(bc);
@@ -723,7 +723,7 @@ TEST(CallbackTest, SourceLevelUnsafeExtensionPolicyCanAllowAndReblock) {
     BytecodeBuffer importDefs = compiler.compile(
         "[" + libPath + "] "
         "[" + headerPath + "] "
-        "resolver.import ! dup @defs");
+        "resolver.import! dup @defs");
     int state = vm.execute(importDefs);
 
     auto defs = vm.popData();
@@ -743,7 +743,7 @@ TEST(CallbackTest, SourceLevelUnsafeExtensionPolicyCanAllowAndReblock) {
     EXPECT_EQ(std::string(static_cast<char*>(status->getData()), status->getLength()), "allow");
     vm.popData();
 
-    BytecodeBuffer callAllowed = compiler.compile("10 32 defs.add !");
+    BytecodeBuffer callAllowed = compiler.compile("10 32 defs.add!");
     state = vm.execute(callAllowed);
 
     auto result = vm.popData();
@@ -769,7 +769,7 @@ TEST(CallbackTest, DeferredImportStatusReturnsHandleSnapshot) {
     BytecodeBuffer queueImport = compiler.compile(
         "[" + libPath + "] "
         "[" + headerPath + "] "
-        "resolver.import_deferred ! dup resolver.import_status !");
+        "resolver.import_deferred! dup resolver.import_status!");
     int state = vm.execute(queueImport);
 
     auto statusHandle = vm.popData();
@@ -825,14 +825,14 @@ TEST(CallbackTest, DeferredImportCollectCanUseHandleThroughRequestIdWrapper) {
     BytecodeBuffer queueImport = compiler.compile(
         "[" + libPath + "] "
         "[" + headerPath + "] "
-        "resolver.import_deferred !");
+        "resolver.import_deferred!");
     int state = vm.execute(queueImport);
 
     auto handle = vm.popData();
     ASSERT_TRUE((bool)handle);
 
-    BytecodeBuffer statusCode = compiler.compile("resolver.import_status !");
-    BytecodeBuffer collectCode = compiler.compile("resolver.import_collect !");
+    BytecodeBuffer statusCode = compiler.compile("resolver.import_status!");
+    BytecodeBuffer collectCode = compiler.compile("resolver.import_collect!");
 
     CPtr<agentc::ListreeValue> latestStatus;
     bool ready = false;
@@ -905,7 +905,7 @@ TEST(CallbackTest, ImportResolvedInjectsDefinitionsAndInvokesImmediately) {
 
     BytecodeBuffer importCode = compiler.compile(
         "[" + resolvedPath.string() + "] "
-        "resolver.import_resolved ! dup @defs 10 32 defs.add !");
+        "resolver.import_resolved! dup @defs 10 32 defs.add!");
     int state = vm.execute(importCode);
 
     auto result = vm.popData();
@@ -955,8 +955,8 @@ TEST(CallbackTest, ImportResolvedKanrenRuntimeAbiEvaluatesLogicSpec) {
 
     BytecodeBuffer importCode = compiler.compile(
         "[" + resolvedPath.string() + "] "
-        "resolver.import_resolved ! @logicffi "
-        "{\"fresh\": [\"q\"], \"where\": [[\"membero\", \"q\", [\"tea\", \"cake\"]]], \"results\": [\"q\"]} logicffi.agentc_logic_eval_ltv ! @result "
+        "resolver.import_resolved! @logicffi "
+        "{\"fresh\": [\"q\"], \"where\": [[\"membero\", \"q\", [\"tea\", \"cake\"]]], \"results\": [\"q\"]} logicffi.agentc_logic_eval_ltv! @result "
         "result");
     int state = vm.execute(importCode);
 
@@ -993,7 +993,7 @@ TEST(CallbackTest, PureEdictWrappersBuildCanonicalLogicSpecForImportedKanren) {
 
     const std::string wrapperPrelude =
         "[" + resolvedPath.string() + "] "
-        "resolver.import_resolved ! @logicffi "
+        "resolver.import_resolved! @logicffi "
         "[@rhs @lhs rhs lhs [] @items items ^] @pair "
         "[@x x [] @items items ^] @fresh "
         "[@x x [] @items items ^] @results "
@@ -1003,7 +1003,7 @@ TEST(CallbackTest, PureEdictWrappersBuildCanonicalLogicSpecForImportedKanren) {
         " goal_atom [] @where_clause where_clause ^ @spec.where "
         " results_list @spec.results "
         " spec] @logic_spec "
-        "[logicffi.agentc_logic_eval_ltv !] @logic_eval ";
+        "[logicffi.agentc_logic_eval_ltv!] @logic_eval ";
 
     std::stringstream input(wrapperPrelude);
     std::stringstream replOutput;
@@ -1045,7 +1045,7 @@ TEST(CallbackTest, PureEdictWrappersBuildCanonicalLogicSpecForImportedKanren) {
     EXPECT_EQ(resultNames[0], "q");
 
     vm.pushData(spec);
-    state = vm.execute(compiler.compile("logic_eval !"));
+    state = vm.execute(compiler.compile("logic_eval!"));
 
     auto result = vm.popData();
     auto values = listToStrings(result);
@@ -1067,16 +1067,16 @@ TEST(CallbackTest, ImportResolvedThreadRuntimeSpawnsThunkAndJoinsResult) {
     writeResolvedApi(libPath, headerPath, resolvedPath);
 
     int state = vm.execute(compiler.compile(
-        "[" + resolvedPath.string() + "] resolver.import_resolved ! @threadffi threadffi"));
+        "[" + resolvedPath.string() + "] resolver.import_resolved! @threadffi threadffi"));
 
     auto defs = vm.popData();
     normalize_thread_runtime_defs(defs);
     const std::string source =
         "{\"return_type\": \"ltv\", \"children\": {\"p0\": {\"kind\": \"Parameter\", \"type\": \"ltv\"}}} "
-        "[pop 'threaded-result] ffi_closure ! @worker pop "
-        "worker 'seed threadffi.agentc_thread_spawn_ltv ! @handle pop "
-        "handle threadffi.agentc_thread_join_ltv ! @result pop "
-        "handle threadffi.agentc_thread_destroy ! "
+        "[pop 'threaded-result] ffi_closure! @worker pop "
+        "worker 'seed threadffi.agentc_thread_spawn_ltv! @handle pop "
+        "handle threadffi.agentc_thread_join_ltv! @result pop "
+        "handle threadffi.agentc_thread_destroy! "
         "result";
 
     state = vm.execute(compiler.compile(source));
@@ -1100,17 +1100,17 @@ TEST(CallbackTest, ImportResolvedThreadRuntimeSharedCellProvidesSnapshotIsolatio
     writeResolvedApi(libPath, headerPath, resolvedPath);
 
     int state = vm.execute(compiler.compile(
-        "[" + resolvedPath.string() + "] resolver.import_resolved ! @threadffi threadffi"));
+        "[" + resolvedPath.string() + "] resolver.import_resolved! @threadffi threadffi"));
 
     auto defs = vm.popData();
     normalize_thread_runtime_defs(defs);
 
     const std::string source =
-        "{} threadffi.agentc_shared_create_ltv ! @cell "
-        "cell threadffi.agentc_shared_read_ltv ! @snapshot "
+        "{} threadffi.agentc_shared_create_ltv! @cell "
+        "cell threadffi.agentc_shared_read_ltv! @snapshot "
         "'local @snapshot.kind "
-        "cell threadffi.agentc_shared_read_ltv ! @stored "
-        "cell threadffi.agentc_shared_destroy ! "
+        "cell threadffi.agentc_shared_read_ltv! @stored "
+        "cell threadffi.agentc_shared_destroy! "
         "stored";
 
     state = vm.execute(compiler.compile(source));
@@ -1134,19 +1134,19 @@ TEST(CallbackTest, ImportResolvedThreadRuntimeUpdatesSharedCellFromThread) {
     writeResolvedApi(libPath, headerPath, resolvedPath);
 
     int state = vm.execute(compiler.compile(
-        "[" + resolvedPath.string() + "] resolver.import_resolved ! @threadffi threadffi"));
+        "[" + resolvedPath.string() + "] resolver.import_resolved! @threadffi threadffi"));
 
     auto defs = vm.popData();
     normalize_thread_runtime_defs(defs);
     const std::string source =
-        "{\"status\": \"initial\"} threadffi.agentc_shared_create_ltv ! @cell pop "
+        "{\"status\": \"initial\"} threadffi.agentc_shared_create_ltv! @cell pop "
         "{\"return_type\": \"ltv\", \"children\": {\"p0\": {\"kind\": \"Parameter\", \"type\": \"ltv\"}}} "
-        "[cell {\"status\": \"threaded\"} threadffi.agentc_shared_write_ltv ! pop 'updated] ffi_closure ! @worker pop "
-        "worker 'seed threadffi.agentc_thread_spawn_ltv ! @handle pop "
-        "handle threadffi.agentc_thread_join_ltv ! pop "
-        "cell threadffi.agentc_shared_read_ltv ! @stored pop "
-        "handle threadffi.agentc_thread_destroy ! "
-        "cell threadffi.agentc_shared_destroy ! "
+        "[cell {\"status\": \"threaded\"} threadffi.agentc_shared_write_ltv! pop 'updated] ffi_closure! @worker pop "
+        "worker 'seed threadffi.agentc_thread_spawn_ltv! @handle pop "
+        "handle threadffi.agentc_thread_join_ltv! pop "
+        "cell threadffi.agentc_shared_read_ltv! @stored pop "
+        "handle threadffi.agentc_thread_destroy! "
+        "cell threadffi.agentc_shared_destroy! "
         "stored";
 
     state = vm.execute(compiler.compile(source));
@@ -1174,17 +1174,17 @@ TEST(CallbackTest, ImportResolvedThreadRuntimeDirectCapturedMutationDoesNotLeakA
     writeResolvedApi(libPath, headerPath, resolvedPath);
 
     int state = vm.execute(compiler.compile(
-        "[" + resolvedPath.string() + "] resolver.import_resolved ! @threadffi threadffi"));
+        "[" + resolvedPath.string() + "] resolver.import_resolved! @threadffi threadffi"));
 
     auto defs = vm.popData();
     normalize_thread_runtime_defs(defs);
     const std::string source =
         "[] @session pop "
         "{\"return_type\": \"ltv\", \"children\": {\"p0\": {\"kind\": \"Parameter\", \"type\": \"ltv\"}}} "
-        "[session 'threaded @mode pop 'done] ffi_closure ! @worker pop "
-        "worker 'seed threadffi.agentc_thread_spawn_ltv ! @handle pop "
-        "handle threadffi.agentc_thread_join_ltv ! pop "
-        "handle threadffi.agentc_thread_destroy ! "
+        "[session 'threaded @mode pop 'done] ffi_closure! @worker pop "
+        "worker 'seed threadffi.agentc_thread_spawn_ltv! @handle pop "
+        "handle threadffi.agentc_thread_join_ltv! pop "
+        "handle threadffi.agentc_thread_destroy! "
         "session mode";
 
     state = vm.execute(compiler.compile(source));
@@ -1218,7 +1218,7 @@ TEST(CallbackTest, EdictCliImportResolvedDemoPrintsExpectedResult) {
 
     const std::string source =
         "[" + resolvedPath.string() + "] "
-        "resolver.import_resolved ! dup @defs 10 32 defs.add !";
+        "resolver.import_resolved! dup @defs 10 32 defs.add!";
 
     ProcessResult result = runProcess(makeArgList({edictPath.string(), "-e", source}));
     ASSERT_EQ(result.exitCode, 0) << result.stderrText;

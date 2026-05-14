@@ -68,9 +68,9 @@ int main() {
 
     std::string script = R"(
         {"pattern": ["dup", "dot", "sqrt"], "replacement": ["magnitude"]}
-        rewrite_define ! /
+        rewrite_define! /
         {"pattern": ["$1", "x"], "replacement": ["x", "$1"]}
-        rewrite_define ! /
+        rewrite_define! /
         "dup" "dot" "sqrt"
     )";
 
@@ -86,7 +86,7 @@ int main() {
     EdictVM wildcardVm;
     std::string wildcardScript = R"(
         {"pattern": ["$1", "x"], "replacement": ["x", "$1"]}
-        rewrite_define ! /
+        rewrite_define! /
         "tea" "x"
     )";
 
@@ -102,8 +102,8 @@ int main() {
     EdictVM scopedVm;
     std::string scopedScript = R"(
         {"pattern": ["x"], "replacement": ["manual-hit"]}
-        rewrite_define ! /
-        "manual" rewrite_mode ! /
+        rewrite_define! /
+        "manual" rewrite_mode! /
         "x"
     )";
 
@@ -117,7 +117,7 @@ int main() {
     printItems(stackStrings(scopedVm));
 
     auto applyCode = EdictCompiler().compile(R"(
-        rewrite_apply !
+        rewrite_apply!
     )");
     if (scopedVm.execute(applyCode) & VM_ERROR) {
         std::cerr << scopedVm.getError() << "\n";
@@ -134,11 +134,11 @@ int main() {
     EdictVM introspectionVm;
     std::string introspectionScript = R"(
         {"pattern": ["alpha"], "replacement": ["first"]}
-        rewrite_define ! /
+        rewrite_define! /
         {"pattern": ["beta"], "replacement": ["second"]}
-        rewrite_define ! /
-        "0" rewrite_remove ! /
-        rewrite_list !
+        rewrite_define! /
+        "0" rewrite_remove! /
+        rewrite_list!
     )";
 
     auto introspectionCode = EdictCompiler().compile(introspectionScript);

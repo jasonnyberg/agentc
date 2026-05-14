@@ -2265,7 +2265,7 @@ int EdictVM::executeNested(const BytecodeBuffer& code) {
         if (!dictVal) return;
 
         // Create a "cursor" capsule in the global dictionary so Edict code
-        // can navigate the VM's Listree cursor via e.g. "cursor.down !".
+        // can navigate the VM's Listree cursor via e.g. "cursor.down!".
         auto capsule = agentc::createNullValue();
         addBuiltinThunk(capsule, "down", VMOP_CURSOR_DOWN);
         addBuiltinThunk(capsule, "up",   VMOP_CURSOR_UP);

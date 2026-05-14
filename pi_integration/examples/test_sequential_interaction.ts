@@ -16,7 +16,7 @@ async function runSequentialDemo() {
     try {
         for (let i = 1; i <= 10; i++) {
             console.log(`--- Operation ${i} ---`);
-            const command = `['item_${i}'] stack !`;
+            const command = `['item_${i}'] stack!`;
             const result = await substrate.eval(command);
             console.log(`Result ${i}:`, result);
         }

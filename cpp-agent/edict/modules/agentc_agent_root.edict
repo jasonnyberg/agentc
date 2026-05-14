@@ -5,16 +5,16 @@
 # `cpp-agent/edict/modules/agentc_provider_contracts.edict` first.
 #
 # Defined wrappers:
-#   agentc_agent_root_init !              ( system_prompt -- root )
-#   agentc_agent_root_init_with_runtime ! ( system_prompt runtime_config -- root )
-#   agentc_agent_root_create_runtime !    ( root -- runtime_handle )
-#   agentc_agent_root_text !              ( root -- assistant_text )
-#   agentc_agent_root_messages !          ( root -- messages )
-#   agentc_agent_root_stage_user_turn !   ( root prompt -- root )
-#   agentc_agent_root_build_turn_request ! ( root -- request )
-#   agentc_agent_root_apply_turn_response !( root response -- root )
-#   agentc_agent_root_turn !              ( runtime_handle root prompt -- root )
-#   agentc_agent_root_demo !              ( config_path system_prompt prompt -- root )
+#   agentc_agent_root_init!              ( system_prompt -- root )
+#   agentc_agent_root_init_with_runtime! ( system_prompt runtime_config -- root )
+#   agentc_agent_root_create_runtime!    ( root -- runtime_handle )
+#   agentc_agent_root_text!              ( root -- assistant_text )
+#   agentc_agent_root_messages!          ( root -- messages )
+#   agentc_agent_root_stage_user_turn!   ( root prompt -- root )
+#   agentc_agent_root_build_turn_request! ( root -- request )
+#   agentc_agent_root_apply_turn_response!( root response -- root )
+#   agentc_agent_root_turn!              ( runtime_handle root prompt -- root )
+#   agentc_agent_root_demo!              ( config_path system_prompt prompt -- root )
 #
 # Root shape:
 # - `conversation` : conversation-bearing Edict state from agentc_stateful_loop.edict
@@ -42,7 +42,7 @@
 
 [
     @system_prompt
-    agentc_provider_default_runtime_config ! @runtime_config
+    agentc_provider_default_runtime_config! @runtime_config
     agentc_agent_root_init_with_runtime(system_prompt runtime_config)
 ] @agentc_agent_root_init
 
@@ -70,7 +70,7 @@
 
 [
     @response @root
-    root.conversation response agentc_state_apply_response ! @conversation
+    root.conversation response agentc_state_apply_response! @conversation
     conversation @root.conversation
     "turn-complete" @root.loop.status
     root
@@ -79,9 +79,9 @@
 [
     @prompt @root @runtime_handle
     agentc_agent_root_stage_user_turn(root prompt) @next_root
-    next_root agentc_agent_root_build_turn_request ! @request
+    next_root agentc_agent_root_build_turn_request! @request
     agentc_call(runtime_handle request) @response
-    next_root response agentc_agent_root_apply_turn_response !
+    next_root response agentc_agent_root_apply_turn_response!
 ] @agentc_agent_root_turn
 
 [

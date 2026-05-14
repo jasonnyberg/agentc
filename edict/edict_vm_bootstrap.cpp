@@ -100,10 +100,10 @@ CPtr<agentc::ListreeValue> EdictVM::createBootstrapCuratedParser() {
 
     addCompiledThunk(parser, "map",
                      "@header "
-                     "header parser.parse_json ! @schema "
-                     "schema parser.materialize_json !");
-    addCompiledThunk(parser, "parse_json", "parser.__native.parse_json !");
-    addCompiledThunk(parser, "materialize_json", "parser.__native.materialize_json !");
+                     "header parser.parse_json! @schema "
+                     "schema parser.materialize_json!");
+    addCompiledThunk(parser, "parse_json", "parser.__native.parse_json!");
+    addCompiledThunk(parser, "materialize_json", "parser.__native.materialize_json!");
     addBootstrapMetadata(parser, "parser");
     return parser;
 }
@@ -124,23 +124,23 @@ CPtr<agentc::ListreeValue> EdictVM::createBootstrapCuratedResolver() {
     addBuiltinThunk(native, "import_status", VMOP_IMPORT_STATUS);
     agentc::addNamedItem(resolver, "__native", native);
 
-    addCompiledThunk(resolver, "load", "resolver.__native.load !");
-    addCompiledThunk(resolver, "resolve_json", "resolver.__native.resolve_json !");
-    addCompiledThunk(resolver, "import_resolved_json", "resolver.__native.import_resolved_json !");
-    addCompiledThunk(resolver, "import", "resolver.__native.import !");
+    addCompiledThunk(resolver, "load", "resolver.__native.load!");
+    addCompiledThunk(resolver, "resolve_json", "resolver.__native.resolve_json!");
+    addCompiledThunk(resolver, "import_resolved_json", "resolver.__native.import_resolved_json!");
+    addCompiledThunk(resolver, "import", "resolver.__native.import!");
     addCompiledThunk(resolver, "import_resolved",
                      "@resolved_path "
-                     "resolved_path resolver.__native.read_text ! @resolved "
-                     "resolved resolver.import_resolved_json !");
-    addCompiledThunk(resolver, "import_deferred", "resolver.__native.import_deferred !");
+                     "resolved_path resolver.__native.read_text! @resolved "
+                     "resolved resolver.import_resolved_json!");
+    addCompiledThunk(resolver, "import_deferred", "resolver.__native.import_deferred!");
     addCompiledThunk(resolver, "import_collect",
                      "@request "
-                     "request resolver.__native.request_id ! @request_id "
-                     "request_id resolver.__native.import_collect !");
+                     "request resolver.__native.request_id! @request_id "
+                     "request_id resolver.__native.import_collect!");
     addCompiledThunk(resolver, "import_status",
                      "@request "
-                     "request resolver.__native.request_id ! @request_id "
-                     "request_id resolver.__native.import_status !");
+                     "request resolver.__native.request_id! @request_id "
+                     "request_id resolver.__native.import_status!");
     addBootstrapMetadata(resolver, "resolver");
     return resolver;
 }
@@ -164,9 +164,9 @@ CPtr<agentc::ListreeValue> EdictVM::createBootstrapCuratedCartographer() {
 
     // Build function-def trees with "ltv" type annotations.
     // Stack convention:
-    //   cartographer.box !      — ( source_ltv type_def -- boxed )
-    //   cartographer.unbox !    — ( boxed -- unboxed_ltv )
-    //   cartographer.box_free ! — ( boxed -- )
+    //   cartographer.box!      — ( source_ltv type_def -- boxed )
+    //   cartographer.unbox!    — ( boxed -- unboxed_ltv )
+    //   cartographer.box_free! — ( boxed -- )
     auto boxDef      = buildBoxingFuncDef("agentc_box",      {"source", "type_def"}, true);
     auto unboxDef    = buildBoxingFuncDef("agentc_unbox",    {"boxed"},              true);
     auto boxFreeDef  = buildBoxingFuncDef("agentc_box_free", {"boxed"},              false);
@@ -272,9 +272,9 @@ void EdictVM::runStartupBootstrapPrelude() {
     static BytecodeBuffer cachedBootstrap;
     std::call_once(bootstrapCompiled, []() {
         cachedBootstrap = EdictCompiler().compile(
-            "__bootstrap_import.curate_parser ! @parser "
-            "__bootstrap_import.curate_resolver ! @resolver "
-            "__bootstrap_import.curate_cartographer ! @cartographer");
+            "__bootstrap_import.curate_parser! @parser "
+            "__bootstrap_import.curate_resolver! @resolver "
+            "__bootstrap_import.curate_cartographer! @cartographer");
     });
     startupTrace("bootstrap-prelude-before-execute");
     execute(cachedBootstrap);

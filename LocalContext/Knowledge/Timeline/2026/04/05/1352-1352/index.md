@@ -7,7 +7,7 @@ Completed G054 by reviewing AgentC's semantics and architecture around imported 
 ## Work Completed
 
 - Reviewed `README.md` and `LocalContext/Knowledge/WorkProducts/edict_language_reference.md` to re-anchor the current model: Edict is a concatenative stack language whose main extension point is imported native capabilities invoked with `!`.
-- Confirmed from the existing demos and runtime docs that the preferred architecture is not compiler special cases but small imported capability surfaces exposed through `resolver.import !`.
+- Confirmed from the existing demos and runtime docs that the preferred architecture is not compiler special cases but small imported capability surfaces exposed through `resolver.import!`.
 - Added `demo/demo_sdl_triangle_bridge.h` and `demo/demo_sdl_triangle_bridge.cpp` as a thin SDL2 bridge that opens a window, clears a background, draws a filled triangle, presents, pumps events, delays briefly, and shuts down.
 - Added `demo/demo_sdl_triangle.ed` and `demo/demo_sdl_triangle.sh` so the demo runs as ordinary Edict code importing the bridge library at runtime.
 - Updated `demo/CMakeLists.txt` to gate the bridge behind `AGENTC_WITH_SDL_DEMO=ON`, and updated `README.md` with build/run instructions and the rationale for using a bridge rather than importing raw SDL directly.

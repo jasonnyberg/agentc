@@ -54,7 +54,7 @@ This daily timeline spans the full G047/G048 migration, so earlier entries inten
 
 ## Session 1240-1255
 
-🔗[Session Notes](./1240-1255/index.md) — Added Edict-side imported-capability coverage for the G048 runtime ABI via `resolver.import_resolved !` against `libkanren.so`; focused imported logic tests and full `ctest` stayed green.
+🔗[Session Notes](./1240-1255/index.md) — Added Edict-side imported-capability coverage for the G048 runtime ABI via `resolver.import_resolved!` against `libkanren.so`; focused imported logic tests and full `ctest` stayed green.
 
 ## Session 1230-1245
 
@@ -231,7 +231,7 @@ The project moved both planning tracks into implementation.
 
 - Remaining non-historical demo and fact artifacts were updated to match the same post-detachment logic model.
 - `demo/demo_kanren_edict.cpp` now imports `libkanren.so` and evaluates canonical specs through imported `logic!`.
-- `demo/demo_cognitive_core_validation.cpp` and the J3 logic fact notes now use imported-capability wording instead of older `logic_run !` / `logic { ... }` framing.
+- `demo/demo_cognitive_core_validation.cpp` and the J3 logic fact notes now use imported-capability wording instead of older `logic_run!` / `logic { ... }` framing.
 
 ---
 

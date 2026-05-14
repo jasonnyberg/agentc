@@ -62,8 +62,8 @@ TEST(EdictAgentRootTest, BuildsCanonicalRootShape) {
     script << statefulModule << "\n";
     script << providerModule << "\n";
     script << rootModule << "\n";
-    script << R"([system prompt] agentc_agent_root_init ! @root
-root to_json !
+    script << R"([system prompt] agentc_agent_root_init! @root
+root to_json!
 print
 )";
 
@@ -85,7 +85,7 @@ TEST(EdictAgentRootTest, ProviderCatalogCarriesContrastingContracts) {
 
     std::ostringstream script;
     script << providerModule << "\n";
-    script << R"(agentc_provider_catalog ! to_json !
+    script << R"(agentc_provider_catalog! to_json!
 print
 )";
 
@@ -107,10 +107,10 @@ TEST(EdictAgentRootTest, RootBuildsCanonicalTurnRequestFromProviderContract) {
     script << statefulModule << "\n";
     script << providerModule << "\n";
     script << rootModule << "\n";
-    script << R"(agentc_provider_local_runtime_config ! @runtime_config
-[system prompt] runtime_config agentc_agent_root_init_with_runtime ! @root
-root [What is the capital of France?] agentc_agent_root_stage_user_turn ! @root
-root agentc_agent_root_build_turn_request ! to_json !
+    script << R"(agentc_provider_local_runtime_config! @runtime_config
+[system prompt] runtime_config agentc_agent_root_init_with_runtime! @root
+root [What is the capital of France?] agentc_agent_root_stage_user_turn! @root
+root agentc_agent_root_build_turn_request! to_json!
 print
 )";
 

@@ -95,7 +95,7 @@ TEST(TransactionTest, RollbackRestoresRewriteRuleSet) {
 
     auto code = EdictCompiler().compile(R"(
         {"pattern": ["base"], "replacement": ["stable"]}
-        rewrite_define ! /
+        rewrite_define! /
     )");
     ASSERT_FALSE(vm.execute(code) & VM_ERROR) << vm.getError();
     vm.popData();
@@ -107,7 +107,7 @@ TEST(TransactionTest, RollbackRestoresRewriteRuleSet) {
 
     code = EdictCompiler().compile(R"(
         {"pattern": ["temp"], "replacement": ["transient"]}
-        rewrite_define ! /
+        rewrite_define! /
     )");
     ASSERT_FALSE(vm.execute(code) & VM_ERROR) << vm.getError();
     vm.popData();

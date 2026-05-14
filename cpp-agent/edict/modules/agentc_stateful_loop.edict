@@ -3,14 +3,14 @@
 # Prerequisite: load `cpp-agent/edict/modules/agentc.edict` first.
 #
 # Defined wrappers:
-#   agentc_state_init !          ( system_prompt -- state )
-#   agentc_state_text !          ( state -- assistant_text )
-#   agentc_state_response !      ( state -- last_response )
-#   agentc_state_messages !      ( state -- messages )
-#   agentc_state_push_user !     ( state prompt -- state )
-#   agentc_state_apply_response !( state response -- state )
-#   agentc_state_turn !          ( runtime_handle state prompt -- state )
-#   agentc_state_demo !          ( config_path system_prompt prompt -- state )
+#   agentc_state_init!          ( system_prompt -- state )
+#   agentc_state_text!          ( state -- assistant_text )
+#   agentc_state_response!      ( state -- last_response )
+#   agentc_state_messages!      ( state -- messages )
+#   agentc_state_push_user!     ( state prompt -- state )
+#   agentc_state_apply_response!( state response -- state )
+#   agentc_state_turn!          ( runtime_handle state prompt -- state )
+#   agentc_state_demo!          ( config_path system_prompt prompt -- state )
 #
 # State shape:
 # - `system_prompt`
@@ -65,7 +65,7 @@
     agentc_state_apply_response(next_state response)         # apply and return
 ] @agentc_state_turn
 
-# agentc_state_stream_start ! ( runtime_handle state prompt -- stream_session )
+# agentc_state_stream_start! ( runtime_handle state prompt -- stream_session )
 # Starts a background provider stream and returns an explicit session object.
 [
     @prompt @state @runtime_handle
@@ -73,7 +73,7 @@
     {} @request
     next_state.system_prompt @request.system
     next_state.messages @request.messages
-    runtime_handle request agentc_call_stream ! @stream_id
+    runtime_handle request agentc_call_stream! @stream_id
     {"runtime": null, "state": null, "stream_id": "", "last_sync": null} @stream_session
     runtime_handle @stream_session.runtime
     next_state @stream_session.state
@@ -81,14 +81,14 @@
     stream_session
 ] @agentc_state_stream_start
 
-# agentc_state_stream_sync ! ( stream_session -- sync_result )
+# agentc_state_stream_sync! ( stream_session -- sync_result )
 # Drains pending ghost-queue tokens on the VM/main thread. Callers can decide
 # when/how to project `sync_result.tokens` into UI or conversation state.
 [
     @stream_session
-    stream_session.runtime stream_session.stream_id agentc_stream_sync ! @sync_result
+    stream_session.runtime stream_session.stream_id agentc_stream_sync! @sync_result
     sync_result @stream_session.last_sync
     sync_result
 ] @agentc_state_stream_sync
 
-[@prompt @system_prompt @config_path config_path agentc_runtime_create_path ! @runtime system_prompt agentc_state_init ! @state runtime state prompt agentc_state_turn ! @next_state runtime agentc_destroy ! / next_state] @agentc_state_demo
+[@prompt @system_prompt @config_path config_path agentc_runtime_create_path! @runtime system_prompt agentc_state_init! @state runtime state prompt agentc_state_turn! @next_state runtime agentc_destroy! / next_state] @agentc_state_demo

@@ -7,7 +7,7 @@ Completed a broader stale-doc sweep after the primary G047/G048 doc alignment, u
 ## Work Completed
 
 - Updated `demo/demo_kanren_edict.cpp` so it now resolves/imports `libkanren.so` through Cartographer and evaluates a canonical object/Listree query spec through imported `logic!` rather than `logic { ... }`.
-- Updated `demo/demo_cognitive_core_validation.cpp` so its transaction-time logic example uses the imported `logic` alias instead of `logic_run !` wording.
+- Updated `demo/demo_cognitive_core_validation.cpp` so its transaction-time logic example uses the imported `logic` alias instead of `logic_run!` wording.
 - Updated `LocalContext/Knowledge/Facts/J3_AgentC/K028_Edict_MiniKanren_Surface.md` to describe the post-detachment model:
   - canonical object/Listree specs,
   - imported evaluator paths,
@@ -18,8 +18,8 @@ Completed a broader stale-doc sweep after the primary G047/G048 doc alignment, u
 ## Validation
 
 - Built `demo_kanren_edict` and `demo_cognitive_core_validation` successfully with CMake after the updates.
-- Verified no remaining `logic { ... }`, `logic(...)`, `VMOP_LOGIC_RUN`, or `logic_run !` references remain in `demo/*.cpp`.
-- Verified no stale `logic { ... }` / `logic_run !` references remain in `LocalContext/Knowledge/Facts/*.md`.
+- Verified no remaining `logic { ... }`, `logic(...)`, `VMOP_LOGIC_RUN`, or `logic_run!` references remain in `demo/*.cpp`.
+- Verified no stale `logic { ... }` / `logic_run!` references remain in `LocalContext/Knowledge/Facts/*.md`.
 
 ## Outcome
 

@@ -6,7 +6,7 @@
 ## Current Focus
 AgentC/J3 is an advanced research prototype/internal-alpha moving toward an Edict-resident agent loop: Edict should own provider/session/control-plane semantics while C++ remains the native transport, persistence, credential, and lifecycle substrate.
 
-Latest completed slices: 🔗[G086 — Live Google LLM Regression Coverage](./Knowledge/Goals/G086-LiveGoogleLlmRegressionCoverage/index.md) added credential-gated live Google/Gemma gtest coverage, 🔗[G084 — Remove Dead Dictionary Payload Path](./Knowledge/Goals/G084-RemoveDeadDictionaryPayload/index.md) removed the obsolete compiler-side Dictionary bytecode payload, 🔗[G085 — Split Edict VM Translation Unit](./Knowledge/Goals/G085-SplitEdictVmTranslationUnit/index.md) split the VM implementation into core/FFI/bootstrap units, 🔗[G079 — Edict Agent Loop Tool Support](./Knowledge/Goals/G079-EdictAgentLoopToolSupport/index.md) added a narrow Edict/FFI file/shell tool surface, and 🔗[G074 — Real-time FFI Token Streaming](./Knowledge/Goals/G074-RealtimeFFITokenStreaming/index.md) added the decoupled ghost-queue stream path. Immediate next implementation slice remains 🔗[G080 — LLM REPL Context Management](./Knowledge/Goals/G080-LlmReplContextManagement/index.md).
+Latest completed slices: 🔗[G087 — Prefer Adjacent Edict Eval Sigil](./Knowledge/Goals/G087-PreferAdjacentEvalSigil/index.md) updated Edict docs/scripts/modules/tests to prefer `word!` style, 🔗[G086 — Live Google LLM Regression Coverage](./Knowledge/Goals/G086-LiveGoogleLlmRegressionCoverage/index.md) added credential-gated live Google/Gemma gtest coverage, 🔗[G084 — Remove Dead Dictionary Payload Path](./Knowledge/Goals/G084-RemoveDeadDictionaryPayload/index.md) removed the obsolete compiler-side Dictionary bytecode payload, 🔗[G085 — Split Edict VM Translation Unit](./Knowledge/Goals/G085-SplitEdictVmTranslationUnit/index.md) split the VM implementation into core/FFI/bootstrap units, 🔗[G079 — Edict Agent Loop Tool Support](./Knowledge/Goals/G079-EdictAgentLoopToolSupport/index.md) added a narrow Edict/FFI file/shell tool surface, and 🔗[G074 — Real-time FFI Token Streaming](./Knowledge/Goals/G074-RealtimeFFITokenStreaming/index.md) added the decoupled ghost-queue stream path. Immediate next implementation slice remains 🔗[G080 — LLM REPL Context Management](./Knowledge/Goals/G080-LlmReplContextManagement/index.md).
 
 ## Open Goals
 
@@ -15,6 +15,7 @@ Latest completed slices: 🔗[G086 — Live Google LLM Regression Coverage](./Kn
 - 🔗[G080 — LLM REPL Context Management](./Knowledge/Goals/G080-LlmReplContextManagement/index.md) — **NEXT**; add explicit provider conversation reset/trim/summarize/inspect behavior.
 
 ### Recently Completed
+- 🔗[G087 — Prefer Adjacent Edict Eval Sigil](./Knowledge/Goals/G087-PreferAdjacentEvalSigil/index.md) — **COMPLETE** (2026-05-13); updated Edict-facing docs, modules, scripts, demos, and test snippets to prefer adjacent eval spelling and fixed stale-binary IPC prompt-flood validation.
 - 🔗[G086 — Live Google LLM Regression Coverage](./Knowledge/Goals/G086-LiveGoogleLlmRegressionCoverage/index.md) — **COMPLETE** (2026-05-13); added credential-gated live Google/Gemma gtest coverage for `llm.init([gemma-4-31b-it])` through the real runtime.
 - 🔗[G085 — Split Edict VM Translation Unit](./Knowledge/Goals/G085-SplitEdictVmTranslationUnit/index.md) — **COMPLETE** (2026-05-13); split `edict_vm.cpp` into core, FFI, and bootstrap implementation units while keeping dispatch centralized.
 - 🔗[G084 — Remove Dead Dictionary Payload Path](./Knowledge/Goals/G084-RemoveDeadDictionaryPayload/index.md) — **COMPLETE** (2026-05-13); removed the obsolete `Dictionary` / `VALUE_DICTIONARY` / `VMEXT_DICT` path while preserving JSON object literal behavior.
@@ -32,13 +33,13 @@ None.
 
 ## Active Context
 - **Completed goals retired**: G068, G071, G072, G073, G076, G077, G081, G082, and G083 were moved to `LocalContext/Knowledge/Archive/Goals/`; see 🔗[Archive Index](./Knowledge/Archive/ARCHIVE_INDEX.md).
-- **Edict provider surface**: `llm.init(name)` returns stable provider objects. Current request pattern is `provider < [prompt] request ! > pop /`; launcher-backed REPL pattern is `provider < repl ! > pop /`.
+- **Edict provider surface**: `llm.init(name)` returns stable provider objects. Current request pattern is `provider < [prompt] request! > pop /`; launcher-backed REPL pattern is `provider < repl! > pop /`.
 - **Curated launcher**: `./edict.sh` injects `EDICT_PATH`, preloads `agentc_curated.edict`, configures the `llm` bootstrap surface, and defaults to `EDICT_AUTO_CHAT=1` with `EDICT_DEFAULT_PRESET=local-qwen`. Set `EDICT_AUTO_CHAT=0` for raw curated Edict execution.
 - **OpenAI Codex provider**: `openai-codex` is live through pi ChatGPT OAuth credentials in `~/.pi/agent/auth.json`; default model is `gpt-5.3-codex` with low reasoning effort. Live smoke test returned `ok`. Lower attempted Codex model names were unsupported for the account.
 - **Important VM semantics now fixed/documented**: concatenated prefix sigils apply to the same identifier left-to-right (`/@name`, `//name`, etc.); leading `-name` selects the tail/oldest dictionary value for lookup, assignment, and removal; strict/lax unresolved lookup modes exist (`lax!`, `strict!`, `strict_null!`, `strict_fail!`).
-- **Tool surface landed (G079)**: `extensions/agentc_stdlib` now exposes JSON-envelope file read/write/exact-replace and shell execution helpers. `agentc.edict` wraps them as `agentc_file_read !`, `agentc_file_write !`, `agentc_file_replace !`, `agentc_shell !`, and `agentc_tools`; `llm.edict` attaches `agentc_tools` as `provider.tools` for provider-context use.
-- **Streaming surface landed (G074)**: `Runtime::stream_request_json(...)` now launches a detached provider worker that pushes text deltas into `StreamManager`. `agentc_runtime_stream_sync_json(...)` returns an `ok`/`complete` JSON envelope, `agentc.edict` wraps it as `agentc_call_stream !` / `agentc_stream_sync !`, and `llm.edict` provider objects expose `stream_start` / `stream_sync`. Live Google/Gemma smoke with `gemma-4-31b-it` returned `ok`.
-- **Validation baseline from latest implementation pass**: `cmake --build build --target edict_tests -j2` passed; focused `edict_tests` slices passed 37/37 for VM/JSON/rewrite/regression/bootstrap and 3/3 for selected import/FFI callbacks; `cmake --build build --target cpp_agent_tests -j2` passed; `EdictLlmModuleTest.*` passed 9/9 including the live Google/Gemma `gemma-4-31b-it` gtest returning `ok`. Earlier focused `cpp_agent_tests` for stream/tool/LLM/stateful/root seams passed 28/28.
+- **Tool surface landed (G079)**: `extensions/agentc_stdlib` now exposes JSON-envelope file read/write/exact-replace and shell execution helpers. `agentc.edict` wraps them as `agentc_file_read!`, `agentc_file_write!`, `agentc_file_replace!`, `agentc_shell!`, and `agentc_tools`; `llm.edict` attaches `agentc_tools` as `provider.tools` for provider-context use.
+- **Streaming surface landed (G074)**: `Runtime::stream_request_json(...)` now launches a detached provider worker that pushes text deltas into `StreamManager`. `agentc_runtime_stream_sync_json(...)` returns an `ok`/`complete` JSON envelope, `agentc.edict` wraps it as `agentc_call_stream!` / `agentc_stream_sync!`, and `llm.edict` provider objects expose `stream_start` / `stream_sync`. Live Google/Gemma smoke with `gemma-4-31b-it` returned `ok`.
+- **Validation baseline from latest implementation pass**: `cmake --build build --target edict_tests -j2` passed; focused `edict_tests` style/regression slice passed 53/53 including `PiSimulationTest.MiniKanrenLogicExample`; `cmake --build build --target cpp_agent_tests -j2` passed; focused cpp-agent Edict/LLM suite passed 19/19 including the live Google/Gemma `gemma-4-31b-it` gtest returning `ok`; launcher smoke `EDICT_AUTO_CHAT=0 ./edict.sh -e 'llm.catalog! to_json! print'` passed.
 - **Documentation direction**: 🔗[WP — LLM's Guide to Edict and the VM](./Knowledge/WorkProducts/WP-LlmsGuideToEdictVm-2026-05-10/index.md) and 🔗[Edict Language Reference](./Knowledge/WorkProducts/edict_language_reference.md) are the key LLM-facing references. Next documentation improvement is a live notebook style with executable examples, especially for FFI/Cartographer.
 
 ## Handoff Note
@@ -54,7 +55,7 @@ None.
 
 ## Knowledge Inventory
 
-### Goals — active tree (8)
+### Goals — active tree (9)
 - 🔗[G074 — Real-time FFI Token Streaming](./Knowledge/Goals/G074-RealtimeFFITokenStreaming/index.md) — completed first stream surface; archive candidate on next cleanup.
 - 🔗[G075 — Speculative Edict Native Architectures](./Knowledge/Goals/G075-SpeculativeEdictArchitectures/index.md) — deferred speculative reasoning architecture.
 - 🔗[G078 — Edict-Resident Agent Loop Consolidation](./Knowledge/Goals/G078-EdictResidentAgentLoopConsolidation/index.md) — active parent track.
@@ -63,6 +64,7 @@ None.
 - 🔗[G084 — Remove Dead Dictionary Payload Path](./Knowledge/Goals/G084-RemoveDeadDictionaryPayload/index.md) — completed VM/compiler cleanup; archive candidate on next cleanup.
 - 🔗[G085 — Split Edict VM Translation Unit](./Knowledge/Goals/G085-SplitEdictVmTranslationUnit/index.md) — completed VM source-organization refactor; archive candidate on next cleanup.
 - 🔗[G086 — Live Google LLM Regression Coverage](./Knowledge/Goals/G086-LiveGoogleLlmRegressionCoverage/index.md) — completed credential-gated live Google/Gemma gtest; archive candidate on next cleanup.
+- 🔗[G087 — Prefer Adjacent Edict Eval Sigil](./Knowledge/Goals/G087-PreferAdjacentEvalSigil/index.md) — completed documentation/script/module style update to adjacent eval spelling; archive candidate on next cleanup.
 
 ### WorkProducts — active references (12)
 - 🔗[AgentLang](./Knowledge/WorkProducts/AgentLang.md)
@@ -99,8 +101,8 @@ See 🔗[Timeline.md](./Timeline.md) for project history.
 
 ## Session Compliance
 - [x] Reviewed Dashboard and HRM bootstrap instructions
-- [x] Created/updated G084, G085, and G086 goal files
-- [x] Implemented VM/compiler cleanup, VM translation-unit split, and live Google/Gemma test coverage
-- [x] Ran focused build/test validation, including live LLM coverage
+- [x] Created/updated G084, G085, G086, and G087 goal files
+- [x] Implemented VM/compiler cleanup, VM translation-unit split, live Google/Gemma test coverage, and adjacent-eval documentation/script style update
+- [x] Ran focused build/test validation, including live LLM coverage and launcher smoke
 - [x] Updated Dashboard
 - [x] Updated Timeline

@@ -56,7 +56,7 @@ void executeScript(EdictVM& vm, const std::string& script) {
         output << agentc::cartographer::resolver::encodeResolvedApi(resolved);
         output.close();
 
-        return std::string("[") + resolvedPath.string() + "] resolver.import_resolved ! @logicffi logicffi.agentc_logic_eval_ltv @logic logic @logic_run ";
+        return std::string("[") + resolvedPath.string() + "] resolver.import_resolved! @logicffi logicffi.agentc_logic_eval_ltv @logic logic @logic_run ";
     }();
 
     auto code = EdictCompiler().compile(logicPrelude + script);
@@ -69,7 +69,7 @@ TEST(CognitiveValidationTest, TransactionRollbackContainsLogicAndRewriteExecutio
     EdictVM vm;
     executeScript(vm, R"(
         {"pattern": ["dup", "dot", "sqrt"], "replacement": ["magnitude"]}
-        rewrite_define ! /
+        rewrite_define! /
     )");
     vm.popData();
 
@@ -84,7 +84,7 @@ TEST(CognitiveValidationTest, TransactionRollbackContainsLogicAndRewriteExecutio
         {"fresh": ["q"],
          "where": [["membero", "q", ["tea", "cake"]]],
          "results": ["q"]}
-        logic_run !
+        logic_run!
     )");
 
     auto logicResult = vm.popData();
@@ -111,7 +111,7 @@ TEST(CognitiveValidationTest, TransactionRollbackRemovesTransientRewriteRules) {
 
     executeScript(vm, R"(
         {"pattern": ["base"], "replacement": ["stable"]}
-        rewrite_define ! /
+        rewrite_define! /
     )");
     vm.popData();
     ASSERT_EQ(vm.getRewriteRuleCount(), 1u);
@@ -121,7 +121,7 @@ TEST(CognitiveValidationTest, TransactionRollbackRemovesTransientRewriteRules) {
 
     executeScript(vm, R"(
         {"pattern": ["temp"], "replacement": ["transient"]}
-        rewrite_define ! /
+        rewrite_define! /
     )");
     vm.popData();
     ASSERT_EQ(vm.getRewriteRuleCount(), 2u);

@@ -64,14 +64,14 @@ int main() {
     output << agentc::cartographer::resolver::encodeResolvedApi(resolved);
     output.close();
 
-    if (!runScript(vm, "[" + resolvedPath.string() + "] resolver.import_resolved ! @logicffi logicffi.agentc_logic_eval_ltv @logic logic @logic_run")) {
+    if (!runScript(vm, "[" + resolvedPath.string() + "] resolver.import_resolved! @logicffi logicffi.agentc_logic_eval_ltv @logic logic @logic_run")) {
         std::cerr << vm.getError() << "\n";
         return 1;
     }
 
     if (!runScript(vm, R"(
         {"pattern": ["dup", "dot", "sqrt"], "replacement": ["magnitude"]}
-        rewrite_define ! /
+        rewrite_define! /
     )")) {
         std::cerr << vm.getError() << "\n";
         return 1;
@@ -120,7 +120,7 @@ int main() {
 
     if (!runScript(vm, R"(
         {"pattern": ["temp"], "replacement": ["transient"]}
-        rewrite_define ! /
+        rewrite_define! /
     )")) {
         std::cerr << vm.getError() << "\n";
         return 1;

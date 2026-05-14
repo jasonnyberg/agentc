@@ -98,7 +98,7 @@ CPtr<agentc::ListreeValue> runScript(const std::string& script) {
         output << agentc::cartographer::resolver::encodeResolvedApi(resolved);
         output.close();
 
-        return std::string("[") + resolvedPath.string() + "] resolver.import_resolved ! @logicffi logicffi.agentc_logic_eval_ltv @logic logic @logic_run ";
+        return std::string("[") + resolvedPath.string() + "] resolver.import_resolved! @logicffi logicffi.agentc_logic_eval_ltv @logic logic @logic_run ";
     }();
 
     auto code = EdictCompiler().compile(prelude + script);
@@ -120,7 +120,7 @@ TEST(LogicSurfaceTest, FreshAndEqualProducesSingleResult) {
         {"fresh": ["q"],
          "where": [["==", "q", "tea"]],
          "results": ["q"]}
-        logic_run !
+        logic_run!
     )");
 
     auto values = listToStrings(result);
@@ -136,7 +136,7 @@ TEST(LogicSurfaceTest, CondeProducesMultipleResults) {
            [["==", "q", "coffee"]]
          ],
          "results": ["q"]}
-        logic_run !
+        logic_run!
     )");
 
     auto values = listToStrings(result);
@@ -150,7 +150,7 @@ TEST(LogicSurfaceTest, RecursiveRelationInvocationWorksFromEdict) {
         {"fresh": ["q"],
          "where": [["membero", "q", ["tea", "cake", "jam"]]],
          "results": ["q"]}
-        logic_run !
+        logic_run!
     )");
 
     auto values = listToStrings(result);
@@ -195,7 +195,7 @@ TEST(LogicSurfaceTest, ContradictoryQueryReturnsEmptyResults) {
         {"fresh": ["q"],
          "where": [["==", "q", "tea"], ["==", "q", "coffee"]],
          "results": ["q"]}
-        logic_run !
+        logic_run!
     )");
 
     auto values = listToStrings(result);

@@ -27,8 +27,8 @@ echo
 
 {
   cat <<EDICT
-[$EXT_LIB] [$EXT_HDR] resolver.import ! @ext
-[$RUNTIME_LIB] [$RUNTIME_HDR] resolver.import ! @runtimeffi
+[$EXT_LIB] [$EXT_HDR] resolver.import! @ext
+[$RUNTIME_LIB] [$RUNTIME_HDR] resolver.import! @runtimeffi
 EDICT
   cat "$AGENTC_MODULE"
   echo
@@ -36,6 +36,6 @@ EDICT
   echo
   printf '{"text": %s} @input\n' "$PROMPT_JSON"
   echo "[$CONFIG] @config_path"
-  echo 'config_path input.text agentc_hello_demo !'
+  echo 'config_path input.text agentc_hello_demo!'
   echo 'print'
 } | "$EDICT" -

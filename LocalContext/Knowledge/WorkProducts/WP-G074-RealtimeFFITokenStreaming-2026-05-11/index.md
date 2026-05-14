@@ -54,8 +54,8 @@ Failure uses `"ok": []` and an `error` object.
 `cpp-agent/edict/modules/agentc.edict` now defines:
 
 ```edict
-agentc_call_stream !   -- ( runtime_handle request_value -- stream_id )
-agentc_stream_sync !   -- ( runtime_handle stream_id -- sync_value )
+agentc_call_stream!   -- ( runtime_handle request_value -- stream_id )
+agentc_stream_sync!   -- ( runtime_handle stream_id -- sync_value )
 ```
 
 These convert Edict values to JSON/C strings, call the runtime C ABI, convert the returned JSON string back into Listree data, and free native strings.
@@ -75,8 +75,8 @@ Fields:
 Methods/thunks:
 
 ```edict
-provider < [prompt] stream_start ! > pop /
-provider < stream_sync ! > pop /
+provider < [prompt] stream_start! > pop /
+provider < stream_sync! > pop /
 ```
 
 `stream_start` appends the user prompt to provider conversation, builds the canonical request, creates a runtime handle, starts the background stream, and records `stream_id` / `stream_runtime`.
@@ -110,7 +110,7 @@ G074 adds the first practical foundation for real-time AgentC streaming:
 
 1. **Non-blocking provider starts** — Edict can start a provider request and regain control immediately.
 2. **Safe token handoff** — provider threads push text into C++ queues; Edict syncs on the VM/main thread.
-3. **Streaming UI foundation** — callers can poll `agentc_stream_sync !` and forward token batches to a UI, terminal, mailbox, or conversation state.
+3. **Streaming UI foundation** — callers can poll `agentc_stream_sync!` and forward token batches to a UI, terminal, mailbox, or conversation state.
 4. **Persistence-safe semantics** — in-flight native workers are transient. Durable Edict state can record a stream/mailbox status and decide retry/timeout after restore.
 5. **Provider-surface integration** — `llm.init(...)` providers now expose `stream_start` / `stream_sync`, so streaming follows the same stable provider-object pattern as normal requests and tools.
 6. **Cheap live validation path** — `gemma-4-31b-it` can exercise the streaming path without using expensive Codex models.
@@ -123,20 +123,20 @@ Use the curated launcher and a provider preset:
 
 ```edict
 llm.init([gemma-4-31b-it]) @provider
-provider < [Reply exactly ok] stream_start ! > pop /
+provider < [Reply exactly ok] stream_start! > pop /
 ```
 
 Later, after yielding, doing other work, or waiting briefly:
 
 ```edict
-provider < stream_sync ! > pop /
+provider < stream_sync! > pop /
 provider.stream_last.tokens print
 ```
 
 Inspect completion:
 
 ```edict
-provider.stream_complete to_json ! print
+provider.stream_complete to_json! print
 ```
 
 A completed stream has:
@@ -150,8 +150,8 @@ A completed stream has:
 If you already have a runtime handle and request value:
 
 ```edict
-runtime request agentc_call_stream ! @stream_id
-runtime stream_id agentc_stream_sync ! @sync
+runtime request agentc_call_stream! @stream_id
+runtime stream_id agentc_stream_sync! @sync
 sync.tokens print
 ```
 
@@ -162,7 +162,7 @@ sync.tokens print
 The implementation was live-validated with the inexpensive Google/Gemma preset:
 
 ```bash
-EDICT_AUTO_CHAT=0 ./edict.sh -e 'llm.init([gemma-4-31b-it]) @provider provider < [Reply with exactly two lowercase letters: ok] stream_start ! > pop / provider < [sleep 15] tools.shell ! @sleep_result > pop / provider < stream_runtime stream_id agentc_stream_sync ! @manual_sync > pop / provider.manual_sync to_json ! print provider < stream_runtime agentc_destroy ! > pop /'
+EDICT_AUTO_CHAT=0 ./edict.sh -e 'llm.init([gemma-4-31b-it]) @provider provider < [Reply with exactly two lowercase letters: ok] stream_start! > pop / provider < [sleep 15] tools.shell! @sleep_result > pop / provider < stream_runtime stream_id agentc_stream_sync! @manual_sync > pop / provider.manual_sync to_json! print provider < stream_runtime agentc_destroy! > pop /'
 ```
 
 Observed result:

@@ -66,7 +66,7 @@ TEST(ReproFFITest, AddPoC) {
     // Edict Code:
     // [libPath] load
     // [headerPath] map @defs
-    // 10 32 defs.add !
+    // 10 32 defs.add!
     
     BytecodeBuffer code;
     // 1. [libPath] load
@@ -79,7 +79,7 @@ TEST(ReproFFITest, AddPoC) {
     code.addOp(VMOP_PUSHEXT); code.addValue(Value("defs"));
     code.addOp(VMOP_ASSIGN);
 
-    // 3. 10 32 defs.add !
+    // 3. 10 32 defs.add!
     code.addOp(VMOP_PUSHEXT); code.addValue(Value("10"));
     code.addOp(VMOP_PUSHEXT); code.addValue(Value("32"));
     code.addOp(VMOP_PUSHEXT); code.addValue(Value("defs.add"));

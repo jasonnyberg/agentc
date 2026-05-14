@@ -31,8 +31,7 @@ This principle extends strictly to Foreign Function Interface (FFI) objects ("Th
 "add" lookup-symbol   ( Stack: <ForeignFunc:add> )
 "plus" @              ( Stack: empty. 'plus' is now bound to the thunk )
 
-10 20 "plus" $        ( Stack: 10 20 <ForeignFunc:add> )
-!                     ( Stack: 30 )
+10 20 "plus" $        ( Stack: 10 20 <ForeignFunc:add> )!                     ( Stack: 30 )
 ```
 
 ### Benefits

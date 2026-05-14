@@ -60,9 +60,9 @@ export class AgentCSubstrate extends EventEmitter {
      * Automatically enables unsafe extensions and maps the specified bindings.
      */
     async importFFI(libraryPath: string, headerPath: string, moduleAlias: string, bindings: Record<string, string> = {}): Promise<string> {
-        let cmd = `unsafe_extensions_allow ! pop\n`;
+        let cmd = `unsafe_extensions_allow! pop\n`;
         // Important: paths must be pushed in brackets to avoid quote parsing issues inside Edict
-        cmd += `[${libraryPath}] [${headerPath}] resolver.import ! @${moduleAlias}\n`;
+        cmd += `[${libraryPath}] [${headerPath}] resolver.import! @${moduleAlias}\n`;
         for (const [ffiName, edictName] of Object.entries(bindings)) {
             cmd += `${moduleAlias}.${ffiName} @${edictName}\n`;
         }
@@ -77,7 +77,7 @@ export class AgentCSubstrate extends EventEmitter {
         // Stringify spec to a raw JSON map, which Edict natively parses as a dictionary
         const jsonSpec = JSON.stringify(spec);
         // Push the dictionary, push the logic evaluator, then execute (!)
-        const command = `${jsonSpec} logic !`;
+        const command = `${jsonSpec} logic!`;
         return await this.eval(command);
     }
 

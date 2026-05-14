@@ -59,7 +59,7 @@ TEST(EdictHelloLoopTest, ExtractsAssistantTextFromNormalizedResponseShape) {
 
     std::ostringstream script;
     script << moduleSource << "\n";
-    script << R"({"message":{"text":"hello from loop"}} agentc_extract_text !
+    script << R"({"message":{"text":"hello from loop"}} agentc_extract_text!
 print
 )";
 

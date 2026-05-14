@@ -123,13 +123,13 @@ TEST(EdictAgentcModuleTest, WrapperReturnsNormalizedJsonEnvelope) {
     const std::string moduleSource = readFile(modulePath());
 
     std::ostringstream script;
-    script << "[" << extensionsLibPath() << "] [" << extensionsHeaderPath() << "] resolver.import ! @ext\n";
-    script << "[" << runtimeLibPath() << "] [" << runtimeHeaderPath() << "] resolver.import ! @runtimeffi\n";
+    script << "[" << extensionsLibPath() << "] [" << extensionsHeaderPath() << "] resolver.import! @ext\n";
+    script << "[" << runtimeLibPath() << "] [" << runtimeHeaderPath() << "] resolver.import! @runtimeffi\n";
     script << moduleSource << "\n";
-    script << "[" << projectConfigPath() << "] agentc_runtime_create_path ! @rt\n";
-    script << R"(rt {"foo":"bar"} agentc_call ! to_json !
+    script << "[" << projectConfigPath() << "] agentc_runtime_create_path! @rt\n";
+    script << R"(rt {"foo":"bar"} agentc_call! to_json!
 print
-rt agentc_destroy ! /
+rt agentc_destroy! /
 )";
 
     const std::string jsonText = runEdictScript(script.str());
@@ -155,19 +155,19 @@ TEST(EdictAgentcModuleTest, ToolWrappersReadWriteReplaceAndShell) {
     const auto target = dir / "note.txt";
 
     std::ostringstream script;
-    script << "[" << extensionsLibPath() << "] [" << extensionsHeaderPath() << "] resolver.import ! @ext\n";
-    script << "[" << runtimeLibPath() << "] [" << runtimeHeaderPath() << "] resolver.import ! @runtimeffi\n";
+    script << "[" << extensionsLibPath() << "] [" << extensionsHeaderPath() << "] resolver.import! @ext\n";
+    script << "[" << runtimeLibPath() << "] [" << runtimeHeaderPath() << "] resolver.import! @runtimeffi\n";
     script << moduleSource << "\n";
-    script << "[" << target.string() << "] [alpha old omega] agentc_file_write ! @write_result\n";
-    script << "[" << target.string() << "] [old] [new] agentc_file_replace ! @replace_result\n";
-    script << "[" << target.string() << "] agentc_file_read ! @read_result\n";
-    script << "[printf shell-ok] agentc_shell ! @shell_result\n";
+    script << "[" << target.string() << "] [alpha old omega] agentc_file_write! @write_result\n";
+    script << "[" << target.string() << "] [old] [new] agentc_file_replace! @replace_result\n";
+    script << "[" << target.string() << "] agentc_file_read! @read_result\n";
+    script << "[printf shell-ok] agentc_shell! @shell_result\n";
     script << R"({"write":null,"replace":null,"read":null,"shell":null} @summary
 write_result @summary.write
 replace_result @summary.replace
 read_result @summary.read
 shell_result @summary.shell
-summary to_json ! print
+summary to_json! print
 )";
 
     const std::string jsonText = runEdictScript(script.str());
@@ -192,12 +192,12 @@ TEST(EdictAgentcModuleTest, ProviderCarriesToolSurfaceUnderCuratedLauncher) {
 
     std::ostringstream script;
     script << "llm.init([local-qwen]) @provider\n";
-    script << "provider < [" << target.string() << "] [provider tool text] tools.write_file ! @tool_write_result > pop /\n";
-    script << "provider < [" << target.string() << "] tools.read_file ! @tool_read_result > pop /\n";
+    script << "provider < [" << target.string() << "] [provider tool text] tools.write_file! @tool_write_result > pop /\n";
+    script << "provider < [" << target.string() << "] tools.read_file! @tool_read_result > pop /\n";
     script << R"({"write":null,"read":null} @summary
 provider.tool_write_result @summary.write
 provider.tool_read_result @summary.read
-summary to_json ! print
+summary to_json! print
 )";
 
     const std::string jsonText = runLauncherScript(script.str());
@@ -213,16 +213,16 @@ TEST(EdictAgentcModuleTest, StreamWrapperSpawnsAndSynchronizes) {
     const std::string moduleSource = readFile(modulePath());
 
     std::ostringstream script;
-    script << "[" << extensionsLibPath() << "] [" << extensionsHeaderPath() << "] resolver.import ! @ext\n";
-    script << "[" << runtimeLibPath() << "] [" << runtimeHeaderPath() << "] resolver.import ! @runtimeffi\n";
+    script << "[" << extensionsLibPath() << "] [" << extensionsHeaderPath() << "] resolver.import! @ext\n";
+    script << "[" << runtimeLibPath() << "] [" << runtimeHeaderPath() << "] resolver.import! @runtimeffi\n";
     script << moduleSource << "\n";
-    script << "[" << projectConfigPath() << "] agentc_runtime_create_path ! @rt\n";
+    script << "[" << projectConfigPath() << "] agentc_runtime_create_path! @rt\n";
     
     script << R"(
-    rt {"prompt": "hello", "stream_test_text": "hello-stream"} agentc_call_stream ! @sid
-    rt sid agentc_stream_sync ! @sync_result
-    sync_result to_json ! print
-    rt agentc_destroy ! /
+    rt {"prompt": "hello", "stream_test_text": "hello-stream"} agentc_call_stream! @sid
+    rt sid agentc_stream_sync! @sync_result
+    sync_result to_json! print
+    rt agentc_destroy! /
     )";
 
     const std::string jsonText = runEdictScript(script.str());

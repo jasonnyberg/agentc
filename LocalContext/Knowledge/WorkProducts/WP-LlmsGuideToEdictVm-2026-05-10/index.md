@@ -12,6 +12,8 @@ Edict is a tiny concatenative language.
 
 The most important habit is: think in terms of stack effects, not expression trees.
 
+Style note: write eval adjacent to the word being evaluated (`word!`, `module.word!`, `thunk!!`). The VM still accepts `!` as a standalone token for compatibility, but adjacent spelling is the preferred form for new examples and scripts.
+
 ## 2. What Terms Compile To
 The compiler is very direct.
 
@@ -196,7 +198,7 @@ Practical consequence:
 Example dynamic lookup pattern:
 
 ```edict
-catalog < preset_name ! > pop
+catalog < preset_name! > pop
 ```
 
 This is the current clean way to resolve a named preset object from a dict catalog when direct string equality is inconvenient or unavailable.
@@ -207,20 +209,20 @@ If you need to mutate an object in place, do not rely on isolated-call syntax al
 Reliable pattern:
 
 ```edict
-provider < [hello] request ! > pop /
+provider < [hello] request! > pop /
 ```
 
 Why it works:
 
 - `provider < ... >` makes `provider` the current scope.
 - `[hello]` pushes the prompt onto the data stack.
-- `request !` evaluates the request thunk in the provider's context, not a fresh method-local context.
+- `request!` evaluates the request thunk in the provider's context, not a fresh method-local context.
 - `pop` discards the context object returned by `CTX_POP`.
 - `/` discards the explicit success sentinel if you do not need it.
 
 Inside a mutating request thunk, avoid temporary named locals on the provider unless you actually want persistent fields.
 
-When a mutating thunk needs helper words that themselves bind locals (for example request-building or runtime-call wrappers), prefer isolated helper invocation such as `helper(arg1 arg2)` inside the mutating thunk. Raw `helper !` inside owner context can leak helper-local assignments onto the owner object and corrupt stable fields.
+When a mutating thunk needs helper words that themselves bind locals (for example request-building or runtime-call wrappers), prefer isolated helper invocation such as `helper(arg1 arg2)` inside the mutating thunk. Raw `helper!` inside owner context can leak helper-local assignments onto the owner object and corrupt stable fields.
 
 Prefer stack-passing style:
 
@@ -259,7 +261,7 @@ Use it for:
 
 ```edict
 llm.init([local-qwen]) @provider
-provider < [What is the capital of France?] request ! > pop /
+provider < [What is the capital of France?] request! > pop /
 provider.assistant_text print
 ```
 
@@ -267,13 +269,13 @@ provider.assistant_text print
 
 ```edict
 llm.init([local-qwen]) @provider
-provider < repl ! > pop /
+provider < repl! > pop /
 ```
 
 Notes:
 
 - `provider.repl` is currently intended for launcher-backed no-arg `./edict.sh` sessions where the underlying process is a real line-oriented `EdictREPL`.
-- The loop reads stdin through `agentc_read_line_status !`, skips blank lines, and exits cleanly on EOF.
+- The loop reads stdin through `agentc_read_line_status!`, skips blank lines, and exits cleanly on EOF.
 
 ### Pattern: Provider streaming
 
@@ -281,9 +283,9 @@ G074 adds a first decoupled ghost-queue stream surface:
 
 ```edict
 llm.init([gemma-4-31b-it]) @provider
-provider < [Reply exactly ok] stream_start ! > pop /
+provider < [Reply exactly ok] stream_start! > pop /
 -- later / after yielding or doing other work:
-provider < stream_sync ! > pop /
+provider < stream_sync! > pop /
 provider.stream_last.tokens print
 ```
 
@@ -300,24 +302,24 @@ G079 adds a first narrow tool surface through `agentc_tools` and `provider.tools
 
 ```edict
 llm.init([local-qwen]) @provider
-provider < [/tmp/note.txt] [hello] tools.write_file ! @last_tool > pop /
-provider < [/tmp/note.txt] tools.read_file ! @last_tool > pop /
+provider < [/tmp/note.txt] [hello] tools.write_file! @last_tool > pop /
+provider < [/tmp/note.txt] tools.read_file! @last_tool > pop /
 provider.last_tool.content print
 ```
 
 Available wrappers:
 
-- `agentc_file_read !` / `tools.read_file` — `( path -- result )`
-- `agentc_file_write !` / `tools.write_file` — `( path content -- result )`
-- `agentc_file_replace !` / `tools.replace_file` — `( path old_text new_text -- result )`, exact replacement must match once
-- `agentc_shell !` / `tools.shell` — `( command -- result )`
+- `agentc_file_read!` / `tools.read_file` — `( path -- result )`
+- `agentc_file_write!` / `tools.write_file` — `( path content -- result )`
+- `agentc_file_replace!` / `tools.replace_file` — `( path old_text new_text -- result )`, exact replacement must match once
+- `agentc_shell!` / `tools.shell` — `( command -- result )`
 
 Each result uses an explicit `ok` list sentinel (`["ok"]` or `[]`), so branch on `result.ok`, not the whole result object.
 
 ### Pattern: Success/failure control flow
 
 ```edict
-provider < [prompt text] request ! > pop &
+provider < [prompt text] request! > pop &
   provider.assistant_text print
 |
   provider.last_error.message print
@@ -345,9 +347,9 @@ lax!
 ### Pattern: Dynamic preset lookup from a catalog
 
 ```edict
-llm.catalog ! @catalog
+llm.catalog! @catalog
 [local-qwen] @preset_name
-catalog < preset_name ! > pop
+catalog < preset_name! > pop
 ```
 
 ### Pattern: Head-binding replacement when needed

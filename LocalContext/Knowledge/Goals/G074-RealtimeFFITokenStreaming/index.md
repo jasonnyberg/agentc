@@ -43,7 +43,7 @@ Detailed implementation and usage guide: 🔗[WP — G074 Real-time FFI Token St
   - `tokens`
   - `complete`: `["complete"]` or `[]`
   - `error`
-- `agentc.edict` now defines `agentc_call_stream !` and `agentc_stream_sync !` wrappers.
+- `agentc.edict` now defines `agentc_call_stream!` and `agentc_stream_sync!` wrappers.
 - `llm.edict` provider objects now include `stream_start` and `stream_sync` thunks plus stream state fields (`stream_id`, `stream_runtime`, `stream_last`, `stream_complete`, etc.).
 - Added inexpensive Google/Gemma preset aliases in `llm.edict`: `gemma-4-31b-it` and `google-gemma-4-31b-it`.
 - `google_provider.cpp` now uses the Google `streamGenerateContent?alt=sse` endpoint and parses SSE chunks. Thought parts are skipped so Gemma thinking does not pollute assistant text. Debug logging that exposed request URLs/raw responses was removed.

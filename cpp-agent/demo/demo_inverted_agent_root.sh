@@ -43,8 +43,8 @@ echo
 
 {
   cat <<EDICT
-[$EXT_LIB] [$EXT_HDR] resolver.import ! @ext
-[$RUNTIME_LIB] [$RUNTIME_HDR] resolver.import ! @runtimeffi
+[$EXT_LIB] [$EXT_HDR] resolver.import! @ext
+[$RUNTIME_LIB] [$RUNTIME_HDR] resolver.import! @runtimeffi
 EDICT
   cat "$AGENTC_MODULE"
   echo
@@ -57,12 +57,12 @@ EDICT
   printf '{"text": %s} @system_input\n' "$SYSTEM_PROMPT_JSON"
   printf '{"text": %s} @prompt1_input\n' "$PROMPT1_JSON"
   printf '{"text": %s} @prompt2_input\n' "$PROMPT2_JSON"
-  echo "[$CONFIG] agentc_read_json_file ! @runtime_config"
-  echo 'system_input.text runtime_config agentc_agent_root_init_with_runtime ! @root'
-  echo 'root agentc_agent_root_create_runtime ! @runtime'
-  echo 'runtime root prompt1_input.text agentc_agent_root_turn ! @root'
-  echo 'runtime root prompt2_input.text agentc_agent_root_turn ! @root'
-  echo 'runtime agentc_destroy ! /'
-  echo 'root to_json !'
+  echo "[$CONFIG] agentc_read_json_file! @runtime_config"
+  echo 'system_input.text runtime_config agentc_agent_root_init_with_runtime! @root'
+  echo 'root agentc_agent_root_create_runtime! @runtime'
+  echo 'runtime root prompt1_input.text agentc_agent_root_turn! @root'
+  echo 'runtime root prompt2_input.text agentc_agent_root_turn! @root'
+  echo 'runtime agentc_destroy! /'
+  echo 'root to_json!'
   echo 'print'
 } | "$EDICT" -
