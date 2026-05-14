@@ -20,6 +20,7 @@ set(LIB_SOURCES
     edict_vm_core.cpp
     edict_vm_ffi.cpp
     edict_vm_bootstrap.cpp
+    edict_vm_intern.cpp
     edict_repl.cpp
     block_accumulator.cpp
 )
@@ -57,6 +58,7 @@ add_executable(edict_tests
     tests/simple_assign_test.cpp
     tests/pi_simulation_test.cpp
     tests/session_cli_test.cpp
+    tests/intern_worker_test.cpp
 )
 target_compile_definitions(edict_tests PRIVATE
     TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../cartographer/tests"

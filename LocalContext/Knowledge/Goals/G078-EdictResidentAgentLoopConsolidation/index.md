@@ -40,6 +40,7 @@ The current system works, but semantic pieces of an LLM turn are duplicated acro
 - The curated launcher is already being used by the runnable local demo: `demo_local_llm.sh` now delegates to `./edict.sh`, and the launcher-backed prelude leaves provider calls immediately available instead of requiring each script to re-import and re-load the same runtime/module stack.
 - Raw Edict now has a user-facing named-session selector from 🔗[G102](../G102-EdictSessionIdStartupFlag/index.md): `./build/edict/edict --session ID` creates/resumes an Edict root scope under `/tmp/session/<id>/` by default, using the current session-image/slab store on normal process exit. This narrows lifecycle/persistence seams for future Edict-resident sessions without completing full kill-mid-turn mmap resume.
 - 🔗[G080](../G080-LlmReplContextManagement/index.md) landed the first Edict-owned context-management slice: provider objects expose `context_reset!` and `context_inspect!`, and launcher-backed `provider.repl()` supports `/reset`, `/clear`, `/context`, and `/inspect` without moving the UX policy back into the host.
+- 🔗[G091](../G091-InternWorkerConcurrencyMvp/index.md) has begun with the first deterministic `intern_run!` worker dispatch primitive: the coordinator can freeze shared context/imports, snapshot explicit input, run bounded Edict source in a fresh worker VM with private workspace, and collect a structured result copied back on the coordinator thread.
 
 ## Primary Direction
 Make Edict the source of truth for:
@@ -69,6 +70,7 @@ G078 remains the top-level active consolidation track, but several implementatio
 Near-term execution should continue through G079 first, then G080, while keeping G078 as the parent architectural umbrella.
 
 ## Progress Notes
+- 2026-05-14: Began G091 with deterministic `intern_run!`: task envelopes now dispatch bounded Edict programs to a worker VM, freeze shared context/imports, snapshot input, return structured results, and have focused `InternWorkerTest.*` coverage.
 - 2026-05-14: Completed G080's first LLM REPL context-management slice: provider-owned `context_reset!` and `context_inspect!` are live, the launcher REPL supports `/reset`/`/clear` and `/context`/`/inspect`, and focused cpp-agent Edict/LLM validation passed 21/21.
 - 2026-05-14: Completed G102's raw Edict session-id slice: `--session` / `--session-base` create/resume support is wired to `SessionStateStore`, session ids are filesystem-safe, CLI regression coverage exists, and root bindings can persist across raw Edict process invocations.
 - 2026-05-11: Completed G074's first streaming slice: runtime stream requests now launch detached provider workers, `agentc_stream_sync!` returns structured sync envelopes, provider objects expose `stream_start`/`stream_sync`, and a live Google/Gemma `gemma-4-31b-it` smoke test returned `ok`.

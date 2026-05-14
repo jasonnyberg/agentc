@@ -33,7 +33,7 @@ This is now the immediate next slice after G079 landed the first tool-use surfac
 
 ## Implementation — 2026-05-14
 - Added a first provider-owned context contract in `cpp-agent/edict/modules/llm.edict`:
-  - `provider.context_reset!` clears `provider.conversation`, resets assistant/stream state, and preserves the provider object plus system prompt.
+  - `provider.context_reset!` clears `provider.conversation`, resets assistant/error state and visible stream summary, and preserves the provider object plus system prompt.
   - `provider.context_inspect!` returns a JSON-serializable summary containing preset, provider/model, system prompt, messages, assistant text, last response/error, and stream status.
 - Added launcher-backed REPL slash commands implemented in Edict/provider state:
   - `/reset` and `/clear` call `context_reset!`.

@@ -290,6 +290,17 @@ provider < context_reset! > / /
 
 `context_reset!` mutates the stable provider object in place, clears conversation messages, resets the assistant text, and preserves the system prompt. The REPL command path uses raw string equality through a generic stdlib helper; it does not eval arbitrary user chat text as Edict.
 
+### Pattern: Deterministic intern worker task
+
+G091 adds the first substrate-level intern-worker primitive, `intern_run!`. The coordinator passes a bounded task envelope; Edict freezes `context` and `imports`, snapshots `input`, runs the `program` in a fresh worker VM with private `workspace`, joins the worker, and returns a structured result on the coordinator stack.
+
+```edict
+worker_task intern_run! @worker_result
+worker_result.result to_json! print
+```
+
+Worker programs should assign a JSON-serializable `result` object. Keep intern tasks bounded, explicit, and checkable; do not pass stateful provider handles through worker context/imports in the MVP.
+
 ### Pattern: Provider streaming
 
 G074 adds a first decoupled ghost-queue stream surface:

@@ -317,18 +317,31 @@ Good intern tasks are bounded and checkable:
 | Compression | Summarize a large diff into semantic changes. |
 | Context proxy | Hold a large context and answer factual questions about it. |
 
-The target architecture is:
+The landed first substrate slice is the deterministic `intern_run!` builtin:
+
+```edict
+-- task envelope shape: task_id, program, input, context, optional imports
+worker_task intern_run! @worker_result
+```
+
+`intern_run!` freezes `context` and `imports`, snapshots `input`, launches a fresh worker
+`EdictVM` with a private `workspace`, executes the bounded Edict `program`, joins the worker,
+and returns a structured envelope with `ok`, `task_id`, `state`, `result`, `error`, and
+`safety` fields. Worker results are copied back through JSON on the coordinator thread; the
+coordinator decides what to merge.
+
+The target architecture remains:
 
 1. A coordinator VM owns the mutable root state.
-2. Shared inputs/import tables are marked read-only before dispatch.
+2. Shared context/import tables are marked read-only before dispatch.
 3. Each worker gets a fresh EdictVM and private workspace.
 4. Re-entrant native tools can be shared; stateful provider handles remain coordinator-owned or
    are cloned per worker.
 5. Workers return structured findings; the coordinator decides what to merge.
 
-Existing pieces already point in this direction: read-only Listree flags, fresh worker VMs,
-shared cells, stream queues, local provider presets, and provider-attached tools. The full
-multi-intern scheduler is future work.
+Existing pieces now include read-only Listree flags, deterministic `intern_run!`, fresh worker
+VMs, shared cells, stream queues, local provider presets, and provider-attached tools. The full
+multi-intern scheduler and live local-model intern execution remain future work.
 
 ---
 
@@ -340,8 +353,8 @@ multi-intern scheduler is future work.
 - Better user-facing examples and notebook-style executable docs.
 - More complete Edict ownership of agent root/session lifecycle.
 - Hardened validation and cleanup of remaining legacy FFI test failures.
-- First practical worker-agent scheduler built on fresh VMs, read-only sharing, and result
-  queues.
+- Build the first practical worker-agent scheduler on top of deterministic `intern_run!`, fresh
+  VMs, read-only sharing, and result queues.
 
 ### Longer term
 

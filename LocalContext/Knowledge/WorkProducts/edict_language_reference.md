@@ -1143,6 +1143,52 @@ worker thunk in a fresh VM. The supported cross-thread data model is intentional
 - direct concurrent mutation of arbitrary live `ListreeValue` graphs or reuse of one live
   `EdictVM` across threads is not part of the supported model
 
+### Deterministic intern worker MVP
+
+`intern_run!` is the first coordinator-owned intern-worker dispatch primitive. It accepts a task
+envelope and returns a structured result envelope:
+
+```edict
+worker_task intern_run! @worker_result
+```
+
+Task envelope fields:
+
+| Field | Required | Meaning |
+|-------|----------|---------|
+| `task_id` / `id` | optional | Stable task label copied into the result. |
+| `program` | required | Bounded Edict source executed inside the worker VM. |
+| `input` | optional | JSON-snapshotted private worker input. |
+| `context` | optional | Shared context subtree; recursively frozen before dispatch. |
+| `imports` | optional | Shared import namespace; recursively frozen before dispatch. |
+
+Worker root fields:
+
+| Field | Meaning |
+|-------|---------|
+| `task_id` | Copied task id. |
+| `input` | Private JSON snapshot. |
+| `context` | Read-only shared context. |
+| `imports` | Read-only shared import namespace. |
+| `workspace` | Private mutable worker scratch object. |
+| `result` | Program-assigned structured worker result; if absent, the stack top is used. |
+
+Result envelope fields:
+
+| Field | Meaning |
+|-------|---------|
+| `ok` | `["ok"]` on success, `[]` on failure. |
+| `task_id` | Task id. |
+| `state` | `complete` or `error`. |
+| `worker` | Current worker backend (`edict-thread`). |
+| `result` | Worker result copied back through JSON on the coordinator thread. |
+| `error` | Error object or null. |
+| `safety` | Read-only/snapshot/merge-thread metadata. |
+
+Safe intern-task rule: keep tasks bounded, pass explicit inputs/context/imports, state clear
+success criteria in `program`, and merge only the returned structured `result` from the
+coordinator VM. Do not pass stateful provider handles through `context`/`imports` in this MVP.
+
 ### Example: wrap a computation
 
 ```edict
@@ -1263,6 +1309,7 @@ reset   -- clear VM_ERROR flag and error message; resume from error state
 | `VMOP_FUN_EVAL` | `)` | Evaluate function on VMRES_FUNC |
 | `VMOP_SPLICE` | `^` or `^name` | Splice current frame into named node |
 | `VMOP_SPECULATE` | `speculate [code]` | Run code in isolated snapshot |
+| `VMOP_INTERN_RUN` | `intern_run!` | Run bounded worker task envelope in fresh worker VM |
 | `VMOP_REWRITE_DEFINE` | `rewrite_define!` | Register a rewrite rule |
 | `VMOP_REWRITE_LIST` | `rewrite_list!` | List all rules |
 | `VMOP_REWRITE_REMOVE` | `rewrite_remove!` | Remove rule by index |

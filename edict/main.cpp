@@ -97,8 +97,8 @@ void stripVolatileStartupBindings(CPtr<agentc::ListreeValue> root) {
         "ffi_closure", "rewrite_define", "rewrite_list", "rewrite_remove", "rewrite_apply",
         "rewrite_mode", "rewrite_trace", "speculate", "unsafe_extensions_allow",
         "unsafe_extensions_block", "unsafe_extensions_status", "HeapUtilization", "freeze",
-        "to_json", "from_json", "__bootstrap_import", "cursor", "parser", "resolver",
-        "cartographer"
+        "to_json", "from_json", "intern_run", "__bootstrap_import", "cursor", "parser",
+        "resolver", "cartographer"
     };
     for (const char* name : names) {
         root->remove(name);

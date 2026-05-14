@@ -227,6 +227,7 @@ void EdictVM::loadCoreBuiltins() {
     addBuiltinThunk(dictVal, "freeze", VMOP_FREEZE);
     addBuiltinThunk(dictVal, "to_json", VMOP_TO_JSON);
     addBuiltinThunk(dictVal, "from_json", VMOP_FROM_JSON);
+    addBuiltinThunk(dictVal, "intern_run", VMOP_INTERN_RUN);
 }
 
 void EdictVM::installBootstrapImportCapsule() {
@@ -252,6 +253,7 @@ void EdictVM::installBootstrapImportCapsule() {
     addBuiltinThunk(capsule, "freeze", VMOP_FREEZE);
     addBuiltinThunk(capsule, "to_json", VMOP_TO_JSON);
     addBuiltinThunk(capsule, "from_json", VMOP_FROM_JSON);
+    addBuiltinThunk(capsule, "intern_run", VMOP_INTERN_RUN);
     agentc::addNamedItem(dictVal, "__bootstrap_import", capsule);
 }
 
