@@ -190,14 +190,15 @@ On resume, Root1 recreates eventfds, rebuilds the epoll set, rescans mailbox/res
 ## Implementation Plan
 
 - [x] Write the Root1 resource-broker design note: resource keys, participant ids, state words, wait queues, grant tokens, lifecycle, persistence, and owner-death semantics.
-- [ ] Define the first explicit mutable coordination slab layout for mailbox descriptors and resource state words.
+- [x] Define first fixed-size mailbox descriptor and bounded ring layout compatible with future mmap coordination slabs.
+- [ ] Define the full mutable coordination slab file/mapping layout for participant records, resource state words, and ring placement.
 - [x] Define the participant eventfd/mailbox model and Root1 epoll loop responsibilities.
 - [x] Specify acquire/release memory ordering and the lost-wake avoidance protocol.
 - [x] Decide whether the first ownership grant semantics allow barging or require broker-granted fairness; first prototype uses broker-granted transfer.
 - [ ] Define pidfd/process-death and abandoned-resource recovery behavior for process-isolated workers.
 - [x] Prototype a tiny Linux C++ broker smoke test outside VM dispatch: two participants contend for one logical resource and Root1 wakes waiters in order.
 - [x] Add a descriptor-drain test for participant mailbox events through eventfd/epoll.
-- [ ] Extend the prototype to a bounded mmap-compatible mailbox ring.
+- [x] Extend the prototype to a bounded mmap-compatible mailbox ring.
 - [ ] Decide whether G091 async interns adopt the broker immediately or land a minimal broker-compatible in-process backend first.
 - [ ] Define how future Edict `await!` parks/resumes VM continuations through Root1 waitables.
 
@@ -208,7 +209,7 @@ On resume, Root1 recreates eventfds, rebuilds the epoll set, rescans mailbox/res
 - [x] The design clearly separates persistent slab metadata from process-local/kernel fd state.
 - [x] The design explains fast-path atomic acquire/release and slow-path Root1 parking/wakeup, including lost-wake prevention.
 - [ ] The design covers mailbox IPC, async intern jobs, future `await!`, cancellation/backpressure, and owner-death recovery.
-- [x] A minimal Linux prototype demonstrates eventfd wakeup, epoll dispatch, contended resource grant, and mailbox descriptor drain.
+- [x] A minimal Linux prototype demonstrates eventfd wakeup, epoll dispatch, contended resource grant, bounded mailbox ring behavior, and mailbox descriptor drain.
 
 ## First Prototype Slice — 2026-05-16
 
@@ -222,22 +223,25 @@ Prototype capabilities:
 - Fast path: `tryAcquire(...)` CASes `UNOWNED -> owner` with no eventfd/syscall interaction.
 - Slow path: `acquireOrQueue(...)` registers a waiter under Root1's mutex, sets the contended bit, and avoids the simple lost-wake race by retrying acquisition while serialized with broker release.
 - Release path uses broker-granted transfer: Root1 selects the next waiter, stores ownership to that participant, emits an `OwnershipGranted` descriptor, and wakes the participant eventfd.
-- Mailbox path: `sendMailboxMessage(...)`, `pollReadyParticipants(...)`, and `drainMailbox(...)` demonstrate descriptor delivery through eventfd/epoll.
+- `MailboxDescriptor` defines a fixed-size descriptor with event kind, payload kind, correlation id, grant token, `ResourceKey`, optional slab payload handle, and 96 inline bytes.
+- `MailboxRing` defines a bounded 64-slot SPSC-style ring with release/acquire publication and no dynamic allocation in the ring layout.
+- Mailbox path: `sendMailboxMessage(...)`, `sendMailboxDescriptor(...)`, `pollReadyParticipants(...)`, `drainMailbox(...)`, and `drainMailboxDescriptors(...)` demonstrate descriptor delivery through eventfd/epoll.
 
 Prototype limits:
 
-- Uses in-process sidecar maps, not mmap-backed mailbox slabs yet.
+- Uses in-process sidecar maps and per-participant heap-owned rings; the ring layout is mmap-compatible, but no mapped coordination slab allocator/placement exists yet.
 - No pidfd owner-death recovery yet.
 - No explicit cancellation/backpressure states yet.
 - No Edict opcode/module surface yet.
-- The mailbox prototype is descriptor/vector-based, not a bounded shared-memory ring yet.
+- The mailbox ring is SPSC-style and broker-serialized in the current prototype; MPSC/per-producer lanes are still future work.
 
 Validation:
 
 - `cmake --build build --target reflect_tests -j2` — passed.
-- `./build/tests/reflect_tests --gtest_filter='Root1ResourceBrokerTest.*'` — passed 2/2.
-- `./build/tests/reflect_tests` — passed 35/35.
+- `./build/tests/reflect_tests --gtest_filter='Root1ResourceBrokerTest.*'` — passed 4/4.
+- `./build/tests/reflect_tests` — passed 37/37.
 - `cmake --build build --target edict_tests -j2` — passed.
+- `cmake --build build --target cpp_agent_tests -j2` — passed.
 
 ## Integration With Existing Goals
 

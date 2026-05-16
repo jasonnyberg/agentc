@@ -15,12 +15,15 @@
 
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <memory>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -70,6 +73,67 @@ enum class AcquireStatus {
     InvalidParticipant,
 };
 
+enum class MailboxEventKind : uint16_t {
+    None = 0,
+    Message = 1,
+    OwnershipGranted = 2,
+    Progress = 3,
+    Complete = 4,
+    Error = 5,
+    Cancelled = 6,
+    Backpressure = 7,
+};
+
+enum class MailboxPayloadKind : uint16_t {
+    None = 0,
+    InlineBytes = 1,
+    Json = 2,
+    PublishedSlab = 3,
+    BlobHandle = 4,
+};
+
+struct SlabPayloadHandle {
+    uint32_t layerId = 0;
+    uint32_t slabId = 0;
+    uint32_t offset = 0;
+    uint64_t generation = 0;
+};
+
+constexpr size_t kMailboxInlineBytes = 96;
+constexpr size_t kMailboxRingCapacity = 64;
+
+struct MailboxDescriptor {
+    uint64_t sequence = 0;
+    uint64_t correlationId = 0;
+    GrantToken grantToken = 0;
+    ResourceKey resource;
+    SlabPayloadHandle payloadHandle;
+    MailboxEventKind eventKind = MailboxEventKind::None;
+    MailboxPayloadKind payloadKind = MailboxPayloadKind::None;
+    uint32_t flags = 0;
+    uint32_t inlineSize = 0;
+    std::array<char, kMailboxInlineBytes> inlineBytes{};
+};
+
+bool setInlinePayload(MailboxDescriptor& descriptor, std::string_view payload);
+std::string_view inlinePayload(const MailboxDescriptor& descriptor);
+
+class MailboxRing {
+public:
+    bool tryPush(const MailboxDescriptor& descriptor);
+    bool tryPop(MailboxDescriptor& descriptor);
+    void resetForTests();
+    size_t capacity() const;
+    size_t approximateSize() const;
+    bool empty() const;
+    bool full() const;
+
+private:
+    std::atomic<uint64_t> head_{0};
+    std::atomic<uint64_t> tail_{0};
+    std::array<MailboxDescriptor, kMailboxRingCapacity> slots_{};
+};
+
 enum class BrokerEventKind {
     OwnershipGranted,
     MailboxMessage,
@@ -102,18 +166,22 @@ public:
     bool release(const ResourceKey& key, ResourceState& state, ParticipantId owner);
 
     bool sendMailboxMessage(ParticipantId participant, std::string payload, uint64_t sequence = 0);
+    bool sendMailboxDescriptor(ParticipantId participant, const MailboxDescriptor& descriptor);
     std::vector<ParticipantId> pollReadyParticipants(int timeoutMs, size_t maxEvents = 16);
     std::vector<BrokerEvent> drainMailbox(ParticipantId participant);
+    std::vector<MailboxDescriptor> drainMailboxDescriptors(ParticipantId participant);
 
 private:
     struct ParticipantRecord {
         int eventFd = -1;
         std::vector<BrokerEvent> mailbox;
+        std::unique_ptr<MailboxRing> descriptorMailbox;
     };
 
     bool isValidParticipantLocked(ParticipantId participant) const;
     bool notifyParticipantLocked(ParticipantId participant) const;
     void pushEventLocked(ParticipantId participant, BrokerEvent event);
+    bool pushDescriptorLocked(ParticipantId participant, const MailboxDescriptor& descriptor);
     bool tryAcquireUnlocked(ResourceState& state, ParticipantId participant) const;
     void closeAllFds();
 

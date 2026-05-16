@@ -16,6 +16,7 @@
 #include "root1_resource_broker.h"
 
 #include <algorithm>
+#include <cstring>
 #include <stdexcept>
 #include <utility>
 
@@ -75,6 +76,72 @@ size_t ResourceKeyHash::operator()(const ResourceKey& key) const {
     return seed;
 }
 
+bool setInlinePayload(MailboxDescriptor& descriptor, std::string_view payload) {
+    if (payload.size() > descriptor.inlineBytes.size()) {
+        return false;
+    }
+    descriptor.inlineBytes.fill('\0');
+    if (!payload.empty()) {
+        std::memcpy(descriptor.inlineBytes.data(), payload.data(), payload.size());
+    }
+    descriptor.inlineSize = static_cast<uint32_t>(payload.size());
+    descriptor.payloadKind = MailboxPayloadKind::InlineBytes;
+    return true;
+}
+
+std::string_view inlinePayload(const MailboxDescriptor& descriptor) {
+    const size_t size = std::min<size_t>(descriptor.inlineSize, descriptor.inlineBytes.size());
+    return std::string_view(descriptor.inlineBytes.data(), size);
+}
+
+bool MailboxRing::tryPush(const MailboxDescriptor& descriptor) {
+    const uint64_t tail = tail_.load(std::memory_order_relaxed);
+    const uint64_t head = head_.load(std::memory_order_acquire);
+    if (tail - head >= slots_.size()) {
+        return false;
+    }
+
+    slots_[tail % slots_.size()] = descriptor;
+    tail_.store(tail + 1, std::memory_order_release);
+    return true;
+}
+
+bool MailboxRing::tryPop(MailboxDescriptor& descriptor) {
+    const uint64_t head = head_.load(std::memory_order_relaxed);
+    const uint64_t tail = tail_.load(std::memory_order_acquire);
+    if (head == tail) {
+        return false;
+    }
+
+    descriptor = slots_[head % slots_.size()];
+    head_.store(head + 1, std::memory_order_release);
+    return true;
+}
+
+void MailboxRing::resetForTests() {
+    head_.store(0, std::memory_order_release);
+    tail_.store(0, std::memory_order_release);
+    slots_.fill(MailboxDescriptor{});
+}
+
+size_t MailboxRing::capacity() const {
+    return slots_.size();
+}
+
+size_t MailboxRing::approximateSize() const {
+    const uint64_t head = head_.load(std::memory_order_acquire);
+    const uint64_t tail = tail_.load(std::memory_order_acquire);
+    return static_cast<size_t>(tail - head);
+}
+
+bool MailboxRing::empty() const {
+    return approximateSize() == 0;
+}
+
+bool MailboxRing::full() const {
+    return approximateSize() >= capacity();
+}
+
 uint64_t ResourceState::raw() const {
     return word_.load(std::memory_order_acquire);
 }
@@ -128,7 +195,10 @@ ParticipantId Root1ResourceBroker::registerParticipant() {
         throw std::runtime_error("Root1ResourceBroker: epoll_ctl add failed");
     }
 
-    participants_.emplace(id, ParticipantRecord{fd, {}});
+    ParticipantRecord record;
+    record.eventFd = fd;
+    record.descriptorMailbox = std::make_unique<MailboxRing>();
+    participants_.emplace(id, std::move(record));
     return id;
 #else
     throw std::runtime_error("Root1ResourceBroker requires Linux eventfd/epoll");
@@ -211,6 +281,14 @@ bool Root1ResourceBroker::release(const ResourceKey& key, ResourceState& state, 
         event.resource = key;
         event.grantToken = nextGrantToken_++;
         event.sequence = event.grantToken;
+
+        MailboxDescriptor descriptor;
+        descriptor.eventKind = MailboxEventKind::OwnershipGranted;
+        descriptor.payloadKind = MailboxPayloadKind::None;
+        descriptor.resource = key;
+        descriptor.grantToken = event.grantToken;
+        descriptor.sequence = event.sequence;
+        pushDescriptorLocked(next, descriptor);
         pushEventLocked(next, std::move(event));
         return true;
     }
@@ -229,12 +307,26 @@ bool Root1ResourceBroker::sendMailboxMessage(ParticipantId participant, std::str
         return false;
     }
 
+    MailboxDescriptor descriptor;
+    descriptor.eventKind = MailboxEventKind::Message;
+    descriptor.sequence = sequence;
+    setInlinePayload(descriptor, payload);
+    pushDescriptorLocked(participant, descriptor);
+
     BrokerEvent event;
     event.kind = BrokerEventKind::MailboxMessage;
     event.sequence = sequence;
     event.payload = std::move(payload);
     pushEventLocked(participant, std::move(event));
     return true;
+}
+
+bool Root1ResourceBroker::sendMailboxDescriptor(ParticipantId participant, const MailboxDescriptor& descriptor) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!isValidParticipantLocked(participant)) {
+        return false;
+    }
+    return pushDescriptorLocked(participant, descriptor);
 }
 
 std::vector<ParticipantId> Root1ResourceBroker::pollReadyParticipants(int timeoutMs, size_t maxEvents) {
@@ -277,6 +369,21 @@ std::vector<BrokerEvent> Root1ResourceBroker::drainMailbox(ParticipantId partici
     return events;
 }
 
+std::vector<MailboxDescriptor> Root1ResourceBroker::drainMailboxDescriptors(ParticipantId participant) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = participants_.find(participant);
+    if (it == participants_.end() || !it->second.descriptorMailbox) {
+        return {};
+    }
+
+    std::vector<MailboxDescriptor> descriptors;
+    MailboxDescriptor descriptor;
+    while (it->second.descriptorMailbox->tryPop(descriptor)) {
+        descriptors.push_back(descriptor);
+    }
+    return descriptors;
+}
+
 bool Root1ResourceBroker::isValidParticipantLocked(ParticipantId participant) const {
     return participants_.find(participant) != participants_.end();
 }
@@ -301,6 +408,18 @@ void Root1ResourceBroker::pushEventLocked(ParticipantId participant, BrokerEvent
     }
     it->second.mailbox.push_back(std::move(event));
     notifyParticipantLocked(participant);
+}
+
+bool Root1ResourceBroker::pushDescriptorLocked(ParticipantId participant, const MailboxDescriptor& descriptor) {
+    auto it = participants_.find(participant);
+    if (it == participants_.end() || !it->second.descriptorMailbox) {
+        return false;
+    }
+    if (!it->second.descriptorMailbox->tryPush(descriptor)) {
+        return false;
+    }
+    notifyParticipantLocked(participant);
+    return true;
 }
 
 bool Root1ResourceBroker::tryAcquireUnlocked(ResourceState& state, ParticipantId participant) const {
