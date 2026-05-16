@@ -20,9 +20,48 @@ The intern architecture only works if delegated tasks are bounded and checkable.
 - Success criteria and validation checks.
 - Token/time/resource budget.
 - Confidence/evidence fields for returned findings.
+- Async-job limits: timeout, max events, max result bytes, expected publication mode, cancellation semantics, waitable id, and broker backpressure behavior.
+
+## Current Priority — Full-Send Slab Plan
+G099 should follow the broker-shaped async planning in 🔗[G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design](../G110-EventfdEpollMicroVmIpcDesign/index.md) and the async 🔗[G091](../G091-InternWorkerConcurrencyMvp/index.md) `intern_start!` / `intern_sync!` slice. The first contract does not need the full future policy layer; it should minimally bound async workers so the coordinator can reject underspecified jobs before they become background processes or broker waitables.
+
+Minimal first schema target:
+
+```json
+{
+  "task_id": "...",
+  "program": "...",
+  "input": {},
+  "context": {},
+  "imports": {},
+  "limits": {
+    "timeout_ms": "1000",
+    "max_events": "100",
+    "max_result_bytes": "65536"
+  },
+  "expect": {
+    "result_shape": "object",
+    "success_field": "ok"
+  },
+  "async": {
+    "waitable": null,
+    "event_kinds": ["started", "progress", "complete", "error"],
+    "backpressure": "reject"
+  }
+}
+```
+
+The result envelope should reserve future slab publication metadata even while JSON remains the first stable handoff:
+
+```json
+{
+  "result": {},
+  "publication": null
+}
+```
 
 ## Implementation Plan
-- [ ] Define a minimal Listree/JSON task contract schema.
+- [ ] Define a minimal Listree/JSON task contract schema with `limits` and `expect` fields.
 - [ ] Add Edict helpers for constructing and validating intern task contracts.
 - [ ] Provide examples for each safe task class.
 - [ ] Integrate the contract with the worker dispatch path from 🔗[G091](../G091-InternWorkerConcurrencyMvp/index.md).

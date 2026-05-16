@@ -21,8 +21,28 @@ Intern concurrency requires explicit capability safety. Pure computation and sta
 | Stateful handle | no | no | provider/runtime request handle |
 | Shared-cell primitive | yes, if synchronized | yes, if contract-safe | explicit shared-cell API |
 
+## Full-Send Loader Metadata
+The layered mmap/meta-library concept makes G092 foundational for static declaration images. Imported symbols should carry richer metadata than only `reentrant` / `shareable`:
+
+```json
+{
+  "static_shareable_declaration": "true",
+  "requires_process_local_binding": "true",
+  "thread_safe": "true",
+  "process_safe": "true",
+  "reentrant": "true",
+  "pure": "false",
+  "side_effects": ["filesystem"],
+  "credential_bearing": "false",
+  "worker_allowed": "true"
+}
+```
+
+This metadata lets static core slabs share declarative library namespaces while each worker/coordinator process decides whether it may lazily bind and call the native capability.
+
 ## Implementation Plan
 - [ ] Define native metadata fields for imported symbols: at minimum `reentrant`, `shareable`, and `stateful` or equivalent.
+- [ ] Extend the field set for static declaration images: `static_shareable_declaration`, `requires_process_local_binding`, `thread_safe`, `process_safe`, `pure`, `side_effects`, `credential_bearing`, and `worker_allowed`.
 - [ ] Add a conservative default policy for unannotated imports.
 - [ ] Add a way for built-in/imported AgentC extension surfaces to declare classifications.
 - [ ] Teach worker dispatch/import sharing to reject non-shareable symbols.

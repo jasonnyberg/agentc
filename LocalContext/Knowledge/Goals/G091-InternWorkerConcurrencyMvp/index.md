@@ -28,7 +28,7 @@ The intern model is the clearest application-level payoff for AgentC's substrate
 - [x] Execute a deterministic Edict worker task first; defer live local-model execution until the substrate is stable.
 - [x] Return structured results through a thread-safe join result compatible with the existing StreamManager pattern.
 - [x] Copy/merge the result Listree into the coordinator slab on the coordinator/main thread.
-- [ ] Add async intern jobs as the primary next path, reusing the LLM streaming/ghost-queue mechanics pattern: main thread launches jobs, continues work, and polls for structured results.
+- [ ] Add async intern jobs as the primary next path, shaped by the G110 Root1 resource-broker/waitable model; LLM streaming/ghost-queue mechanics remain a fallback/reference for the in-process queue.
 - [ ] Add `intern_start!` / `intern_sync!` while keeping `intern_run!` as blocking convenience over the same worker helper.
 - [ ] Harden explicit private slab/arena cleanup for the later multi-worker scheduler; the first slice uses normal `CPtr`/VM lifetime cleanup and JSON result copying.
 
@@ -51,14 +51,15 @@ G091 is active. The first deterministic substrate slice is implemented as the `i
 Remaining G091 hardening before closure: implement the async polling path below, then decide whether explicit worker arena/slab lifecycle cleanup is required before promoting 🔗[G099 — Intern Task Quality Contracts](../G099-InternTaskQualityContracts/index.md).
 
 ## Primary Implementation Path — Async Intern Jobs
-The next G091 slice should reuse the LLM streaming/ghost-queue mechanics pattern rather than inventing a separate scheduler model:
+The next G091 slice should now be shaped by 🔗[G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design](../G110-EventfdEpollMicroVmIpcDesign/index.md). The earlier ghost-queue mechanics remain a useful implementation reference and fallback, but the target abstraction is a broker-compatible waitable job/mailbox:
 
 1. Main/coordinator thread creates an intern job id and freezes/snapshots the task boundary.
-2. A background worker thread owns blocking Edict worker execution.
-3. Worker publishes events/final JSON into a mutex-protected queue/result slot.
-4. Main/coordinator thread continues other Edict work and periodically calls `intern_sync!`.
-5. `intern_sync!` drains pending events and, once complete, parses final JSON into coordinator-owned Listree state on the coordinator thread.
-6. Only the coordinator thread mutates coordinator-owned VM/Listree state.
+2. A job record is represented as a logical waitable/mailbox descriptor compatible with Root1 resource-broker semantics.
+3. A background worker thread owns blocking Edict worker execution for the first implementation; later process workers use the same logical descriptor shape.
+4. Worker publishes events/final JSON or future publication handles into a broker-compatible queue/result slot.
+5. Main/coordinator thread continues other Edict work and periodically calls `intern_sync!`.
+6. `intern_sync!` drains pending events and, once complete, parses final JSON into coordinator-owned Listree state on the coordinator thread.
+7. Only the coordinator thread mutates coordinator-owned VM/Listree state.
 
 Planned Edict surface:
 
@@ -69,13 +70,18 @@ job.job_id intern_sync! @status
 ```
 
 Preferred implementation options, in order:
-- Extract the generic queue/result mechanics from `cpp-agent/runtime/core/StreamManager` into a neutral shared component that both LLM streaming and Edict intern jobs can use.
-- If extraction is too invasive for the next slice, add an Edict-local `InternJobManager` modeled directly on `StreamManager` and leave common extraction as cleanup.
+- Use G110 to define the logical job waitable/result-envelope shape before committing to a backend.
+- If quick implementation is needed, add an Edict-local `InternJobManager` modeled on `StreamManager` but with broker-compatible job ids, event kinds, backpressure/cancel states, and future publication handles.
+- Extract generic queue/result mechanics from `cpp-agent/runtime/core/StreamManager` into a neutral shared component only if it does not hide the eventual Root1 broker shape.
 - Avoid coupling raw `libedict` directly to the full `cpp-agent` runtime/provider stack.
 
 `intern_run!` should remain as blocking sugar over the same worker helper so existing tests and script examples continue to work.
 
-Related architecture concept: 🔗[Layered mmap Micro-VM Architecture](../../Concepts/LayeredMmapMicroVmArchitecture/index.md) records the longer-term memory-substrate direction: static read-only core/import slabs, private per-VM overlays, optional published communication slabs, and process-isolated micro-VM cores for near-zero-copy intern scaling.
+Result envelopes should reserve a `publication` field for future read-only slab publication even while the first async slice returns JSON-copied results. This keeps the control-plane API compatible with later Root1 slab-advertisement work.
+
+Safety hardening discovered after the first slice: 🔗[WP — Listree Traversal State and ReadOnly Slab Audit](../../WorkProducts/WP-ListreeTraversalStateReadOnlySlabAudit-2026-05-14/index.md) found that recursively frozen dictionaries can currently be mutated by removal paths through `Cursor::remove()` / `ListreeItem::getValue(pop=true)`. 🔗[G109 — Listree ReadOnly Mutation Surface Hardening](../G109-ListreeReadOnlyMutationSurfaceHardening/index.md) should be completed before trusting async workers with shared read-only context.
+
+Related architecture concept: 🔗[Layered mmap Micro-VM Architecture](../../Concepts/LayeredMmapMicroVmArchitecture/index.md) records the longer-term memory-substrate direction: static read-only core/import slabs, private per-VM overlays, Root1-brokered mutable coordination/mailbox slabs, optional published communication slabs, and process-isolated micro-VM cores for near-zero-copy intern scaling. 🔗[G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design](../G110-EventfdEpollMicroVmIpcDesign/index.md) now bubbles ahead of the async backend decision because it defines the logical waitable/mailbox shape. Do not jump directly to a full allocator rewrite from G091; build broker-compatible async worker semantics first, then let G103–G110 harden the slab substrate in staged slices.
 
 ## Validation — 2026-05-14
 - `cmake --build build --target edict_tests -j2` — passed.

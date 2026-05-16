@@ -1,28 +1,36 @@
 # Dashboard
 
 **Project**: AgentC / J3  
-**Last Updated**: 2026-05-14
+**Last Updated**: 2026-05-16
 
 ## Current Focus
 AgentC/J3 is an advanced research prototype/internal-alpha moving toward an Edict-resident agent loop: Edict should own provider/session/control-plane semantics while C++ remains the native transport, persistence, credential, and lifecycle substrate.
 
-Completed implementation/documentation slices are retired from the open-dashboard view; the incomplete backlog is listed below in priority order. Work has begun on 🔗[G091 — Intern Worker Concurrency MVP](./Knowledge/Goals/G091-InternWorkerConcurrencyMvp/index.md) under the active parent track 🔗[G078 — Edict-Resident Agent Loop Consolidation](./Knowledge/Goals/G078-EdictResidentAgentLoopConsolidation/index.md): the first deterministic `intern_run!` substrate slice is implemented and under validation/hardening.
+Completed implementation/documentation slices are retired from the open-dashboard view; the incomplete backlog is listed below in priority order. Work has begun on 🔗[G091 — Intern Worker Concurrency MVP](./Knowledge/Goals/G091-InternWorkerConcurrencyMvp/index.md) under the active parent track 🔗[G078 — Edict-Resident Agent Loop Consolidation](./Knowledge/Goals/G078-EdictResidentAgentLoopConsolidation/index.md): the first deterministic `intern_run!` substrate slice is implemented. The next architectural priority now bubbles 🔗[G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design](./Knowledge/Goals/G110-EventfdEpollMicroVmIpcDesign/index.md) to the front because it determines the async waitable/mailbox/resource-ownership substrate for G091, Root1 slab publication, and process-isolated micro-VMs.
 
 ## Incomplete Goals — Priority Order
 
 1. 🔗[G078 — Edict-Resident Agent Loop Consolidation](./Knowledge/Goals/G078-EdictResidentAgentLoopConsolidation/index.md) — **ACTIVE** parent track; make Edict the authoritative provider/session/tool/context control plane.
-2. 🔗[G091 — Intern Worker Concurrency MVP](./Knowledge/Goals/G091-InternWorkerConcurrencyMvp/index.md) — **ACTIVE**; first deterministic `intern_run!` worker-VM dispatch slice is implemented; primary next path is async `intern_start!` / `intern_sync!` using the LLM streaming/ghost-queue mechanics pattern.
-3. 🔗[G099 — Intern Task Quality Contracts](./Knowledge/Goals/G099-InternTaskQualityContracts/index.md) — **PLANNED**; bounded/checkable task schemas for local intern agents.
-4. 🔗[G092 — Cartographer FFI Re-entrancy Metadata](./Knowledge/Goals/G092-CartographerFfiReentrancyMetadata/index.md) — **PLANNED**; classify imported symbols so worker VMs share only safe native capabilities.
-5. 🔗[G096 — Authoritative mmap Session Resume](./Knowledge/Goals/G096-AuthoritativeMmapSessionResume/index.md) — **PLANNED**; harden full durable mmap-backed cognitive-state resume beyond current normal-exit sessions.
-6. 🔗[G101 — Direct Edict Tool-Emission Path](./Knowledge/Goals/G101-EdictDirectToolEmissionPath/index.md) — **PLANNED**; guarded compact model-emitted Edict as an alternative to JSON tool-call glue.
-7. 🔗[G100 — Edict Isolation Contract Hardening](./Knowledge/Goals/G100-EdictIsolationContractHardening/index.md) — **PLANNED**; test/document isolated-call safety for LLM-generated Edict.
-8. 🔗[G094 — Curated Native Cognitive Capability Libraries](./Knowledge/Goals/G094-CuratedNativeCognitiveLibraries/index.md) — **PLANNED**; structural diff, AST/tree-sitter, and persistent knowledge-graph capability surfaces.
-9. 🔗[G095 — Edict Cognitive Skill Scaffolds](./Knowledge/Goals/G095-EdictCognitiveSkillScaffolds/index.md) — **PLANNED**; reusable investigation, code-review, and refactoring-planner scaffolds.
-10. 🔗[G097 — Composite Speculation + Logic + FFI Demo](./Knowledge/Goals/G097-CompositeSpeculationLogicFfiDemo/index.md) — **PLANNED**; showcase speculation + miniKanren + FFI + persistence composition.
-11. 🔗[G098 — Architectural Vision Work Product](./Knowledge/Goals/G098-ArchitecturalVisionWorkProduct/index.md) — **PLANNED**; preserve architectural/intern-concurrency vision as a durable WorkProduct.
-12. 🔗[G075 — Speculative Edict Native Architectures](./Knowledge/Goals/G075-SpeculativeEdictArchitectures/index.md) — **DEFERRED**; revisit ToT/MCTS/ReAct-style native speculation after loop/tool/context stability.
-13. 🔗[G093 — Reference-Scoped ReadOnly Sharing](./Knowledge/Goals/G093-ReferenceScopedReadOnlySharing/index.md) — **DEFERRED**; finer-grained ReadOnly/shadowing after whole-subtree sharing proves insufficient.
+2. 🔗[G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design](./Knowledge/Goals/G110-EventfdEpollMicroVmIpcDesign/index.md) — **PLANNED / IMMEDIATE DESIGN**; define participant eventfds, Root1 epoll loop, resource keys, ownership-requested flags, wait queues, grant tokens, mailbox descriptors, and fd reconstruction semantics.
+3. 🔗[G091 — Intern Worker Concurrency MVP](./Knowledge/Goals/G091-InternWorkerConcurrencyMvp/index.md) — **ACTIVE**; next slice is broker-compatible async `intern_start!` / `intern_sync!`, keeping `intern_run!` as blocking sugar.
+4. 🔗[G109 — Listree ReadOnly Mutation Surface Hardening](./Knowledge/Goals/G109-ListreeReadOnlyMutationSurfaceHardening/index.md) — **PLANNED**; close removal/item-history mutation gaps before trusting shared read-only worker context.
+5. 🔗[G099 — Intern Task Quality Contracts](./Knowledge/Goals/G099-InternTaskQualityContracts/index.md) — **PLANNED**; minimal bounded/checkable async intern task schemas with waitable/event/backpressure expectations.
+6. 🔗[G092 — Cartographer FFI Re-entrancy Metadata](./Knowledge/Goals/G092-CartographerFfiReentrancyMetadata/index.md) — **PLANNED**; capability metadata for worker safety and declarative meta-library loader images.
+7. 🔗[G103 — Build-Time Static Core Declaration Image MVP](./Knowledge/Goals/G103-BuildTimeStaticCoreDeclarationImageMvp/index.md) — **PLANNED**; generate/mount a tiny read-only declarative import/module slab image with manifest validation.
+8. 🔗[G104 — Immutable Code Object / Activation Frame Split](./Knowledge/Goals/G104-ImmutableCodeObjectActivationFrameSplit/index.md) — **PLANNED**; separate static-shareable bytecode from private mutable execution frames.
+9. 🔗[G105 — ReadOnly Static Slab Ownership Model](./Knowledge/Goals/G105-ReadOnlyStaticSlabOwnershipModel/index.md) — **PLANNED**; first immortal/static read-only slab ownership and pin/refcount semantics.
+10. 🔗[G108 — Cursor-Scoped Traversal Visit Bitmaps](./Knowledge/Goals/G108-CursorScopedTraversalVisitBitmaps/index.md) — **PLANNED**; traversal-scoped per-slab visit bitmaps for parallel/layer-aware read-only traversal.
+11. 🔗[G096 — Authoritative mmap Session Resume](./Knowledge/Goals/G096-AuthoritativeMmapSessionResume/index.md) — **PLANNED**; evolve flat session resume toward layered mmap mounts, broker metadata rehydration, and manifest-validated images.
+12. 🔗[G106 — Root1 Slab Advertisement Registry](./Knowledge/Goals/G106-Root1SlabAdvertisementRegistry/index.md) — **PLANNED**; Root1 leases slab ranges/layers and advertises immutable worker publications using broker-compatible resource keys/epochs.
+13. 🔗[G107 — Process-Isolated Micro-VM Interns](./Knowledge/Goals/G107-ProcessIsolatedMicroVmInterns/index.md) — **PLANNED**; process-isolated interns mmap static core slabs and communicate through brokered async mailboxes plus optional publications.
+14. 🔗[G101 — Direct Edict Tool-Emission Path](./Knowledge/Goals/G101-EdictDirectToolEmissionPath/index.md) — **PLANNED**; guarded compact model-emitted Edict as an alternative to JSON tool-call glue.
+15. 🔗[G100 — Edict Isolation Contract Hardening](./Knowledge/Goals/G100-EdictIsolationContractHardening/index.md) — **PLANNED**; test/document isolated-call safety for LLM-generated Edict.
+16. 🔗[G094 — Curated Native Cognitive Capability Libraries](./Knowledge/Goals/G094-CuratedNativeCognitiveLibraries/index.md) — **PLANNED**; structural diff, AST/tree-sitter, and persistent knowledge-graph capability surfaces.
+17. 🔗[G095 — Edict Cognitive Skill Scaffolds](./Knowledge/Goals/G095-EdictCognitiveSkillScaffolds/index.md) — **PLANNED**; reusable investigation, code-review, and refactoring-planner scaffolds.
+18. 🔗[G097 — Composite Speculation + Logic + FFI Demo](./Knowledge/Goals/G097-CompositeSpeculationLogicFfiDemo/index.md) — **PLANNED**; showcase speculation + miniKanren + FFI + persistence composition.
+19. 🔗[G098 — Architectural Vision Work Product](./Knowledge/Goals/G098-ArchitecturalVisionWorkProduct/index.md) — **PLANNED**; preserve architectural/intern-concurrency vision as a durable WorkProduct.
+20. 🔗[G075 — Speculative Edict Native Architectures](./Knowledge/Goals/G075-SpeculativeEdictArchitectures/index.md) — **DEFERRED**; revisit ToT/MCTS/ReAct-style native speculation after loop/tool/context stability.
+21. 🔗[G093 — Reference-Scoped ReadOnly Sharing](./Knowledge/Goals/G093-ReferenceScopedReadOnlySharing/index.md) — **DEFERRED**; finer-grained ReadOnly/shadowing after whole-subtree sharing proves insufficient.
 
 ### Blocked
 None.
@@ -30,7 +38,7 @@ None.
 ## Active Context
 - **Completed goals retired from open view**: G074, G079, G080, G084, G085, G086, G087, G088, G089, G090, and G102 are complete and no longer listed in the incomplete-priority backlog. Older completed goals G068, G071, G072, G073, G076, G077, G081, G082, and G083 were moved to `LocalContext/Knowledge/Archive/Goals/`; see 🔗[Archive Index](./Knowledge/Archive/ARCHIVE_INDEX.md). Completed-but-unarchived goals remain archive candidates for the next archival cleanup.
 - **Edict provider surface**: `llm.init(name)` returns stable provider objects. Current request pattern is `provider < [prompt] request! > / /`; launcher-backed REPL pattern is `provider < repl! > / /`. G080 added provider-owned `context_reset!` / `context_inspect!` plus REPL slash commands `/reset`, `/clear`, `/context`, and `/inspect`.
-- **Intern worker surface (G091 first slice)**: raw Edict now has `intern_run!`, which accepts a bounded task envelope, freezes shared `context`/`imports`, snapshots `input`, runs deterministic Edict source in a fresh worker VM with private `workspace`, joins, and returns a structured result copied back on the coordinator thread. Primary next path: add async `intern_start!` / `intern_sync!` using the same ghost-queue polling pattern as LLM streaming. Longer-term memory-substrate concept: 🔗[Layered mmap Micro-VM Architecture](./Knowledge/Concepts/LayeredMmapMicroVmArchitecture/index.md), now refined around build-time Root0 static slab-image generation, runtime Root1 coordination/slab advertisement, declarative meta-library import images, low-upward core vs high-downward micro-VM slab allocation, immortal/static read-only slab ownership, content-addressed core images, and hybrid JSON-event vs bulk-slab communication. See 🔗[K032 — Edict Intern Worker Surface](./Knowledge/Facts/J3_AgentC/K032_Edict_Intern_Worker_Surface.md).
+- **Intern worker / micro-VM substrate**: raw Edict has `intern_run!`, which accepts a bounded task envelope, freezes shared `context`/`imports`, snapshots `input`, runs deterministic Edict source in a fresh worker VM with private `workspace`, joins, and returns a structured result copied back on the coordinator thread. Primary next path is now front-loaded around 🔗[G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design](./Knowledge/Goals/G110-EventfdEpollMicroVmIpcDesign/index.md): define per-participant eventfds, Root1 epoll loop, `ResourceKey`s, ownership-requested flags, wait queues, grant tokens, mailbox descriptors, and fd reconstruction, then implement broker-compatible `intern_start!` / `intern_sync!` in 🔗[G091](./Knowledge/Goals/G091-InternWorkerConcurrencyMvp/index.md). Safety audit 🔗[WP — Listree Traversal State and ReadOnly Slab Audit](./Knowledge/WorkProducts/WP-ListreeTraversalStateReadOnlySlabAudit-2026-05-14/index.md) found current traversal visited state is already external but also found a frozen-tree removal gap; 🔗[G109](./Knowledge/Goals/G109-ListreeReadOnlyMutationSurfaceHardening/index.md) tracks hardening before trusting shared read-only worker context. Longer-term memory-substrate concept: 🔗[Layered mmap Micro-VM Architecture](./Knowledge/Concepts/LayeredMmapMicroVmArchitecture/index.md), now refined around build-time Root0 static slab-image generation, runtime Root1 resource-broker/slab-directory ownership, Root1-brokered mutable coordination slabs, declarative meta-library import images, low-upward core vs high-downward micro-VM slab allocation, immortal/static read-only slab ownership, content-addressed core images, and hybrid mailbox/JSON/bulk-slab communication. See 🔗[K032 — Edict Intern Worker Surface](./Knowledge/Facts/J3_AgentC/K032_Edict_Intern_Worker_Surface.md).
 - **Curated launcher**: `./edict.sh` injects `EDICT_PATH`, preloads `agentc_curated.edict`, configures the `llm` bootstrap surface, and defaults to `EDICT_AUTO_CHAT=1` with `EDICT_DEFAULT_PRESET=local-qwen`. Set `EDICT_AUTO_CHAT=0` for raw curated Edict execution.
 - **OpenAI Codex provider**: `openai-codex` is live through pi ChatGPT OAuth credentials in `~/.pi/agent/auth.json`; default model is `gpt-5.3-codex` with low reasoning effort. Live smoke test returned `ok`. Lower attempted Codex model names were unsupported for the account.
 - **Important VM semantics now fixed/documented**: concatenated prefix sigils apply to the same identifier left-to-right (`/@name`, `//name`, etc.); leading `-name` selects the tail/oldest dictionary value for lookup, assignment, and removal; strict/lax unresolved lookup modes exist (`lax!`, `strict!`, `strict_null!`, `strict_fail!`); bare `/` is the documented stack discard and `pop` is no longer a compiler/bootstrap alias.
@@ -39,13 +47,13 @@ None.
 - **Streaming surface landed (G074)**: `Runtime::stream_request_json(...)` now launches a detached provider worker that pushes text deltas into `StreamManager`. `agentc_runtime_stream_sync_json(...)` returns an `ok`/`complete` JSON envelope, `agentc.edict` wraps it as `agentc_call_stream!` / `agentc_stream_sync!`, and `llm.edict` provider objects expose `stream_start` / `stream_sync`. Live Google/Gemma smoke with `gemma-4-31b-it` returned `ok`.
 - **Validation baseline from latest implementation pass**: `cmake --build build --target edict_tests -j2` passed; `./build/edict/edict_tests --gtest_filter='InternWorkerTest.*'` passed 2/2 for the G091 first slice; focused pop-transition tests passed 19/19; focused `edict_tests` style/regression slice passed 59/59 including `PiSimulationTest.MiniKanrenLogicExample`; `cmake --build build --target cpp_agent_tests -j2` passed; focused cpp-agent Edict/LLM suite now passes 21/21 including the live Google/Gemma `gemma-4-31b-it` gtest and the new G080 REPL context-management coverage.
 - **Documentation direction**: README now targets potential users with AgentC's unique value, applications, runnable patterns, maturity expectations, and roadmap. 🔗[WP — LLM's Guide to Edict and the VM](./Knowledge/WorkProducts/WP-LlmsGuideToEdictVm-2026-05-10/index.md) and 🔗[Edict Language Reference](./Knowledge/WorkProducts/edict_language_reference.md) remain the key LLM-facing deep references. Next documentation improvement is a live notebook style with executable examples, especially for FFI/Cartographer.
-- **Incomplete backlog priority**: current order is G078, G091, G099, G092, G096, G101, G100, G094, G095, G097, G098, G075, G093. G093 remains deliberately deferred until the simpler whole-subtree ReadOnly worker MVP is proven.
+- **Incomplete backlog priority**: current order is G078, G110, G091, G109, G099, G092, G103, G104, G105, G108, G096, G106, G107, G101, G100, G094, G095, G097, G098, G075, G093. The micro-VM sequence now front-loads the Root1 eventfd/epoll resource broker because it determines async intern IPC, waitable mailboxes, resource ownership, process isolation, and Root1 slab-directory semantics. G091 async interns should be broker-compatible; G109 hardens shared read-only context; G103–G108/G096/G106/G107 then build the static-core, immutable-code, read-only-slab, traversal, layered-resume, publication, and process-isolation substrate. G093 remains deliberately deferred until whole-subtree readonly core/published layers prove insufficient.
 
 ## Handoff Note
 
 **Current State**: The foundational persistence/client-host work has been retired to the archive. The live project is now centered on G078: making Edict the authoritative control plane for the agent loop. The codebase has a working curated launcher, Edict-side provider objects, provider REPL, local/Codex/Google-Gemma provider paths, provider-owned reset/inspect context management, deterministic `intern_run!` worker dispatch, first file/shell tool surface, first real-time ghost-queue stream surface, strict lookup modes, corrected prefix-chain semantics, and corrected tail-history semantics.
 
-**Next Action**: Continue G091 by discussing/choosing variations on the recorded primary async path: `intern_start!` launches background jobs, coordinator continues work, and `intern_sync!` polls/drains structured results using the LLM streaming/ghost-queue mechanics pattern. Keep `intern_run!` as blocking convenience.
+**Next Action**: Front-load 🔗[G110](./Knowledge/Goals/G110-EventfdEpollMicroVmIpcDesign/index.md): write/prototype the Root1 eventfd/epoll resource-broker design around per-participant eventfds, Root1 epoll dispatch, `ResourceKey`s, ownership-requested flags, wait queues, grant tokens, mailbox descriptors, and resume-time fd reconstruction. Then continue 🔗[G091](./Knowledge/Goals/G091-InternWorkerConcurrencyMvp/index.md) with broker-compatible `intern_start!` / `intern_sync!`; treat 🔗[G109](./Knowledge/Goals/G109-ListreeReadOnlyMutationSurfaceHardening/index.md) as the immediate safety companion before trusting shared read-only worker context.
 
 **Key Constraints**: Preserve stable provider-object in-place mutation; avoid expensive Codex `gpt-5.5`; keep Codex default reasoning low; use explicit scalar success/failure sentinels for `& |` control flow; keep Listree mutations on the VM/main thread for any future streaming architecture.
 
@@ -54,12 +62,20 @@ None.
 
 ## Knowledge Inventory
 
-### Goals — incomplete priority view (13)
+### Goals — incomplete priority view (21)
 - 🔗[G078 — Edict-Resident Agent Loop Consolidation](./Knowledge/Goals/G078-EdictResidentAgentLoopConsolidation/index.md) — active parent track.
-- 🔗[G091 — Intern Worker Concurrency MVP](./Knowledge/Goals/G091-InternWorkerConcurrencyMvp/index.md) — active local-intern worker architecture slice; first `intern_run!` substrate landed.
-- 🔗[G099 — Intern Task Quality Contracts](./Knowledge/Goals/G099-InternTaskQualityContracts/index.md) — planned task-contract layer for bounded/checkable intern work.
-- 🔗[G092 — Cartographer FFI Re-entrancy Metadata](./Knowledge/Goals/G092-CartographerFfiReentrancyMetadata/index.md) — planned FFI safety metadata for worker sharing.
-- 🔗[G096 — Authoritative mmap Session Resume](./Knowledge/Goals/G096-AuthoritativeMmapSessionResume/index.md) — planned durable mmap-backed cognitive-state resume hardening.
+- 🔗[G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design](./Knowledge/Goals/G110-EventfdEpollMicroVmIpcDesign/index.md) — immediate design track for brokered waitables, resource ownership, and mailbox IPC.
+- 🔗[G091 — Intern Worker Concurrency MVP](./Knowledge/Goals/G091-InternWorkerConcurrencyMvp/index.md) — active local-intern worker architecture slice; next broker-compatible async `intern_start!` / `intern_sync!`.
+- 🔗[G109 — Listree ReadOnly Mutation Surface Hardening](./Knowledge/Goals/G109-ListreeReadOnlyMutationSurfaceHardening/index.md) — planned safety hardening for frozen/shared worker context.
+- 🔗[G099 — Intern Task Quality Contracts](./Knowledge/Goals/G099-InternTaskQualityContracts/index.md) — planned minimal bounded/checkable async intern contracts.
+- 🔗[G092 — Cartographer FFI Re-entrancy Metadata](./Knowledge/Goals/G092-CartographerFfiReentrancyMetadata/index.md) — planned FFI/capability metadata for worker safety and meta-library declarations.
+- 🔗[G103 — Build-Time Static Core Declaration Image MVP](./Knowledge/Goals/G103-BuildTimeStaticCoreDeclarationImageMvp/index.md) — planned static declaration image generator/mount slice.
+- 🔗[G104 — Immutable Code Object / Activation Frame Split](./Knowledge/Goals/G104-ImmutableCodeObjectActivationFrameSplit/index.md) — planned static bytecode/private frame split.
+- 🔗[G105 — ReadOnly Static Slab Ownership Model](./Knowledge/Goals/G105-ReadOnlyStaticSlabOwnershipModel/index.md) — planned immortal/static read-only slab ownership slice.
+- 🔗[G108 — Cursor-Scoped Traversal Visit Bitmaps](./Knowledge/Goals/G108-CursorScopedTraversalVisitBitmaps/index.md) — planned traversal-scoped slab bitmap state.
+- 🔗[G096 — Authoritative mmap Session Resume](./Knowledge/Goals/G096-AuthoritativeMmapSessionResume/index.md) — planned layered mmap mount/session resume hardening.
+- 🔗[G106 — Root1 Slab Advertisement Registry](./Knowledge/Goals/G106-Root1SlabAdvertisementRegistry/index.md) — planned Root1 publication/range registry using broker-compatible resource keys/epochs.
+- 🔗[G107 — Process-Isolated Micro-VM Interns](./Knowledge/Goals/G107-ProcessIsolatedMicroVmInterns/index.md) — planned process-isolated intern workers over static core slabs and brokered mailboxes.
 - 🔗[G101 — Direct Edict Tool-Emission Path](./Knowledge/Goals/G101-EdictDirectToolEmissionPath/index.md) — planned guarded direct Edict tool-use path.
 - 🔗[G100 — Edict Isolation Contract Hardening](./Knowledge/Goals/G100-EdictIsolationContractHardening/index.md) — planned test/doc hardening for isolated LLM-emitted Edict.
 - 🔗[G094 — Curated Native Cognitive Capability Libraries](./Knowledge/Goals/G094-CuratedNativeCognitiveLibraries/index.md) — planned structural diff, AST/tree-sitter, and knowledge-graph capabilities.
@@ -69,7 +85,7 @@ None.
 - 🔗[G075 — Speculative Edict Native Architectures](./Knowledge/Goals/G075-SpeculativeEdictArchitectures/index.md) — deferred speculative reasoning architecture.
 - 🔗[G093 — Reference-Scoped ReadOnly Sharing](./Knowledge/Goals/G093-ReferenceScopedReadOnlySharing/index.md) — deferred finer-grained ReadOnly/shadowing refinement.
 
-### WorkProducts — active references (12)
+### WorkProducts — active references (13)
 - 🔗[AgentLang](./Knowledge/WorkProducts/AgentLang.md)
 - 🔗[Edict Language Reference](./Knowledge/WorkProducts/edict_language_reference.md)
 - 🔗[WP — C++ Agent Runtime File Structure](./Knowledge/WorkProducts/WP_CppAgentRuntimeFileStructure.md)
@@ -79,6 +95,7 @@ None.
 - 🔗[WP — G070 Ownership Boundary Map](./Knowledge/WorkProducts/WP_G070_OwnershipBoundaryMap_2026-05-01.md)
 - 🔗[WP — G074 Real-time FFI Token Streaming](./Knowledge/WorkProducts/WP-G074-RealtimeFFITokenStreaming-2026-05-11/index.md)
 - 🔗[WP — LLM's Guide to Edict and the VM](./Knowledge/WorkProducts/WP-LlmsGuideToEdictVm-2026-05-10/index.md)
+- 🔗[WP — Listree Traversal State and ReadOnly Slab Audit](./Knowledge/WorkProducts/WP-ListreeTraversalStateReadOnlySlabAudit-2026-05-14/index.md)
 - 🔗[WP — LMDB Surface Area Audit](./Knowledge/WorkProducts/WP_LMDB_SurfaceArea_Audit_2026-04-30.md)
 - 🔗[WP — Native C++ Agent Core Audit](./Knowledge/WorkProducts/WP_NativeCppAgentCore_Audit.md)
 - 🔗[WP — Session Image Persistence Plan](./Knowledge/WorkProducts/WP_SessionImagePersistencePlan_2026-05-01.md)
@@ -107,10 +124,11 @@ See 🔗[Timeline.md](./Timeline.md) for project history.
 
 ## Session Compliance
 - [x] Reviewed Dashboard and HRM bootstrap instructions
-- [x] Created/updated G084–G102 goal files
+- [x] Created/updated G084–G110 goal files
 - [x] Implemented VM/compiler cleanup, VM translation-unit split, live Google/Gemma test coverage, adjacent-eval documentation/script style update, README rewrites, `pop` keyword removal, architectural/intern-concurrency goal extraction, and raw Edict named-session startup support
 - [x] Ran focused build/test validation, including live LLM coverage and launcher smoke; README example/link/style, pop-removal inventory, session CLI, and session-state regression checks passed
 - [x] Retired completed goals from open-dashboard view and reordered incomplete backlog by priority
 - [x] Completed G080 provider-owned LLM REPL context reset/inspect slice and began G091 with the deterministic `intern_run!` worker dispatch slice
+- [x] Updated full-send slab priority plan and added G103–G110 planning goals
 - [x] Updated Dashboard
 - [x] Updated Timeline

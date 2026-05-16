@@ -19,11 +19,31 @@ The architectural vision depends on persistent cognitive state being a substrate
 ## Current Status — 2026-05-14
 A prerequisite CLI/session namespace slice landed in 🔗[G102 — Edict Session ID Startup Flag](../G102-EdictSessionIdStartupFlag/index.md): raw Edict now supports `--session ID` / `--session-base DIR`, stores session images under `/tmp/session/<id>/` by default, and can persist/restore a non-trivial root binding across process invocations through the current `SessionStateStore`/`SessionImageStore` path. This is not full kill-mid-turn authoritative mmap resume, but it establishes the user-facing session selector and exercises the existing slab-image persistence boundary from the raw Edict executable.
 
+## Full-Send Slab Direction
+The layered mmap micro-VM concept sharpens G096 from flat session restore into **layered arena mounts**:
+
+- build-time static core/declaration images mounted read-only;
+- private writable VM/session overlays;
+- Root1-brokered mutable coordination/mailbox slabs with durable descriptors but transient fd state;
+- optional Root1-advertised read-only publication slabs;
+- manifest/hash/version validation before attach;
+- transient/native handles and eventfd/epoll waitable state rehydrated lazily and locally from declarative metadata, resource keys, or mailbox descriptors.
+
+Near-term prerequisite goals now slice this work:
+- 🔗[G103 — Build-Time Static Core Declaration Image MVP](../G103-BuildTimeStaticCoreDeclarationImageMvp/index.md)
+- 🔗[G104 — Immutable Code Object / Activation Frame Split](../G104-ImmutableCodeObjectActivationFrameSplit/index.md)
+- 🔗[G105 — ReadOnly Static Slab Ownership Model](../G105-ReadOnlyStaticSlabOwnershipModel/index.md)
+- 🔗[G106 — Root1 Slab Advertisement Registry](../G106-Root1SlabAdvertisementRegistry/index.md)
+- 🔗[G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design](../G110-EventfdEpollMicroVmIpcDesign/index.md)
+- 🔗[G107 — Process-Isolated Micro-VM Interns](../G107-ProcessIsolatedMicroVmInterns/index.md)
+
 ## Implementation Plan
 - [ ] Reconcile current session-image restore with the target authoritative mmap-backed slab ownership model.
 - [ ] Define the allocator/runtime contract for file-backed slabs created from birth.
+- [ ] Define layered arena mount semantics: static core image, private session overlay, optional published read-only layers.
 - [ ] Define `msync`/checkpoint behavior and failure semantics.
 - [ ] Ensure transient runtime/import/provider state is explicitly rehydrated after logical state attach.
+- [ ] Add manifest/hash/version validation for mounted images.
 - [ ] Add a deterministic resume test that persists non-trivial Edict/Listree state, tears down the VM/process boundary as much as practical, and restores it.
 
 ## Acceptance Criteria

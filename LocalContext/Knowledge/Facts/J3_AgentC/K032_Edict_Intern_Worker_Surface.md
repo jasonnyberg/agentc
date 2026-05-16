@@ -4,7 +4,7 @@
 **Category**: 🔗[J3 AgentC](index.md)
 **Tags**: #j3, #edict, #workers, #concurrency, #interns
 **Status**: Active
-**Last Referenced**: 2026-05-14
+**Last Referenced**: 2026-05-16
 
 ## Overview
 🔗[G091 — Intern Worker Concurrency MVP](../../Goals/G091-InternWorkerConcurrencyMvp/index.md) landed the first deterministic intern-worker substrate in raw Edict: `intern_run!`.
@@ -74,7 +74,7 @@ The worker runs in a fresh `EdictVM` with these root fields:
 Latest focused validation: `./build/edict/edict_tests --gtest_filter='InternWorkerTest.*'` passed 2/2 on 2026-05-14.
 
 ## Primary Async Path
-The primary implementation path after the synchronous `intern_run!` slice is to reuse the LLM streaming/ghost-queue mechanics pattern for intern jobs:
+The primary implementation path after the synchronous `intern_run!` slice should now be broker-compatible with 🔗[G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design](../../Goals/G110-EventfdEpollMicroVmIpcDesign/index.md). The LLM streaming/ghost-queue mechanics remain useful as an in-process reference, but the durable abstraction should be a logical job waitable/mailbox:
 
 ```edict
 task intern_start! @job
@@ -83,20 +83,21 @@ job.job_id intern_sync! @status
 ```
 
 Target behavior:
-- `intern_start!` freezes/snapshots the task boundary, creates a job id, launches a detached/background worker, and returns immediately.
-- The background worker owns blocking Edict worker execution and publishes events/final result JSON into a mutex-protected result slot.
+- `intern_start!` freezes/snapshots the task boundary, creates a job id/waitable descriptor, launches a detached/background worker, and returns immediately.
+- The background worker owns blocking Edict worker execution and publishes events/final result JSON or future publication handles into a broker-compatible result slot/mailbox.
 - `intern_sync!` runs on the coordinator thread, drains events, observes completion/error, parses final JSON into coordinator-owned Listree state, and removes completed jobs.
 - `intern_run!` remains blocking convenience over the same worker helper.
 
 Preferred implementation approach:
-1. Extract generic queue/result mechanics from `cpp-agent/runtime/core/StreamManager` into a neutral shared component usable by both LLM streaming and Edict intern jobs.
-2. If that extraction is too invasive, create an Edict-local `InternJobManager` modeled on `StreamManager` first and extract common mechanics later.
+1. Use G110 to define logical job waitable ids, event kinds, ownership/error states, backpressure/cancel states, and future publication handles before committing to the async backend.
+2. If quick implementation is needed, create an Edict-local `InternJobManager` modeled on `StreamManager`, but keep its IDs/envelopes compatible with the future Root1 broker.
 3. Do not couple raw `libedict` directly to the full `cpp-agent` runtime/provider stack.
 
-Longer-term memory substrate: 🔗[Layered mmap Micro-VM Architecture](../../Concepts/LayeredMmapMicroVmArchitecture/index.md) records the proposed static read-only core/import slabs, private per-VM overlays, optional published communication slabs, and process-isolated micro-VM cores.
+Longer-term memory substrate: 🔗[Layered mmap Micro-VM Architecture](../../Concepts/LayeredMmapMicroVmArchitecture/index.md) records the proposed static read-only core/import slabs, private per-VM overlays, Root1-brokered mutable coordination/mailbox slabs, optional published communication slabs, eventfd/epoll waitables, and process-isolated micro-VM cores.
 
 ## Current Limits
-- `intern_run!` is synchronous spawn-and-join; async `intern_start!` / `intern_sync!` are the primary next implementation path.
+- `intern_run!` is synchronous spawn-and-join; broker-compatible async `intern_start!` / `intern_sync!` are the primary next implementation path.
+- Shared context mutation safety needs 🔗[G109 — Listree ReadOnly Mutation Surface Hardening](../../Goals/G109-ListreeReadOnlyMutationSurfaceHardening/index.md) before untrusted/parallel workers are trusted with read-only context.
 - Live local-model intern execution remains out of scope.
 - Re-entrancy metadata for imported native functions is future 🔗[G092 — Cartographer FFI Re-entrancy Metadata](../../Goals/G092-CartographerFfiReentrancyMetadata/index.md).
 - Finer-grained reference-scoped read-only sharing remains deferred in 🔗[G093 — Reference-Scoped ReadOnly Sharing](../../Goals/G093-ReferenceScopedReadOnlySharing/index.md).

@@ -10,9 +10,9 @@
 
 ## Summary
 
-AgentC worker and intern VMs should eventually be tiny execution engines mounted over layered mmap-backed Listree/slab arenas: an immutable shared core image underneath private per-VM dynamic slabs, plus optional published communication slabs for zero-copy immutable result sharing.
+AgentC worker and intern VMs should eventually be tiny execution engines mounted over layered mmap-backed Listree/slab arenas: an immutable shared core image underneath private per-VM dynamic slabs, Root1-brokered mutable coordination/mailbox slabs for signalling, and optional published communication slabs for zero-copy immutable result sharing.
 
-The concept is to avoid copying the world into every worker. A bootstrap/core VM prepares static import/module slabs once; coordinator and intern VMs then mmap those slabs read-only and allocate only their own dynamic task/workspace/result state.
+The concept is to avoid copying the world into every worker. A build-time Root0 image builder prepares static import/module slabs once; runtime Root1 mounts those slabs, brokers slab/resource ownership and signalling, and coordinator/intern VMs mmap the static slabs read-only while allocating only their own dynamic task/workspace/result state.
 
 ## Bigger Picture
 
@@ -32,10 +32,15 @@ private dynamic VM layer
     writable by one active VM
     contains stacks, task root, workspace, transient execution frames, result construction
 
+mutable coordination/mailbox layer (Root1-brokered)
+    explicit shared coordination cells, rings, descriptors, ownership state words
+    waitable through Root1 eventfd/epoll broker and per-participant eventfds
+    contains control messages, grants, cancellation, backpressure, mailbox descriptors
+
 published communication layer (optional)
     owner-writable before publication
     read-only to other VMs after publication
-    contains immutable result subtrees, mailboxes, or group-shared snapshots
+    contains immutable result subtrees, event batches, or group-shared snapshots
 
 static core slab layer
     built once by a bootstrap/core VM
@@ -49,7 +54,7 @@ Lookup can conceptually walk from private to group to core:
 private overlay scope → group published scope → static core import/module scope
 ```
 
-Writes go only to the private layer or to an explicitly owned communication slab. Shared/core layers are immutable to readers.
+Writes go only to the private layer or to an explicitly owned/broker-granted mutable coordination/publication slab. Static/core and already-published result layers are immutable to readers.
 
 ## Bootstrap Refinement: Build-Time Root0 to Runtime Root1
 
@@ -154,16 +159,29 @@ Good candidates:
 - local overrides/shadows of core bindings
 - worker result construction before publication
 
+### Mutable Coordination / Mailbox Layer
+
+Good candidates:
+
+- mailbox rings and event descriptors
+- participant mailboxes
+- resource ownership state words or sidecar records
+- grant/cancel/backpressure descriptors
+- logical waitable ids and resource keys
+- small control messages that need mutable coordination
+
+This layer is explicitly mutable, but it should be narrow and Root1-brokered. It is not a general invitation to mutate arbitrary shared Listree structures.
+
 ### Published Communication Layer
 
 Good candidates:
 
 - immutable worker result roots
-- append-only event batches
+- immutable append-only event batches after publication
 - published context snapshots
 - group-level facts or summaries after owner freeze
 
-The safe first communication rule should be immutable-after-publication, not arbitrary shared mutation.
+The safe first bulk communication rule should be immutable-after-publication; mutable signalling belongs in the coordination/mailbox layer.
 
 ## Key Design Requirements
 
@@ -297,7 +315,50 @@ Do not force all intern communication through shared slabs immediately. Use two 
 
 This keeps the async intern path simple while preserving a zero-copy path for data large enough to justify the extra slab-publication machinery.
 
-### 11. Forkserver as Intermediate Process Model
+### 11. Root1 eventfd/epoll Resource Broker
+
+Linux `eventfd`/`epoll` is not merely a mailbox notification tool; it is a strong candidate for Root1's central resource-broker substrate. Root1 can act as the slab-directory, participant registry, mailbox scheduler, and slab/resource ownership broker.
+
+The current best model is:
+
+```text
+per-participant eventfd(s)
++ Root1 epoll loop
++ Root1 wait queues keyed by ResourceKey
++ atomic resource state words or sidecars for fast-path ownership
++ mailbox descriptors for grants/events/payload handles
+```
+
+This supersedes the earlier concern about one eventfd per slab item. A specific slab item or mailbox slot does not need its own fd. Instead:
+
+1. a participant tries to acquire a resource with an atomic CAS on a state word or sidecar entry;
+2. if uncontended, no syscall and no Root1 involvement are needed;
+3. if contended, the participant sets an ownership-requested/contended bit and registers with Root1;
+4. Root1 parks the waiter in a queue keyed by `(layer, slab, offset, kind, field, generation)`;
+5. on release, Root1 grants ownership to the next waiter and wakes that participant by writing its eventfd.
+
+The important persistence split is:
+
+```text
+shared slab or sidecar: mailbox descriptors, resource keys, epochs, payload handles, ownership/request bits
+kernel/process state: eventfd counters, epoll interest set, fd lifetimes, pidfds
+```
+
+Fd numbers and eventfd counters are not durable session state. Root1 must recreate fds and rebuild the epoll set on resume, then rescan mailbox/resource descriptors for pending events and recover abandoned ownership leases.
+
+This broker is most compelling for:
+
+- async `intern_start!` / `intern_sync!` worker events;
+- future Edict `await!` that parks continuations on waitables;
+- process-isolated micro-VM mailbox IPC;
+- ordered ownership grants for mutable coordination resources;
+- zero-copy result handles where descriptors point at immutable published slabs.
+
+The first target should be explicit coordination cells/mailboxes and coarse resource ownership, not arbitrary shared mutable Listree surgery. Fine-grained item ownership can be simulated efficiently through Root1 wait queues without per-item fds, but structural Listree mutation still requires lock ordering, generation checks, and likely higher-level transaction/ownership rules.
+
+Tracked by 🔗[G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design](../../Goals/G110-EventfdEpollMicroVmIpcDesign/index.md).
+
+### 12. Forkserver as Intermediate Process Model
 
 Before fully independent micro-process slab mounting, Root1 could act as a forkserver:
 
@@ -309,19 +370,25 @@ This could give fast launch and OS-level page sharing before the full slab-adver
 
 ## Relationship to Async Intern Jobs
 
-The async `intern_start!` / `intern_sync!` path is the control-plane mechanism. Layered mmap micro-VMs are the memory-substrate optimization.
+The async `intern_start!` / `intern_sync!` path is the first user-visible control-plane mechanism. The Root1 eventfd/epoll resource broker is now considered the fundamental synchronization substrate that should shape the async path rather than being deferred until after slab publication.
 
-A staged path:
+High-level goal sequence for the micro-VM vision:
 
-1. `intern_run!` — synchronous deterministic worker execution with JSON result copy. **Current first slice.**
-2. `intern_start!` / `intern_sync!` — async launch/poll using ghost-queue mechanics. **Primary next G091 path.**
-3. Static declaration image prototype — build/mount a tiny read-only slab image containing declarative metadata for one module/library, with no native handles.
-4. Immutable code object split — separate immutable bytecode blobs from mutable private activation frames.
-5. Build-time Root0 core image — generate reproducible static core/import slabs and a manifest; runtime sessions launch Root1 directly.
-6. Read-only core mounting — worker/coordinator VMs map imports/modules from the core image instead of copying bootstrap graphs.
-7. Root1 slab advertisement — Root1 leases slab ranges and records worker-published immutable roots.
-8. Published result slabs — workers publish immutable result roots; coordinator imports/merges by reference or copies on write.
-9. Process-isolated micro-VM cores — many tiny intern processes map the same core image and own only private overlays or leased publication slabs.
+1. **G110 — Root1 eventfd/epoll Resource Broker**: define/prototype participant eventfds, Root1 epoll loop, resource keys, wait queues, grant tokens, ownership-requested flags, mailbox descriptors, and fd reconstruction semantics. This bubbles ahead because it informs async IPC, slab publication, and process isolation.
+2. **G091 — Async intern jobs**: implement `intern_start!` / `intern_sync!` on a broker-compatible backend; a small in-process queue is acceptable only if it preserves the same waitable/result-envelope shape.
+3. **G109 — ReadOnly mutation hardening**: close frozen-tree removal/item-history gaps so shared read-only context/imports are trustworthy while mutable coordination is handled separately by Root1.
+4. **G099 — Intern task quality/event contracts**: define bounded task schemas plus event kinds, cancellation, timeout, backpressure, progress, and ownership/error states.
+5. **G092 — Capability metadata**: classify imports by thread/process safety, reentrancy, worker allowance, side effects, credentials, and static-shareable declarations.
+6. **G103 — Build-time Root0 static declaration image**: generate a tiny reproducible read-only declaration/import slab image at build time.
+7. **G104 — Immutable code object / activation frame split**: move mutable `.ip`/activation state out of static-shareable bytecode objects.
+8. **G105 — ReadOnly static slab ownership model**: make static/core slabs immortal or sidecar-owned for refcount/pin semantics, separate from mutable coordination slabs.
+9. **G108 — Traversal visit bitmaps**: replace set-based traversal bookkeeping with traversal-scoped, layer-aware per-slab bitmaps.
+10. **G096 — Authoritative layered mmap session resume**: mount static core, private overlays, mutable coordination descriptors, and published slabs with clear rehydration rules.
+11. **G106 — Root1 slab directory / advertisement registry**: integrate slab range leasing, publication manifests, lifecycle leases, and broker resource keys under Root1.
+12. **G107 — Process-isolated micro-VM interns**: launch worker processes that mmap static core slabs, use private overlays, communicate through brokered mailboxes, and publish immutable result slabs.
+13. **Later application/demo tracks**: G101/G100/G094/G095/G097/G098 build the direct tool-emission, isolation, native cognitive libraries, skill scaffolds, composite demos, and architectural writeup on top of the stabilized substrate.
+
+Superseded sequencing: do not postpone eventfd/epoll until after Root1 slab advertisement. The broker is now a front-loaded design/prototype because it determines the shape of async intern IPC, waitable mailboxes, resource ownership, and process-isolated worker communication.
 
 ## Risks and Open Questions
 
@@ -342,21 +409,27 @@ A staged path:
 - How should G092 re-entrancy metadata govern which imports can be shared through static core slabs?
 - Should Root1 support a forkserver mode as an intermediate before full independent process mounting?
 - What lease/epoch/GC protocol keeps published slabs alive while readers have them mapped?
+- What exact `ResourceKey` shape should Root1 use for slab items, mailbox slots, publication handles, and sidecar coordination records?
+- Should broker-granted ownership prevent barging, or is best-effort wake ordering sufficient for the first mailbox/async use case?
+- What mutable mailbox/coordination slab shape is sufficient for high-throughput async/await without reopening arbitrary shared Listree mutation?
+- Which resource state words live inline in coordination slabs, and which must remain in Root1/process-local sidecars to avoid modifying existing Listree layouts?
+- How should Root1 recover resources when a process dies while owning a broker-managed coordination cell?
 
 ## Implications
 
 - G091 async workers should avoid committing to a JSON-only long-term handoff model; JSON is fine for the first stable boundary, but result-slab publication should remain a target.
-- G091 should use a hybrid communication model: JSON/event queues for small control data, published read-only slabs for bulk result data.
+- G091 should use a broker-compatible hybrid communication model: waitable mailbox descriptors for small/control data, JSON as an interim payload when convenient, and published read-only slabs for bulk result data.
 - G092 should classify imports not just as safe/unsafe, but also as static-shareable, per-process-rehydratable, thread-safe, process-safe, pure/side-effecting, credential-bearing, worker-allowed, or VM-private.
 - G096 should consider layered arena mounts as part of authoritative mmap resume, not only flat root restoration.
 - A future Root0 image builder should run at build/static-image generation time, not at every Edict session launch; Root1 and tertiary micro-VMs should mount those slabs instead of repeating bootstrap/import work.
 - Static library slabs should be treated as declarative meta-library images: shared metadata/wrappers are mmap'ed read-only, while native handles are bound lazily and locally per process.
 - The first read-only slab model should probably treat static core slabs as immortal for their manifest/lease lifetime; mutable refcounts and pinning can be sidecar work if needed later.
+- G110 should define eventfd/epoll as Root1's resource-broker substrate: per-participant fds and epoll state are process-local, while resource keys, descriptor records, ownership epochs, and payload handles may live in slabs or broker sidecars and are reconstructed/validated on resume.
 - G093 reference-scoped sharing may become less urgent if whole-subtree readonly core/published layers cover the common cases.
 
 ## Navigation Guide for Agents
 
-- Load this concept when discussing G091 intern scaling, async worker jobs, mmap-backed VM process isolation, static import sharing, or zero-copy worker communication.
+- Load this concept when discussing G091 intern scaling, async worker jobs, eventfd/epoll Root1 scheduling, mmap-backed VM process isolation, static import sharing, or zero-copy worker communication.
 - Pair with 🔗[K032 — Edict Intern Worker Surface](../../Facts/J3_AgentC/K032_Edict_Intern_Worker_Surface.md) for the current worker API.
 - Pair with 🔗[G092 — Cartographer FFI Re-entrancy Metadata](../../Goals/G092-CartographerFfiReentrancyMetadata/index.md) when discussing which imported capabilities can be shared through static slabs.
 - Pair with 🔗[G096 — Authoritative mmap Session Resume](../../Goals/G096-AuthoritativeMmapSessionResume/index.md) when discussing arena-layer persistence and remapping.
@@ -369,11 +442,20 @@ A staged path:
 - 🔗[G092 — Cartographer FFI Re-entrancy Metadata](../../Goals/G092-CartographerFfiReentrancyMetadata/index.md)
 - 🔗[G093 — Reference-Scoped ReadOnly Sharing](../../Goals/G093-ReferenceScopedReadOnlySharing/index.md)
 - 🔗[G096 — Authoritative mmap Session Resume](../../Goals/G096-AuthoritativeMmapSessionResume/index.md)
+- 🔗[G103 — Build-Time Static Core Declaration Image MVP](../../Goals/G103-BuildTimeStaticCoreDeclarationImageMvp/index.md)
+- 🔗[G104 — Immutable Code Object / Activation Frame Split](../../Goals/G104-ImmutableCodeObjectActivationFrameSplit/index.md)
+- 🔗[G105 — ReadOnly Static Slab Ownership Model](../../Goals/G105-ReadOnlyStaticSlabOwnershipModel/index.md)
+- 🔗[G108 — Cursor-Scoped Traversal Visit Bitmaps](../../Goals/G108-CursorScopedTraversalVisitBitmaps/index.md)
+- 🔗[G109 — Listree ReadOnly Mutation Surface Hardening](../../Goals/G109-ListreeReadOnlyMutationSurfaceHardening/index.md)
+- 🔗[G106 — Root1 Slab Advertisement Registry](../../Goals/G106-Root1SlabAdvertisementRegistry/index.md)
+- 🔗[G107 — Process-Isolated Micro-VM Interns](../../Goals/G107-ProcessIsolatedMicroVmInterns/index.md)
+- 🔗[G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design](../../Goals/G110-EventfdEpollMicroVmIpcDesign/index.md)
 - 🔗[K030 — Arena Persistence Boundary](../../Facts/J3_AgentC/K030_J3_Arena_Persistence.md)
 - 🔗[K032 — Edict Intern Worker Surface](../../Facts/J3_AgentC/K032_Edict_Intern_Worker_Surface.md)
+- 🔗[WP — Listree Traversal State and ReadOnly Slab Audit](../../WorkProducts/WP-ListreeTraversalStateReadOnlySlabAudit-2026-05-14/index.md)
 - 🔗[WP — G074 Real-time FFI Token Streaming](../../WorkProducts/WP-G074-RealtimeFFITokenStreaming-2026-05-11/index.md)
 
 ## Metadata
 
 **Promotion Candidate**: false
-**Last Updated**: 2026-05-14
+**Last Updated**: 2026-05-16
