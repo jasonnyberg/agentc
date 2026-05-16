@@ -31,6 +31,7 @@ set(REFLECT_SOURCES
     core/alloc.cpp
     core/cursor.cpp
     core/debug.cpp
+    core/root1_resource_broker.cpp
 )
 
 # Create the library

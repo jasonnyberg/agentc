@@ -1,12 +1,12 @@
 # Goal: G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design
 
-**Status**: PLANNED  
-**Priority**: IMMEDIATE DESIGN TRACK  
-**Created**: 2026-05-16  
-**Updated**: 2026-05-16  
-**Parent**: 🔗[G078 — Edict-Resident Agent Loop Consolidation](../G078-EdictResidentAgentLoopConsolidation/index.md)  
-**Immediate Consumer**: 🔗[G091 — Intern Worker Concurrency MVP](../G091-InternWorkerConcurrencyMvp/index.md)  
-**Related Concept**: 🔗[Layered mmap Micro-VM Architecture](../../Concepts/LayeredMmapMicroVmArchitecture/index.md)  
+**Status**: ACTIVE
+**Priority**: IMMEDIATE DESIGN / FIRST PROTOTYPE TRACK
+**Created**: 2026-05-16
+**Updated**: 2026-05-16
+**Parent**: 🔗[G078 — Edict-Resident Agent Loop Consolidation](../G078-EdictResidentAgentLoopConsolidation/index.md)
+**Immediate Consumer**: 🔗[G091 — Intern Worker Concurrency MVP](../G091-InternWorkerConcurrencyMvp/index.md)
+**Related Concept**: 🔗[Layered mmap Micro-VM Architecture](../../Concepts/LayeredMmapMicroVmArchitecture/index.md)
 **Related Goals**: 🔗[G106 — Root1 Slab Advertisement Registry](../G106-Root1SlabAdvertisementRegistry/index.md), 🔗[G107 — Process-Isolated Micro-VM Interns](../G107-ProcessIsolatedMicroVmInterns/index.md)
 
 ## Objective
@@ -189,25 +189,55 @@ On resume, Root1 recreates eventfds, rebuilds the epoll set, rescans mailbox/res
 
 ## Implementation Plan
 
-- [ ] Write the Root1 resource-broker design note: resource keys, participant ids, state words, wait queues, grant tokens, lifecycle, persistence, and owner-death semantics.
+- [x] Write the Root1 resource-broker design note: resource keys, participant ids, state words, wait queues, grant tokens, lifecycle, persistence, and owner-death semantics.
 - [ ] Define the first explicit mutable coordination slab layout for mailbox descriptors and resource state words.
-- [ ] Define the participant eventfd/mailbox model and Root1 epoll loop responsibilities.
-- [ ] Specify acquire/release memory ordering and the lost-wake avoidance protocol.
-- [ ] Decide whether the first ownership grant semantics allow barging or require broker-granted fairness.
+- [x] Define the participant eventfd/mailbox model and Root1 epoll loop responsibilities.
+- [x] Specify acquire/release memory ordering and the lost-wake avoidance protocol.
+- [x] Decide whether the first ownership grant semantics allow barging or require broker-granted fairness; first prototype uses broker-granted transfer.
 - [ ] Define pidfd/process-death and abandoned-resource recovery behavior for process-isolated workers.
-- [ ] Prototype a tiny Linux C++ broker smoke test outside VM dispatch: two participants contend for one mmap resource and Root1 wakes waiters in order.
-- [ ] Extend the prototype to a mailbox ring and descriptor-drain test.
+- [x] Prototype a tiny Linux C++ broker smoke test outside VM dispatch: two participants contend for one logical resource and Root1 wakes waiters in order.
+- [x] Add a descriptor-drain test for participant mailbox events through eventfd/epoll.
+- [ ] Extend the prototype to a bounded mmap-compatible mailbox ring.
 - [ ] Decide whether G091 async interns adopt the broker immediately or land a minimal broker-compatible in-process backend first.
 - [ ] Define how future Edict `await!` parks/resumes VM continuations through Root1 waitables.
 
 ## Acceptance Criteria
 
-- [ ] The design eliminates per-item eventfds while preserving waitability for arbitrary logical slab resources through Root1 wait queues.
-- [ ] The design has a concrete `ResourceKey`, resource state, participant, and grant-token model.
-- [ ] The design clearly separates persistent slab metadata from process-local/kernel fd state.
-- [ ] The design explains fast-path atomic acquire/release and slow-path Root1 parking/wakeup, including lost-wake prevention.
+- [x] The design eliminates per-item eventfds while preserving waitability for arbitrary logical slab resources through Root1 wait queues.
+- [x] The design has a concrete `ResourceKey`, resource state, participant, and grant-token model.
+- [x] The design clearly separates persistent slab metadata from process-local/kernel fd state.
+- [x] The design explains fast-path atomic acquire/release and slow-path Root1 parking/wakeup, including lost-wake prevention.
 - [ ] The design covers mailbox IPC, async intern jobs, future `await!`, cancellation/backpressure, and owner-death recovery.
-- [ ] A minimal Linux prototype demonstrates eventfd wakeup, epoll dispatch, contended resource grant, and mailbox descriptor drain.
+- [x] A minimal Linux prototype demonstrates eventfd wakeup, epoll dispatch, contended resource grant, and mailbox descriptor drain.
+
+## First Prototype Slice — 2026-05-16
+
+Implemented a small reusable Linux prototype in `core/root1_resource_broker.h/.cpp` and regression coverage in `tests/root1_resource_broker_tests.cpp`.
+
+Prototype capabilities:
+
+- `ResourceKey` identifies logical slab/resources by layer, slab, offset, allocator kind, field, and generation.
+- `ResourceState` is an atomic ownership word with owner bits plus an ownership-requested/contended bit.
+- `Root1ResourceBroker` registers participants with one eventfd each and adds them to a Root1-owned epoll set.
+- Fast path: `tryAcquire(...)` CASes `UNOWNED -> owner` with no eventfd/syscall interaction.
+- Slow path: `acquireOrQueue(...)` registers a waiter under Root1's mutex, sets the contended bit, and avoids the simple lost-wake race by retrying acquisition while serialized with broker release.
+- Release path uses broker-granted transfer: Root1 selects the next waiter, stores ownership to that participant, emits an `OwnershipGranted` descriptor, and wakes the participant eventfd.
+- Mailbox path: `sendMailboxMessage(...)`, `pollReadyParticipants(...)`, and `drainMailbox(...)` demonstrate descriptor delivery through eventfd/epoll.
+
+Prototype limits:
+
+- Uses in-process sidecar maps, not mmap-backed mailbox slabs yet.
+- No pidfd owner-death recovery yet.
+- No explicit cancellation/backpressure states yet.
+- No Edict opcode/module surface yet.
+- The mailbox prototype is descriptor/vector-based, not a bounded shared-memory ring yet.
+
+Validation:
+
+- `cmake --build build --target reflect_tests -j2` — passed.
+- `./build/tests/reflect_tests --gtest_filter='Root1ResourceBrokerTest.*'` — passed 2/2.
+- `./build/tests/reflect_tests` — passed 35/35.
+- `cmake --build build --target edict_tests -j2` — passed.
 
 ## Integration With Existing Goals
 
