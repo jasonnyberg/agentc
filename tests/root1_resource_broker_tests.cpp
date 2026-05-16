@@ -18,9 +18,16 @@
 #include "core/root1_resource_broker.h"
 
 #include <algorithm>
+#include <filesystem>
+#include <string>
+
+#if defined(__linux__)
+#include <unistd.h>
+#endif
 
 using agentc::root1::AcquireStatus;
 using agentc::root1::BrokerEventKind;
+using agentc::root1::CoordinationSlab;
 using agentc::root1::MailboxDescriptor;
 using agentc::root1::MailboxEventKind;
 using agentc::root1::MailboxPayloadKind;
@@ -69,6 +76,119 @@ TEST(Root1ResourceBrokerTest, MailboxRingIsBoundedAndPreservesDescriptorOrder) {
     MailboxDescriptor empty;
     EXPECT_FALSE(ring.tryPop(empty));
     EXPECT_TRUE(ring.empty());
+}
+
+TEST(Root1ResourceBrokerTest, FileBackedCoordinationSlabPersistsMailboxDescriptorsAcrossRemap) {
+#if !defined(__linux__)
+    GTEST_SKIP() << "CoordinationSlab prototype requires Linux mmap";
+#else
+    const auto path = std::filesystem::temp_directory_path() /
+        ("agentc_root1_coord_" + std::to_string(::getpid()) + "_mailbox.bin");
+    std::filesystem::remove(path);
+
+    {
+        auto slab = CoordinationSlab::createFileBacked(path.string(), true);
+        ASSERT_TRUE(slab->valid());
+        EXPECT_EQ(slab->header().magic, agentc::root1::kCoordinationSlabMagic);
+        EXPECT_EQ(slab->header().version, agentc::root1::kCoordinationSlabVersion);
+        EXPECT_EQ(slab->header().participantSlots, agentc::root1::kCoordinationParticipantSlots);
+        EXPECT_EQ(slab->mappingSize(), slab->header().mappingBytes);
+
+        auto* slot = slab->allocateParticipantSlot(77);
+        ASSERT_NE(slot, nullptr);
+        MailboxDescriptor descriptor;
+        descriptor.eventKind = MailboxEventKind::Progress;
+        descriptor.sequence = 123;
+        ASSERT_TRUE(agentc::root1::setInlinePayload(descriptor, "persisted-descriptor"));
+        ASSERT_TRUE(slot->mailbox.tryPush(descriptor));
+        ASSERT_TRUE(slab->flush());
+    }
+
+    {
+        auto slab = CoordinationSlab::createFileBacked(path.string(), false);
+        ASSERT_TRUE(slab->valid());
+        auto* slot = slab->findParticipantSlot(77);
+        ASSERT_NE(slot, nullptr);
+        MailboxDescriptor descriptor;
+        ASSERT_TRUE(slot->mailbox.tryPop(descriptor));
+        EXPECT_EQ(descriptor.eventKind, MailboxEventKind::Progress);
+        EXPECT_EQ(descriptor.sequence, 123u);
+        EXPECT_EQ(agentc::root1::inlinePayload(descriptor), "persisted-descriptor");
+    }
+
+    std::filesystem::remove(path);
+#endif
+}
+
+TEST(Root1ResourceBrokerTest, BrokerWritesDescriptorsIntoFileBackedCoordinationSlabMailbox) {
+#if !defined(__linux__)
+    GTEST_SKIP() << "CoordinationSlab prototype requires Linux mmap";
+#else
+    const auto path = std::filesystem::temp_directory_path() /
+        ("agentc_root1_coord_" + std::to_string(::getpid()) + "_broker_mailbox.bin");
+    std::filesystem::remove(path);
+    agentc::root1::ParticipantId participant = 0;
+
+    {
+        auto slab = CoordinationSlab::createFileBacked(path.string(), true);
+        Root1ResourceBroker broker;
+        participant = broker.registerParticipantOnSlab(*slab);
+        ASSERT_GT(participant, 0u);
+
+        MailboxDescriptor descriptor;
+        descriptor.eventKind = MailboxEventKind::Progress;
+        descriptor.sequence = 456;
+        ASSERT_TRUE(agentc::root1::setInlinePayload(descriptor, "mapped-broker-descriptor"));
+        ASSERT_TRUE(broker.sendMailboxDescriptor(participant, descriptor));
+
+        auto ready = broker.pollReadyParticipants(1000);
+        ASSERT_TRUE(containsParticipant(ready, participant));
+        ASSERT_TRUE(slab->flush());
+    }
+
+    {
+        auto slab = CoordinationSlab::createFileBacked(path.string(), false);
+        auto* slot = slab->findParticipantSlot(participant);
+        ASSERT_NE(slot, nullptr);
+        MailboxDescriptor descriptor;
+        ASSERT_TRUE(slot->mailbox.tryPop(descriptor));
+        EXPECT_EQ(descriptor.eventKind, MailboxEventKind::Progress);
+        EXPECT_EQ(descriptor.sequence, 456u);
+        EXPECT_EQ(agentc::root1::inlinePayload(descriptor), "mapped-broker-descriptor");
+    }
+
+    std::filesystem::remove(path);
+#endif
+}
+
+TEST(Root1ResourceBrokerTest, BrokerCanUseMappedResourceStateForContendedGrant) {
+#if !defined(__linux__)
+    GTEST_SKIP() << "CoordinationSlab prototype requires Linux mmap";
+#else
+    auto slab = CoordinationSlab::createAnonymousForTests();
+    ASSERT_TRUE(slab->valid());
+
+    ResourceKey key{9, 8, 7, 6, 5, 4};
+    auto* resource = slab->allocateResourceSlot(key);
+    ASSERT_NE(resource, nullptr);
+    ASSERT_NE(slab->resourceState(key), nullptr);
+
+    Root1ResourceBroker broker;
+    auto owner = broker.registerParticipant();
+    auto waiter = broker.registerParticipant();
+
+    ASSERT_TRUE(broker.tryAcquire(resource->state, owner));
+    ASSERT_EQ(broker.acquireOrQueue(key, resource->state, waiter), AcquireStatus::Queued);
+    ASSERT_TRUE(broker.release(key, resource->state, owner));
+
+    auto ready = broker.pollReadyParticipants(1000);
+    ASSERT_TRUE(containsParticipant(ready, waiter));
+    auto descriptors = broker.drainMailboxDescriptors(waiter);
+    ASSERT_EQ(descriptors.size(), 1u);
+    EXPECT_EQ(descriptors.front().eventKind, MailboxEventKind::OwnershipGranted);
+    EXPECT_EQ(descriptors.front().resource, key);
+    EXPECT_EQ(resource->state.owner(), waiter);
+#endif
 }
 
 TEST(Root1ResourceBrokerTest, GrantsContendedResourceThroughParticipantEventfd) {

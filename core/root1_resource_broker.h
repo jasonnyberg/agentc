@@ -57,6 +57,7 @@ public:
     ParticipantId owner() const;
     bool isOwned() const;
     bool isContended() const;
+    void reset();
 
 private:
     friend class Root1ResourceBroker;
@@ -134,6 +135,74 @@ private:
     std::array<MailboxDescriptor, kMailboxRingCapacity> slots_{};
 };
 
+constexpr uint32_t kCoordinationSlabMagic = 0x52314353; // R1CS
+constexpr uint32_t kCoordinationSlabVersion = 1;
+constexpr size_t kCoordinationParticipantSlots = 16;
+constexpr size_t kCoordinationResourceSlots = 64;
+
+struct CoordinationSlabHeader {
+    uint32_t magic = kCoordinationSlabMagic;
+    uint32_t version = kCoordinationSlabVersion;
+    uint32_t headerBytes = 0;
+    uint32_t participantSlots = static_cast<uint32_t>(kCoordinationParticipantSlots);
+    uint32_t resourceSlots = static_cast<uint32_t>(kCoordinationResourceSlots);
+    uint32_t mailboxRingCapacity = static_cast<uint32_t>(kMailboxRingCapacity);
+    uint64_t mappingBytes = 0;
+    std::atomic<uint64_t> epoch{1};
+};
+
+struct CoordinationParticipantSlot {
+    std::atomic<ParticipantId> participantId{0};
+    std::atomic<uint64_t> generation{0};
+    MailboxRing mailbox;
+};
+
+struct CoordinationResourceSlot {
+    std::atomic<uint64_t> occupied{0};
+    ResourceKey key;
+    ResourceState state;
+};
+
+struct CoordinationSlabLayout {
+    CoordinationSlabHeader header;
+    std::array<CoordinationParticipantSlot, kCoordinationParticipantSlots> participants;
+    std::array<CoordinationResourceSlot, kCoordinationResourceSlots> resources;
+};
+
+class CoordinationSlab {
+public:
+    static std::unique_ptr<CoordinationSlab> createAnonymousForTests();
+    static std::unique_ptr<CoordinationSlab> createFileBacked(const std::string& path, bool reset);
+
+    ~CoordinationSlab();
+
+    CoordinationSlab(const CoordinationSlab&) = delete;
+    CoordinationSlab& operator=(const CoordinationSlab&) = delete;
+
+    bool valid() const;
+    bool flush();
+    size_t mappingSize() const;
+    CoordinationSlabHeader& header();
+    const CoordinationSlabHeader& header() const;
+
+    CoordinationParticipantSlot* participantSlot(size_t index);
+    CoordinationParticipantSlot* findParticipantSlot(ParticipantId participant);
+    CoordinationParticipantSlot* allocateParticipantSlot(ParticipantId participant);
+
+    CoordinationResourceSlot* resourceSlot(size_t index);
+    CoordinationResourceSlot* findResourceSlot(const ResourceKey& key);
+    CoordinationResourceSlot* allocateResourceSlot(const ResourceKey& key);
+    ResourceState* resourceState(const ResourceKey& key);
+
+private:
+    CoordinationSlab(void* mapping, size_t mappingBytes, int fd, bool fileBacked);
+
+    CoordinationSlabLayout* layout_ = nullptr;
+    size_t mappingBytes_ = 0;
+    int fd_ = -1;
+    bool fileBacked_ = false;
+};
+
 enum class BrokerEventKind {
     OwnershipGranted,
     MailboxMessage,
@@ -158,6 +227,7 @@ public:
     bool available() const;
 
     ParticipantId registerParticipant();
+    ParticipantId registerParticipantOnSlab(CoordinationSlab& slab);
     bool hasParticipant(ParticipantId participant) const;
     int participantEventFd(ParticipantId participant) const;
 
@@ -175,7 +245,8 @@ private:
     struct ParticipantRecord {
         int eventFd = -1;
         std::vector<BrokerEvent> mailbox;
-        std::unique_ptr<MailboxRing> descriptorMailbox;
+        std::unique_ptr<MailboxRing> ownedDescriptorMailbox;
+        MailboxRing* descriptorMailbox = nullptr;
     };
 
     bool isValidParticipantLocked(ParticipantId participant) const;

@@ -17,13 +17,17 @@
 
 #include <algorithm>
 #include <cstring>
+#include <new>
 #include <stdexcept>
 #include <utility>
 
 #if defined(__linux__)
 #include <cerrno>
+#include <fcntl.h>
 #include <sys/epoll.h>
 #include <sys/eventfd.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #endif
 
@@ -158,6 +162,209 @@ bool ResourceState::isContended() const {
     return (raw() & kContendedBit) != 0;
 }
 
+void ResourceState::reset() {
+    word_.store(0, std::memory_order_release);
+}
+
+std::unique_ptr<CoordinationSlab> CoordinationSlab::createAnonymousForTests() {
+#if defined(__linux__)
+    const size_t bytes = sizeof(CoordinationSlabLayout);
+    void* mapping = mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+    if (mapping == MAP_FAILED) {
+        throw std::runtime_error("CoordinationSlab: anonymous mmap failed");
+    }
+
+    auto* layout = new (mapping) CoordinationSlabLayout();
+    layout->header.headerBytes = sizeof(CoordinationSlabHeader);
+    layout->header.mappingBytes = bytes;
+    return std::unique_ptr<CoordinationSlab>(new CoordinationSlab(mapping, bytes, -1, false));
+#else
+    throw std::runtime_error("CoordinationSlab requires Linux mmap");
+#endif
+}
+
+std::unique_ptr<CoordinationSlab> CoordinationSlab::createFileBacked(const std::string& path, bool reset) {
+#if defined(__linux__)
+    const size_t bytes = sizeof(CoordinationSlabLayout);
+    int fd = open(path.c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0600);
+    if (fd < 0) {
+        throw std::runtime_error("CoordinationSlab: open failed");
+    }
+
+    if (reset && ftruncate(fd, static_cast<off_t>(bytes)) != 0) {
+        close(fd);
+        throw std::runtime_error("CoordinationSlab: ftruncate failed");
+    }
+
+    struct stat st{};
+    if (fstat(fd, &st) != 0) {
+        close(fd);
+        throw std::runtime_error("CoordinationSlab: fstat failed");
+    }
+    if (static_cast<size_t>(st.st_size) < bytes) {
+        close(fd);
+        throw std::runtime_error("CoordinationSlab: existing file is too small");
+    }
+
+    void* mapping = mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (mapping == MAP_FAILED) {
+        close(fd);
+        throw std::runtime_error("CoordinationSlab: file mmap failed");
+    }
+
+    auto* layout = static_cast<CoordinationSlabLayout*>(mapping);
+    if (reset) {
+        layout = new (mapping) CoordinationSlabLayout();
+        layout->header.headerBytes = sizeof(CoordinationSlabHeader);
+        layout->header.mappingBytes = bytes;
+        msync(mapping, bytes, MS_SYNC);
+    } else if (layout->header.magic != kCoordinationSlabMagic ||
+               layout->header.version != kCoordinationSlabVersion ||
+               layout->header.mappingBytes != bytes) {
+        munmap(mapping, bytes);
+        close(fd);
+        throw std::runtime_error("CoordinationSlab: incompatible existing mapping");
+    }
+
+    return std::unique_ptr<CoordinationSlab>(new CoordinationSlab(mapping, bytes, fd, true));
+#else
+    (void)path;
+    (void)reset;
+    throw std::runtime_error("CoordinationSlab requires Linux mmap");
+#endif
+}
+
+CoordinationSlab::CoordinationSlab(void* mapping, size_t mappingBytes, int fd, bool fileBacked)
+    : layout_(static_cast<CoordinationSlabLayout*>(mapping)),
+      mappingBytes_(mappingBytes),
+      fd_(fd),
+      fileBacked_(fileBacked) {}
+
+CoordinationSlab::~CoordinationSlab() {
+#if defined(__linux__)
+    if (layout_ && mappingBytes_ > 0) {
+        if (fileBacked_) {
+            msync(layout_, mappingBytes_, MS_SYNC);
+        }
+        munmap(layout_, mappingBytes_);
+        layout_ = nullptr;
+    }
+    if (fd_ >= 0) {
+        close(fd_);
+        fd_ = -1;
+    }
+#endif
+}
+
+bool CoordinationSlab::valid() const {
+    return layout_ &&
+           layout_->header.magic == kCoordinationSlabMagic &&
+           layout_->header.version == kCoordinationSlabVersion &&
+           layout_->header.mappingBytes == mappingBytes_;
+}
+
+bool CoordinationSlab::flush() {
+#if defined(__linux__)
+    if (!layout_ || mappingBytes_ == 0) {
+        return false;
+    }
+    return msync(layout_, mappingBytes_, MS_SYNC) == 0;
+#else
+    return false;
+#endif
+}
+
+size_t CoordinationSlab::mappingSize() const {
+    return mappingBytes_;
+}
+
+CoordinationSlabHeader& CoordinationSlab::header() {
+    return layout_->header;
+}
+
+const CoordinationSlabHeader& CoordinationSlab::header() const {
+    return layout_->header;
+}
+
+CoordinationParticipantSlot* CoordinationSlab::participantSlot(size_t index) {
+    if (!layout_ || index >= layout_->participants.size()) {
+        return nullptr;
+    }
+    return &layout_->participants[index];
+}
+
+CoordinationParticipantSlot* CoordinationSlab::findParticipantSlot(ParticipantId participant) {
+    if (!layout_ || participant == 0) {
+        return nullptr;
+    }
+    for (auto& slot : layout_->participants) {
+        if (slot.participantId.load(std::memory_order_acquire) == participant) {
+            return &slot;
+        }
+    }
+    return nullptr;
+}
+
+CoordinationParticipantSlot* CoordinationSlab::allocateParticipantSlot(ParticipantId participant) {
+    if (!layout_ || participant == 0) {
+        return nullptr;
+    }
+    if (auto* existing = findParticipantSlot(participant)) {
+        return existing;
+    }
+    for (auto& slot : layout_->participants) {
+        ParticipantId expected = 0;
+        if (slot.participantId.compare_exchange_strong(expected, participant, std::memory_order_acq_rel)) {
+            slot.generation.fetch_add(1, std::memory_order_acq_rel);
+            slot.mailbox.resetForTests();
+            return &slot;
+        }
+    }
+    return nullptr;
+}
+
+CoordinationResourceSlot* CoordinationSlab::resourceSlot(size_t index) {
+    if (!layout_ || index >= layout_->resources.size()) {
+        return nullptr;
+    }
+    return &layout_->resources[index];
+}
+
+CoordinationResourceSlot* CoordinationSlab::findResourceSlot(const ResourceKey& key) {
+    if (!layout_) {
+        return nullptr;
+    }
+    for (auto& slot : layout_->resources) {
+        if (slot.occupied.load(std::memory_order_acquire) != 0 && slot.key == key) {
+            return &slot;
+        }
+    }
+    return nullptr;
+}
+
+CoordinationResourceSlot* CoordinationSlab::allocateResourceSlot(const ResourceKey& key) {
+    if (!layout_) {
+        return nullptr;
+    }
+    if (auto* existing = findResourceSlot(key)) {
+        return existing;
+    }
+    for (auto& slot : layout_->resources) {
+        uint64_t expected = 0;
+        if (slot.occupied.compare_exchange_strong(expected, 1, std::memory_order_acq_rel)) {
+            slot.key = key;
+            slot.state.reset();
+            return &slot;
+        }
+    }
+    return nullptr;
+}
+
+ResourceState* CoordinationSlab::resourceState(const ResourceKey& key) {
+    auto* slot = findResourceSlot(key);
+    return slot ? &slot->state : nullptr;
+}
+
 Root1ResourceBroker::Root1ResourceBroker() {
 #if defined(__linux__)
     epollFd_ = epoll_create1(EPOLL_CLOEXEC);
@@ -197,10 +404,45 @@ ParticipantId Root1ResourceBroker::registerParticipant() {
 
     ParticipantRecord record;
     record.eventFd = fd;
-    record.descriptorMailbox = std::make_unique<MailboxRing>();
+    record.ownedDescriptorMailbox = std::make_unique<MailboxRing>();
+    record.descriptorMailbox = record.ownedDescriptorMailbox.get();
     participants_.emplace(id, std::move(record));
     return id;
 #else
+    throw std::runtime_error("Root1ResourceBroker requires Linux eventfd/epoll");
+#endif
+}
+
+ParticipantId Root1ResourceBroker::registerParticipantOnSlab(CoordinationSlab& slab) {
+#if defined(__linux__)
+    int fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+    if (fd < 0) {
+        throw std::runtime_error("Root1ResourceBroker: eventfd failed");
+    }
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    ParticipantId id = nextParticipant_++;
+    CoordinationParticipantSlot* slot = slab.allocateParticipantSlot(id);
+    if (!slot) {
+        close(fd);
+        throw std::runtime_error("Root1ResourceBroker: no coordination slab participant slots available");
+    }
+
+    epoll_event event{};
+    event.events = EPOLLIN;
+    event.data.u64 = id;
+    if (epoll_ctl(epollFd_, EPOLL_CTL_ADD, fd, &event) != 0) {
+        close(fd);
+        throw std::runtime_error("Root1ResourceBroker: epoll_ctl add failed");
+    }
+
+    ParticipantRecord record;
+    record.eventFd = fd;
+    record.descriptorMailbox = &slot->mailbox;
+    participants_.emplace(id, std::move(record));
+    return id;
+#else
+    (void)slab;
     throw std::runtime_error("Root1ResourceBroker requires Linux eventfd/epoll");
 #endif
 }

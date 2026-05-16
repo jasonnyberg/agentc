@@ -191,7 +191,7 @@ On resume, Root1 recreates eventfds, rebuilds the epoll set, rescans mailbox/res
 
 - [x] Write the Root1 resource-broker design note: resource keys, participant ids, state words, wait queues, grant tokens, lifecycle, persistence, and owner-death semantics.
 - [x] Define first fixed-size mailbox descriptor and bounded ring layout compatible with future mmap coordination slabs.
-- [ ] Define the full mutable coordination slab file/mapping layout for participant records, resource state words, and ring placement.
+- [x] Define the first mutable coordination slab file/mapping layout for participant records, resource state words, and ring placement.
 - [x] Define the participant eventfd/mailbox model and Root1 epoll loop responsibilities.
 - [x] Specify acquire/release memory ordering and the lost-wake avoidance protocol.
 - [x] Decide whether the first ownership grant semantics allow barging or require broker-granted fairness; first prototype uses broker-granted transfer.
@@ -211,7 +211,7 @@ On resume, Root1 recreates eventfds, rebuilds the epoll set, rescans mailbox/res
 - [ ] The design covers mailbox IPC, async intern jobs, future `await!`, cancellation/backpressure, and owner-death recovery.
 - [x] A minimal Linux prototype demonstrates eventfd wakeup, epoll dispatch, contended resource grant, bounded mailbox ring behavior, and mailbox descriptor drain.
 
-## First Prototype Slice — 2026-05-16
+## First Prototype Slices — 2026-05-16
 
 Implemented a small reusable Linux prototype in `core/root1_resource_broker.h/.cpp` and regression coverage in `tests/root1_resource_broker_tests.cpp`.
 
@@ -225,11 +225,13 @@ Prototype capabilities:
 - Release path uses broker-granted transfer: Root1 selects the next waiter, stores ownership to that participant, emits an `OwnershipGranted` descriptor, and wakes the participant eventfd.
 - `MailboxDescriptor` defines a fixed-size descriptor with event kind, payload kind, correlation id, grant token, `ResourceKey`, optional slab payload handle, and 96 inline bytes.
 - `MailboxRing` defines a bounded 64-slot SPSC-style ring with release/acquire publication and no dynamic allocation in the ring layout.
+- `CoordinationSlab` defines the first file-backed/anonymous mmap-compatible layout: header, 16 participant slots, participant mailbox rings, 64 resource slots, resource keys, and mapped `ResourceState` words.
+- `registerParticipantOnSlab(...)` lets the broker write descriptors directly into a mapped participant mailbox while fd/eventfd state remains process-local.
 - Mailbox path: `sendMailboxMessage(...)`, `sendMailboxDescriptor(...)`, `pollReadyParticipants(...)`, `drainMailbox(...)`, and `drainMailboxDescriptors(...)` demonstrate descriptor delivery through eventfd/epoll.
 
 Prototype limits:
 
-- Uses in-process sidecar maps and per-participant heap-owned rings; the ring layout is mmap-compatible, but no mapped coordination slab allocator/placement exists yet.
+- Broker wait queues remain process-local sidecar maps; only participant mailbox rings and resource state slots have a first mapped layout.
 - No pidfd owner-death recovery yet.
 - No explicit cancellation/backpressure states yet.
 - No Edict opcode/module surface yet.
@@ -238,8 +240,8 @@ Prototype limits:
 Validation:
 
 - `cmake --build build --target reflect_tests -j2` — passed.
-- `./build/tests/reflect_tests --gtest_filter='Root1ResourceBrokerTest.*'` — passed 4/4.
-- `./build/tests/reflect_tests` — passed 37/37.
+- `./build/tests/reflect_tests --gtest_filter='Root1ResourceBrokerTest.*'` — passed 7/7.
+- `./build/tests/reflect_tests` — passed 40/40.
 - `cmake --build build --target edict_tests -j2` — passed.
 - `cmake --build build --target cpp_agent_tests -j2` — passed.
 
