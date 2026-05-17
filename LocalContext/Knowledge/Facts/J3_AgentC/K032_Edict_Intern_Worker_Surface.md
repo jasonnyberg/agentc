@@ -63,7 +63,7 @@ The worker runs in a fresh `EdictVM` with these root fields:
 - Keep intern tasks bounded, explicit, and checkable.
 - Pass only explicit `input`, `context`, and optional `imports`.
 - Shared `context`/`imports` are recursively `ReadOnly` before worker launch.
-- Worker mutation of shared context is refused by Listree read-only guards.
+- Worker assignment and removal attempts against shared context are refused by Listree read-only guards.
 - Worker input is a JSON snapshot, so worker mutation does not affect coordinator-owned input.
 - Worker output is serialized to JSON in the worker and parsed into a fresh coordinator-owned `ListreeValue` after join.
 - Do not pass stateful provider handles through context/imports in the MVP.
@@ -74,7 +74,7 @@ The worker runs in a fresh `EdictVM` with these root fields:
 - fresh worker VM execution of a deterministic Edict program
 - private `workspace` use
 - shared `context` recursive freeze
-- refused worker mutation of shared context
+- refused worker assignment/removal mutation of shared context
 - structured result collection into coordinator-owned root state
 - structured error result when the task envelope is invalid
 
@@ -104,7 +104,7 @@ Longer-term memory substrate: 🔗[Layered mmap Micro-VM Architecture](../../Con
 
 ## Current Limits
 - `intern_start!` / `intern_sync!` are implemented, but cancellation/backpressure policy, explicit worker arena lifecycle cleanup, and process-isolated workers remain future work.
-- Shared context mutation safety needs 🔗[G109 — Listree ReadOnly Mutation Surface Hardening](../../Goals/G109-ListreeReadOnlyMutationSurfaceHardening/index.md) before untrusted/parallel workers are trusted with read-only context.
+- 🔗[G109 — Listree ReadOnly Mutation Surface Hardening](../../Goals/G109-ListreeReadOnlyMutationSurfaceHardening/index.md) is complete for public VM/Cursor paths: recursive shared-context freeze now blocks assignment, path removal, remove-head, list pop, and cleanup-pruning mutation attempts.
 - Live local-model intern execution remains out of scope.
 - Re-entrancy metadata for imported native functions is future 🔗[G092 — Cartographer FFI Re-entrancy Metadata](../../Goals/G092-CartographerFfiReentrancyMetadata/index.md).
 - Finer-grained reference-scoped read-only sharing remains deferred in 🔗[G093 — Reference-Scoped ReadOnly Sharing](../../Goals/G093-ReferenceScopedReadOnlySharing/index.md).

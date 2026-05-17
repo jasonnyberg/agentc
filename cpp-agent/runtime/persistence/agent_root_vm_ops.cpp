@@ -307,7 +307,7 @@ void rehydrate_vm_runtime_state(agentc::edict::EdictVM& vm,
         runtime = runtime_item->getValue(false, false);
         if (!runtime) {
             runtime = agentc::createNullValue();
-            runtime_item->addValue(runtime, true);
+            root->addItemValue(runtime_item, runtime, true);
         }
     }
 
@@ -316,7 +316,7 @@ void rehydrate_vm_runtime_state(agentc::edict::EdictVM& vm,
     if (!provider_item || !provider_item->getValue(false, false) || provider_item->getValue(false, false)->isListMode()) {
         auto provider_val = agentc::createStringValue(config_default_or(base_runtime_config, "default_provider", "google"));
         if (provider_item) {
-            provider_item->addValue(provider_val, true);
+            runtime->addItemValue(provider_item, provider_val, true);
         } else {
             agentc::addNamedItem(runtime, "default_provider", provider_val);
         }
@@ -327,7 +327,7 @@ void rehydrate_vm_runtime_state(agentc::edict::EdictVM& vm,
     if (!model_item || !model_item->getValue(false, false) || model_item->getValue(false, false)->isListMode()) {
         auto model_val = agentc::createStringValue(config_default_or(base_runtime_config, "default_model", "gemini-3.1-pro-preview"));
         if (model_item) {
-            model_item->addValue(model_val, true);
+            runtime->addItemValue(model_item, model_val, true);
         } else {
             agentc::addNamedItem(runtime, "default_model", model_val);
         }
@@ -337,7 +337,7 @@ void rehydrate_vm_runtime_state(agentc::edict::EdictVM& vm,
     auto provider_contract_item = runtime->find("provider_contract");
     auto provider_contract_ltv = json_value_or_throw(provider_contract_json_for(provider_name), "provider contract");
     if (provider_contract_item) {
-        provider_contract_item->addValue(provider_contract_ltv, true);
+        runtime->addItemValue(provider_contract_item, provider_contract_ltv, true);
     } else {
         agentc::addNamedItem(runtime, "provider_contract", provider_contract_ltv);
     }
@@ -353,7 +353,7 @@ void rehydrate_vm_runtime_state(agentc::edict::EdictVM& vm,
     
     auto rehydration_item = runtime->find("rehydration");
     if (rehydration_item) {
-        rehydration_item->addValue(rehydration_ltv, true);
+        runtime->addItemValue(rehydration_item, rehydration_ltv, true);
     } else {
         agentc::addNamedItem(runtime, "rehydration", rehydration_ltv);
     }

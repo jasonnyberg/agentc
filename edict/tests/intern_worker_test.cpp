@@ -84,6 +84,7 @@ TEST(InternWorkerTest, InternRunDispatchesWorkerAndCollectsStructuredResult) {
     agentc::addNamedItem(task, "program", agentc::createStringValue(
         "'mutated @context.fact "
         "context.fact @observed "
+        "/context.fact "
         "'private @workspace.note "
         "{} @result "
         "observed @result.observed "
@@ -121,10 +122,10 @@ TEST(InternWorkerTest, InternRunDispatchesWorkerAndCollectsStructuredResult) {
     EXPECT_EQ(textValue(namedValue(safety, "input_snapshot")), "json");
     EXPECT_EQ(textValue(namedValue(safety, "result_merge_thread")), "coordinator");
 
-    // The worker attempted to assign `context.fact`, but G091 dispatch freezes
-    // the shared context before launching the worker. The write is refused by
-    // the read-only Listree guard and the coordinator-owned context remains
-    // unchanged.
+    // The worker attempted to assign and remove `context.fact`, but G091
+    // dispatch freezes the shared context before launching the worker. Both
+    // writes are refused by the read-only Listree guard and the coordinator-owned
+    // context remains unchanged.
     auto fact = namedValue(context, "fact");
     ASSERT_TRUE(fact);
     EXPECT_TRUE(context->isReadOnly());

@@ -9,7 +9,7 @@ The headline findings:
 1. Current traversal visited state is already external to slab-resident `ListreeValue` flags: `TraversalContext` stores `absolute_visited` and `recursive_visited` as `std::unordered_set<SlabId>`.
 2. Replacing those sets with cursor/traversal-scoped per-slab bitmaps is still a strong improvement for efficiency, determinism, and future layer-aware traversal.
 3. The larger blockers for read-only mmap slabs are other slab-resident mutations during normal read/navigation/execution: allocator `inUse` refcounts, `ListreeValue::pinnedCount`, code-frame `.ip` mutation, and incomplete `ReadOnly` enforcement around `ListreeItem` history popping.
-4. A concrete `ReadOnly` gap was observed: a recursively frozen dictionary can currently be mutated by path removal through `Cursor::remove()` / `ListreeItem::getValue(pop=true)`.
+4. A concrete `ReadOnly` gap was observed: a recursively frozen dictionary could be mutated by path removal through `Cursor::remove()` / `ListreeItem::getValue(pop=true)`. This public VM/Cursor gap was fixed by 🔗[G109 — Listree ReadOnly Mutation Surface Hardening](../../Goals/G109-ListreeReadOnlyMutationSurfaceHardening/index.md) on 2026-05-16.
 
 ## Evidence Snapshot
 
@@ -23,9 +23,9 @@ Primary code evidence:
 
 Current `LtvFlags` are storage/semantics/policy bits such as `Duplicate`, `Own`, `Binary`, `Null`, `Immediate`, `StaticView`, `SlabBlob`, `LogicVar`, `Iterator`, `List`, and `ReadOnly`.
 
-### Concrete ReadOnly removal gap
+### Concrete ReadOnly removal gap — fixed in G109
 
-A direct raw-Edict smoke showed that a frozen tree can be structurally changed by removal:
+A direct raw-Edict smoke showed that a frozen tree could be structurally changed by removal before 🔗[G109 — Listree ReadOnly Mutation Surface Hardening](../../Goals/G109-ListreeReadOnlyMutationSurfaceHardening/index.md):
 
 ```bash
 ./build/edict/edict -e '{"a":"1"} freeze! @f / f.a /f.a f to_json! print'
@@ -45,7 +45,7 @@ Likely cause from code inspection:
 - `Cursor::remove()` can bypass the parent `ListreeValue::remove(...)` guard by calling `currentItem->getValue(true, currentItemFromEnd)`.
 - `ListreeItem::getValue(pop=true)` has no owner/backpointer and no read-only check, so it can pop item-history values even when the owning parent tree is read-only.
 
-This gap matters for worker safety: current intern tests prove assignment into read-only context is refused, but they do not yet prove removal is refused.
+This gap mattered for worker safety: earlier intern tests proved assignment into read-only context was refused, but did not prove removal was refused. G109 now adds parent-aware item-history mutation helpers plus VM/Cursor and G091 worker regressions proving assignment, path removal, remove-head, list pop, and cleanup recursion cannot mutate public recursively frozen/shared-context paths.
 
 ## Bitmap Traversal Context Opportunity
 

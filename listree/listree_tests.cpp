@@ -265,6 +265,80 @@ TEST(ReadOnlyTest, ReadOnlyFlagIsOneWay) {
     EXPECT_TRUE(node->isReadOnly());
 }
 
+TEST(ReadOnlyTest, CursorRemoveRefusesRecursiveFrozenTree) {
+    CPtr<ListreeValue> root = createNullValue();
+    addNamedItem(root, "a", createStringValue("1"));
+    root->setReadOnly(true);
+
+    Cursor cursor(root);
+    ASSERT_TRUE(cursor.resolve("a"));
+    EXPECT_FALSE(cursor.remove());
+
+    auto item = root->find("a");
+    ASSERT_TRUE(bool(item));
+    auto value = item->getValue(false, false);
+    ASSERT_TRUE(bool(value));
+    EXPECT_EQ(valueText(value), "1");
+    EXPECT_EQ(toJson(root), "{\"a\":\"1\"}");
+}
+
+TEST(ReadOnlyTest, CursorRemoveHeadOnlyRefusesRecursiveFrozenHistory) {
+    CPtr<ListreeValue> root = createNullValue();
+    addNamedItem(root, "a", createStringValue("first"));
+    addNamedItem(root, "a", createStringValue("second"));
+    root->setReadOnly(true);
+
+    Cursor cursor(root);
+    ASSERT_TRUE(cursor.resolve("a"));
+    EXPECT_FALSE(cursor.removeHeadOnly());
+
+    auto item = root->find("a");
+    ASSERT_TRUE(bool(item));
+    EXPECT_EQ(valueText(item->getValue(false, false)), "second");
+    EXPECT_EQ(valueText(item->getValue(false, true)), "first");
+}
+
+TEST(ReadOnlyTest, CursorRemoveCleanupDoesNotPruneReadOnlyAncestor) {
+    CPtr<ListreeValue> root = createNullValue();
+    CPtr<ListreeValue> child = createNullValue();
+    addNamedItem(child, "b", createStringValue("leaf"));
+    addNamedItem(root, "a", child);
+    root->setReadOnly(false); // Protect only the root item table.
+
+    Cursor cursor(root);
+    ASSERT_TRUE(cursor.resolve("a.b"));
+    EXPECT_TRUE(cursor.remove());
+
+    auto item = root->find("a");
+    ASSERT_TRUE(bool(item));
+    auto remainingChild = item->getValue(false, false);
+    ASSERT_TRUE(bool(remainingChild));
+    EXPECT_EQ(remainingChild.getSlabId(), child.getSlabId());
+    auto removedItem = remainingChild->find("b");
+    if (removedItem) {
+        EXPECT_FALSE(bool(removedItem->getValue(false, false)));
+    }
+    EXPECT_TRUE(root->isReadOnly());
+}
+
+TEST(ReadOnlyTest, ReadOnlyListPopDegradesToPeek) {
+    CPtr<ListreeValue> list = createListValue();
+    list->put(createStringValue("first"));
+    list->put(createStringValue("second"));
+    list->setReadOnly(false);
+
+    size_t before = 0;
+    list->forEachList([&](CPtr<ListreeValueRef>& ref) { if (ref && ref->getValue()) ++before; });
+    auto popped = list->get(true, false);
+    ASSERT_TRUE(bool(popped));
+    EXPECT_EQ(valueText(popped), "first");
+
+    size_t after = 0;
+    list->forEachList([&](CPtr<ListreeValueRef>& ref) { if (ref && ref->getValue()) ++after; });
+    EXPECT_EQ(after, before);
+    EXPECT_EQ(valueText(list->get(false, false)), "first");
+}
+
 // ======================================================================
 // toJson serialization tests
 // ======================================================================

@@ -270,6 +270,28 @@ TEST(FreezeBuiltin, CopyOfFrozenValueReturnsSameSlab) {
     EXPECT_EQ(copied.getSlabId(), original);
 }
 
+TEST(FreezeBuiltin, PathRemoveCannotMutateFrozenObject) {
+    EdictVM vm;
+    EdictCompiler compiler;
+    int state = vm.execute(compiler.compile("{\"a\":\"1\"} freeze! @f / f.a /f.a f to_json!"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+
+    auto top = vm.getStackTop();
+    ASSERT_TRUE(bool(top));
+    EXPECT_EQ(valueToString(top), "{\"a\":\"1\"}");
+}
+
+TEST(FreezeBuiltin, PrefixRemoveHeadCannotMutateFrozenObjectHistory) {
+    EdictVM vm;
+    EdictCompiler compiler;
+    int state = vm.execute(compiler.compile("{\"a\":\"1\"} freeze! @f / f.a //f.a f to_json!"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+
+    auto top = vm.getStackTop();
+    ASSERT_TRUE(bool(top));
+    EXPECT_EQ(valueToString(top), "{\"a\":\"1\"}");
+}
+
 TEST(SharingTest, CrossVMSharedReadOnlyBranch) {
     auto shared = agentc::createListValue();
     shared->put(agentc::createStringValue("data"));

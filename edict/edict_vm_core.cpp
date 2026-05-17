@@ -2349,7 +2349,7 @@ int EdictVM::executeNested(const BytecodeBuffer& code) {
         if (!node || node->isListMode()) return;
         auto item = node->find(name, true);
         if (!item) return;
-        item->addValue(value, false);
+        node->addItemValue(item, value, false);
     }
 
     static void preload_imported_libraries(EdictVM& vm, CPtr<agentc::ListreeValue> scope) {

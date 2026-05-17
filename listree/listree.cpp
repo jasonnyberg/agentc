@@ -282,6 +282,24 @@ CPtr<ListreeValue> ListreeValue::get(bool pop, bool fromEnd) {
     if (pop) list->remove(fromEnd);
     return value;
 }
+
+CPtr<ListreeValueRef> ListreeValue::addItemValue(CPtr<ListreeItem> item, CPtr<ListreeValue> value, bool atEnd) {
+    if (isListMode() || !item) return nullptr;
+    if (isReadOnly()) {
+        LISTREE_DEBUG_WARNING() << "addItemValue: write refused on read-only ListreeValue";
+        return nullptr;
+    }
+    return item->addValue(value, atEnd);
+}
+
+CPtr<ListreeValue> ListreeValue::popItemValue(CPtr<ListreeItem> item, bool fromEnd) {
+    if (isListMode() || !item) return nullptr;
+    if (isReadOnly()) {
+        LISTREE_DEBUG_WARNING() << "popItemValue: write refused on read-only ListreeValue";
+        return nullptr;
+    }
+    return item->getValue(true, fromEnd);
+}
 CPtr<ListreeValue> ListreeValue::duplicate() const { return copy(-1, nullptr); }
 CPtr<ListreeValue> ListreeValue::copy(int maxDepth, void* ctx_ptr) const {
     // Short-circuit: a read-only node is permanently immutable and safe to
@@ -349,7 +367,7 @@ CPtr<ListreeValue> ListreeValue::copy(int maxDepth, void* ctx_ptr) const {
                 item->forEachValue([&](CPtr<ListreeValue>& val) {
                     if (val) {
                         CPtr<ListreeValue> valCopy = val->copy(nextDepth, next_ctx);
-                        if (valCopy) copyItem->addValue(valCopy, false);
+                        if (valCopy) res->addItemValue(copyItem, valCopy, false);
                     }
                 });
             }
@@ -482,7 +500,7 @@ void addNamedItem(CPtr<ListreeValue>& ltv, const std::string& name, CPtr<Listree
         return;
     }
     CPtr<ListreeItem> item = ltv->find(name, true);
-    if (item) item->addValue(value, false);
+    if (item) ltv->addItemValue(item, value, false);
 }
 
 void addListItem(CPtr<ListreeValue>& ltv, CPtr<ListreeValue> value) {

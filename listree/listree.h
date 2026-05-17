@@ -114,8 +114,10 @@ enum class LtvFlags {
 
     // ReadOnly: the node (and, when set via setReadOnly(recursive=true), all
     // reachable descendants) is permanently immutable.  Mutation attempts via
-    // find(insert=true), put(), remove(), and get(pop=true) are silently
-    // refused.  Once set, this flag cannot be cleared.  Read access from
+    // find(insert=true), put(), remove(), get(pop=true), and parent-aware
+    // item-history helpers are refused.  Cursor assignment/removal paths also
+    // check the owning parent before mutating item history.  Once set, this
+    // flag cannot be cleared.  Read access from
     // multiple threads is safe after the flag is set — no locks are needed
     // because no writer can run concurrently.  The flag is stripped during
     // arena persistence (restored nodes start mutable).
@@ -170,6 +172,10 @@ public:
     explicit ListreeItem(const std::string& name);
     ~ListreeItem();
     const std::string& getName() const { return name; }
+    // Low-level item-history access. These methods do not know the owning
+    // ListreeValue, so direct mutating calls cannot enforce ReadOnly. Public
+    // VM/Cursor/tree code should mutate through ListreeValue::addItemValue()
+    // and ListreeValue::popItemValue() instead.
     CPtr<ListreeValueRef> addValue(CPtr<ListreeValue>& value, bool atEnd = false);
     CPtr<ListreeValue> getValue(bool pop = false, bool fromEnd = false);
     void forEachValue(const std::function<void(CPtr<ListreeValue>&)>& callback, bool forward = true);
@@ -247,6 +253,11 @@ public:
     CPtr<ListreeItem> find(const std::string& name, bool insert = false);
     CPtr<ListreeItem> remove(const std::string& name);
     CPtr<ListreeValueRef> put(CPtr<ListreeValue> value, bool atEnd = true);
+    // Parent-aware item-history mutation helpers. Prefer these over direct
+    // ListreeItem::addValue/getValue(pop=true) for tree mutations so ReadOnly
+    // on the owning ListreeValue is enforced.
+    CPtr<ListreeValueRef> addItemValue(CPtr<ListreeItem> item, CPtr<ListreeValue> value, bool atEnd = false);
+    CPtr<ListreeValue> popItemValue(CPtr<ListreeItem> item, bool fromEnd = false);
     CPtr<ListreeValue> get(bool pop = false, bool fromEnd = false);
     void* getData() const { 
         if ((flags & LtvFlags::Immediate) != LtvFlags::None) {

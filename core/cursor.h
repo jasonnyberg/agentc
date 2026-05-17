@@ -27,6 +27,10 @@ class Cursor {
 private:
     CPtr<ListreeValue> root;
     CPtr<ListreeValue> current;
+    // Parent value that owns currentItem. Null at the root or for detached
+    // cursor/history/list positions. Used to enforce parent ReadOnly guards
+    // before mutating ListreeItem value history.
+    CPtr<ListreeValue> currentParent;
     CPtr<ListreeItem> currentItem;
     CPtr<ListreeValue> pathComponents; // Slab-allocated list of strings
     bool reverse;
@@ -40,6 +44,7 @@ private:
     
     static CPtr<ListreeValue> parsePathString(const std::string& path);
     bool matchPattern(const std::string& pattern, const std::string& name) const;
+    bool mutationTouchesReadOnlyBranch(const char* operation) const;
     void pinPath();
     void unpinPath();
     
