@@ -1,3 +1,6 @@
+### 2026-05-17
+- Added 🔗[G111 — Root1/Worker Primitive FFI and Edict Intern Surface Migration](./Knowledge/Goals/G111-Root1WorkerPrimitiveFfiEdictInternMigration/index.md): the plan is to keep only irreducibly native eventfd/epoll/pidfd/mmap/thread/fresh-worker-VM mechanisms in importable C/C++ primitive libraries while moving `intern_run!`, `intern_start!`, `intern_sync!`, and cancellation/backpressure/envelope policy into plain Edict modules.
+
 ### 2026-05-16
 - Advanced 🔗[G091 — Intern Worker Concurrency MVP](./Knowledge/Goals/G091-InternWorkerConcurrencyMvp/index.md) again: added cooperative raw Edict `intern_cancel!` as a plain bootstrap word over `intern_sync!` rather than a new VM opcode, `max_active_jobs` async backpressure, broker-style `Cancelled`/`Backpressure` descriptors, and focused coverage now passing `InternWorkerTest.*` 7/7 plus focused Edict 53/53.
 - Completed 🔗[G109 — Listree ReadOnly Mutation Surface Hardening](./Knowledge/Goals/G109-ListreeReadOnlyMutationSurfaceHardening/index.md): added parent-aware Listree item-history mutation helpers, taught `Cursor` to track owning parents and refuse read-only assignment/removal/remove-head/cleanup pops, added VM/Cursor/Listree/G091 shared-context regressions, and validated listree 71/71, reflect 43/43, focused Edict 50/50, and cpp-agent 49/49.

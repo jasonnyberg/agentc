@@ -240,7 +240,7 @@ Prototype limits:
 - Broker wait queues remain process-local sidecar maps; only participant mailbox rings and resource state slots have a first mapped layout.
 - First pidfd owner-death reporting exists, but abandoned-resource recovery/release policy is not implemented yet.
 - G091 now consumes cancellation/backpressure descriptor states for cooperative `intern_cancel!` and `max_active_jobs` backpressure; broader scheduler-level policy for process workers and future `await!` remains.
-- No Edict opcode/module surface yet.
+- No generic Edict opcode/module surface yet; 🔗[G111 — Root1/Worker Primitive FFI and Edict Intern Surface Migration](../G111-Root1WorkerPrimitiveFfiEdictInternMigration/index.md) now tracks exposing Root1/worker primitives as importable libraries and rebuilding intern words in Edict rather than adding more VM dispatch.
 - The mailbox ring is SPSC-style and broker-serialized in the current prototype; MPSC/per-producer lanes are still future work.
 
 Validation:
@@ -254,6 +254,7 @@ Validation:
 ## Integration With Existing Goals
 
 - 🔗[G091](../G091-InternWorkerConcurrencyMvp/index.md): the first async intern backend now uses an Edict-local `InternJobManager` with G110 broker-compatible waitables/descriptors, cooperative cancellation, and active-job backpressure; future process workers can move this onto mapped coordination slabs without changing the high-level envelope shape.
+- 🔗[G111](../G111-Root1WorkerPrimitiveFfiEdictInternMigration/index.md): the next migration exposes Root1/waitable/mailbox and fresh-worker-VM capabilities as importable native primitives, then rebuilds `intern_run!`, `intern_start!`, and `intern_sync!` as Edict words so G110 becomes reusable substrate rather than intern-specific VM dispatch.
 - 🔗[G109](../G109-ListreeReadOnlyMutationSurfaceHardening/index.md): logical read-only safety remains necessary for shared context/imports; the broker handles mutable coordination resources, not arbitrary frozen-tree mutation.
 - 🔗[G099](../G099-InternTaskQualityContracts/index.md): task/result contracts should include event kinds, progress, cancellation, timeout, backpressure, waitable ids, and ownership/error states if the broker path is adopted.
 - 🔗[G105](../G105-ReadOnlyStaticSlabOwnershipModel/index.md): broker-managed mutable coordination slabs must be separate from read-only static/import/result slabs.

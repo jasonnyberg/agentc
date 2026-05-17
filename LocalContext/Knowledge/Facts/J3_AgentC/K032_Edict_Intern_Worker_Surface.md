@@ -4,12 +4,12 @@
 **Category**: 🔗[J3 AgentC](index.md)
 **Tags**: #j3, #edict, #workers, #concurrency, #interns
 **Status**: Active
-**Last Referenced**: 2026-05-16
+**Last Referenced**: 2026-05-17
 
 ## Overview
 🔗[G091 — Intern Worker Concurrency MVP](../../Goals/G091-InternWorkerConcurrencyMvp/index.md) landed the first deterministic intern-worker substrate in raw Edict: `intern_run!`. It now also has the first broker-compatible async surface: `intern_start!` / `intern_sync!` / `intern_cancel!`.
 
-The purpose is to prove the safe coordinator/worker boundary before introducing live local-model interns or a larger scheduler.
+The purpose is to prove the safe coordinator/worker boundary before introducing live local-model interns or a larger scheduler. 🔗[G111 — Root1/Worker Primitive FFI and Edict Intern Surface Migration](../../Goals/G111-Root1WorkerPrimitiveFfiEdictInternMigration/index.md) now tracks the next migration: expose only irreducibly native Root1/worker mechanisms through importable libraries and move intern policy/envelopes into Edict modules.
 
 ## Coordinator Contract
 The coordinator VM owns mutable root state. It can dispatch a bounded worker task synchronously by pushing a task envelope and evaluating `intern_run!`:
@@ -108,7 +108,8 @@ Implementation approach:
 Longer-term memory substrate: 🔗[Layered mmap Micro-VM Architecture](../../Concepts/LayeredMmapMicroVmArchitecture/index.md) records the proposed static read-only core/import slabs, private per-VM overlays, Root1-brokered mutable coordination/mailbox slabs, optional published communication slabs, eventfd/epoll waitables, and process-isolated micro-VM cores.
 
 ## Current Limits
-- `intern_start!` / `intern_sync!` / `intern_cancel!` are implemented, but cancellation is cooperative-only; explicit worker arena lifecycle cleanup and process-isolated workers remain future work.
+- `intern_start!` / `intern_sync!` / `intern_cancel!` are implemented, but `intern_run!`, `intern_start!`, and `intern_sync!` are still backed by intern-specific VM opcodes; G111 plans to replace those opcode implementations with importable Root1/worker primitives plus Edict module words.
+- Cancellation is cooperative-only; explicit worker arena lifecycle cleanup and process-isolated workers remain future work.
 - 🔗[G109 — Listree ReadOnly Mutation Surface Hardening](../../Goals/G109-ListreeReadOnlyMutationSurfaceHardening/index.md) is complete for public VM/Cursor paths: recursive shared-context freeze now blocks assignment, path removal, remove-head, list pop, and cleanup-pruning mutation attempts.
 - Live local-model intern execution remains out of scope.
 - Re-entrancy metadata for imported native functions is future 🔗[G092 — Cartographer FFI Re-entrancy Metadata](../../Goals/G092-CartographerFfiReentrancyMetadata/index.md).

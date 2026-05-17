@@ -23,7 +23,7 @@ The intern architecture only works if delegated tasks are bounded and checkable.
 - Async-job limits: timeout, max events, max result bytes, expected publication mode, cancellation semantics, waitable id, and broker backpressure behavior.
 
 ## Current Priority — Full-Send Slab Plan
-G099 should follow the broker-shaped async planning in 🔗[G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design](../G110-EventfdEpollMicroVmIpcDesign/index.md) and the async 🔗[G091](../G091-InternWorkerConcurrencyMvp/index.md) `intern_start!` / `intern_sync!` / `intern_cancel!` slice. The first contract does not need the full future policy layer; it should minimally bound async workers so the coordinator can reject underspecified jobs before they become background processes or broker waitables.
+G099 should follow the broker-shaped async planning in 🔗[G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design](../G110-EventfdEpollMicroVmIpcDesign/index.md), the async 🔗[G091](../G091-InternWorkerConcurrencyMvp/index.md) `intern_start!` / `intern_sync!` / `intern_cancel!` slice, and the planned 🔗[G111 — Root1/Worker Primitive FFI and Edict Intern Surface Migration](../G111-Root1WorkerPrimitiveFfiEdictInternMigration/index.md). The first contract does not need the full future policy layer; it should minimally bound async workers so the coordinator can reject underspecified jobs before they become background processes or broker waitables, and its validation helpers should live in Edict rather than native VM opcode checks.
 
 Minimal first schema target:
 
@@ -63,7 +63,7 @@ The result envelope should reserve future slab publication metadata even while J
 
 ## Implementation Plan
 - [ ] Define a minimal Listree/JSON task contract schema with `limits` and `expect` fields.
-- [ ] Add Edict helpers for constructing and validating intern task contracts.
+- [ ] Add Edict helpers for constructing and validating intern task contracts, reusable by the G111 module-backed `intern_start!` implementation.
 - [ ] Provide examples for each safe task class.
 - [ ] Integrate the contract with the worker dispatch path from 🔗[G091](../G091-InternWorkerConcurrencyMvp/index.md).
 - [ ] Add tests that reject underspecified or over-broad intern tasks.
