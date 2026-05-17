@@ -80,6 +80,20 @@ bool sizeField(CPtr<agentc::ListreeValue> value,
     }
 }
 
+bool hasExplicitFalseOk(CPtr<agentc::ListreeValue> value) {
+    auto ok = namedValue(value, "ok");
+    if (!ok || !ok->isListMode()) {
+        return false;
+    }
+    bool any = false;
+    ok->forEachList([&](CPtr<agentc::ListreeValueRef>& ref) {
+        if (ref && ref->getValue()) {
+            any = true;
+        }
+    });
+    return !any;
+}
+
 CPtr<agentc::ListreeValue> jsonSnapshot(CPtr<agentc::ListreeValue> value) {
     if (!value) {
         return agentc::createNullValue();
@@ -271,6 +285,45 @@ bool parseInternTask(CPtr<agentc::ListreeValue> task,
     }
 
     return true;
+}
+
+CPtr<agentc::ListreeValue> buildPreparedTaskSpec(const InternWorkerInput& input) {
+    auto spec = agentc::createNullValue();
+    agentc::addNamedItem(spec, "ok", statusList(true));
+    agentc::addNamedItem(spec, "state", agentc::createStringValue("prepared"));
+    agentc::addNamedItem(spec, "task_id", agentc::createStringValue(input.taskId));
+    agentc::addNamedItem(spec, "program", agentc::createStringValue(input.program));
+    agentc::addNamedItem(spec, "input", input.inputSnapshot ? input.inputSnapshot : agentc::createNullValue());
+    agentc::addNamedItem(spec, "context", input.contextSharedReadOnly ? input.contextSharedReadOnly : agentc::createNullValue());
+    agentc::addNamedItem(spec, "imports", input.importsSharedReadOnly ? input.importsSharedReadOnly : agentc::createNullValue());
+    if (input.hasMaxActiveJobs) {
+        agentc::addNamedItem(spec, "max_active_jobs", agentc::createStringValue(std::to_string(input.maxActiveJobs)));
+    } else {
+        agentc::addNamedItem(spec, "max_active_jobs", agentc::createNullValue());
+    }
+    agentc::addNamedItem(spec, "error", agentc::createNullValue());
+    agentc::addNamedItem(spec, "worker", agentc::createStringValue("edict-thread-async"));
+    agentc::addNamedItem(spec, "publication", agentc::createNullValue());
+    return spec;
+}
+
+CPtr<agentc::ListreeValue> buildCapacityOkEnvelope(const InternWorkerInput& input,
+                                                   size_t activeJobs) {
+    auto envelope = agentc::createNullValue();
+    agentc::addNamedItem(envelope, "ok", statusList(true));
+    agentc::addNamedItem(envelope, "state", agentc::createStringValue("capacity_ok"));
+    agentc::addNamedItem(envelope, "task_id", agentc::createStringValue(input.taskId));
+    agentc::addNamedItem(envelope, "worker", agentc::createStringValue("edict-thread-async"));
+    agentc::addNamedItem(envelope, "active_jobs", agentc::createStringValue(std::to_string(activeJobs)));
+    if (input.hasMaxActiveJobs) {
+        agentc::addNamedItem(envelope, "max_active_jobs", agentc::createStringValue(std::to_string(input.maxActiveJobs)));
+    } else {
+        agentc::addNamedItem(envelope, "max_active_jobs", agentc::createNullValue());
+    }
+    agentc::addNamedItem(envelope, "error", agentc::createNullValue());
+    agentc::addNamedItem(envelope, "events", agentc::createListValue());
+    agentc::addNamedItem(envelope, "publication", agentc::createNullValue());
+    return envelope;
 }
 
 std::string descriptorEventName(agentc::root1::MailboxEventKind kind) {
@@ -479,6 +532,22 @@ CPtr<agentc::ListreeValue> buildUnknownJobEnvelope(const std::string& jobId) {
     return envelope;
 }
 
+CPtr<agentc::ListreeValue> buildDropEnvelope(const std::string& jobId,
+                                             bool dropped) {
+    auto envelope = agentc::createNullValue();
+    agentc::addNamedItem(envelope, "ok", statusList(dropped));
+    agentc::addNamedItem(envelope, "state", agentc::createStringValue(dropped ? "dropped" : "error"));
+    agentc::addNamedItem(envelope, "job_id", agentc::createStringValue(jobId));
+    agentc::addNamedItem(envelope, "worker", agentc::createStringValue("edict-thread-async"));
+    agentc::addNamedItem(envelope, "publication", agentc::createNullValue());
+    if (dropped) {
+        agentc::addNamedItem(envelope, "error", agentc::createNullValue());
+    } else {
+        agentc::addNamedItem(envelope, "error", errorObject("unknown_job", "unknown intern job id: " + jobId));
+    }
+    return envelope;
+}
+
 std::string jobIdFromValue(CPtr<agentc::ListreeValue> value) {
     std::string jobId;
     if (!value) {
@@ -512,6 +581,15 @@ public:
 
     CPtr<agentc::ListreeValue> start(InternWorkerInput input) {
         const size_t maxActiveJobs = input.hasMaxActiveJobs ? input.maxActiveJobs : defaultMaxActiveJobs_;
+        return startWithLimit(std::move(input), maxActiveJobs);
+    }
+
+    CPtr<agentc::ListreeValue> startPrepared(InternWorkerInput input) {
+        return startWithLimit(std::move(input), defaultMaxActiveJobs_);
+    }
+
+    CPtr<agentc::ListreeValue> startWithLimit(InternWorkerInput input,
+                                              size_t maxActiveJobs) {
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (jobs_.size() >= maxActiveJobs) {
@@ -546,13 +624,13 @@ public:
         return buildStartEnvelope(job->input, job->jobId, job->participant);
     }
 
-    CPtr<agentc::ListreeValue> cancel(const std::string& jobId) {
+    CPtr<agentc::ListreeValue> requestCancelEvents(const std::string& jobId) {
         std::shared_ptr<AsyncInternJob> job;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             auto it = jobs_.find(jobId);
             if (it == jobs_.end()) {
-                return buildUnknownJobEnvelope(jobId);
+                return agentc::createListValue();
             }
             job = it->second;
         }
@@ -563,11 +641,13 @@ public:
                                      job->numericId,
                                      "intern job cancellation requested");
         }
-        std::vector<agentc::root1::MailboxDescriptor> events;
-        events.push_back(makeDescriptor(agentc::root1::MailboxEventKind::Cancelled,
-                                        job->numericId,
-                                        "intern job cancellation requested"));
-        return buildCancelRequestedEnvelope(job->input, job->jobId, job->participant, events);
+        return singletonDescriptorList(agentc::root1::MailboxEventKind::Cancelled,
+                                       job->numericId,
+                                       "intern job cancellation requested");
+    }
+
+    CPtr<agentc::ListreeValue> cancel(const std::string& jobId) {
+        return collect(jobId, requestCancelEvents(jobId));
     }
 
     CPtr<agentc::ListreeValue> drainEvents(const std::string& jobId) {
@@ -643,6 +723,15 @@ public:
         return envelope;
     }
 
+    CPtr<agentc::ListreeValue> drop(const std::string& jobId) {
+        bool erased = false;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            erased = jobs_.erase(jobId) > 0;
+        }
+        return buildDropEnvelope(jobId, erased);
+    }
+
     CPtr<agentc::ListreeValue> sync(const std::string& jobId) {
         return collect(jobId, drainEvents(jobId));
     }
@@ -673,6 +762,55 @@ CPtr<agentc::ListreeValue> activeCount() {
     return agentc::createStringValue(std::to_string(internJobManager().activeCount()));
 }
 
+CPtr<agentc::ListreeValue> prepareTask(CPtr<agentc::ListreeValue> task,
+                                       bool allowUnsafeFfiCalls) {
+    InternWorkerInput input;
+    CPtr<agentc::ListreeValue> errorEnvelope;
+    if (!parseInternTask(task, allowUnsafeFfiCalls, "intern_prepare_task", input, errorEnvelope)) {
+        return errorEnvelope;
+    }
+    return buildPreparedTaskSpec(input);
+}
+
+CPtr<agentc::ListreeValue> checkCapacity(CPtr<agentc::ListreeValue> taskOrSpec,
+                                         bool allowUnsafeFfiCalls) {
+    if (hasExplicitFalseOk(taskOrSpec)) {
+        return taskOrSpec;
+    }
+
+    InternWorkerInput input;
+    CPtr<agentc::ListreeValue> errorEnvelope;
+    if (!parseInternTask(taskOrSpec, allowUnsafeFfiCalls, "intern_check_capacity", input, errorEnvelope)) {
+        return errorEnvelope;
+    }
+
+    const size_t activeJobs = internJobManager().activeCount();
+    if (input.hasMaxActiveJobs && activeJobs >= input.maxActiveJobs) {
+        return buildBackpressureEnvelope(input, activeJobs, input.maxActiveJobs);
+    }
+    return buildCapacityOkEnvelope(input, activeJobs);
+}
+
+CPtr<agentc::ListreeValue> runPrepared(CPtr<agentc::ListreeValue> preparedTask,
+                                       bool allowUnsafeFfiCalls) {
+    if (hasExplicitFalseOk(preparedTask)) {
+        return preparedTask;
+    }
+
+    InternWorkerInput input;
+    CPtr<agentc::ListreeValue> errorEnvelope;
+    if (!parseInternTask(preparedTask, allowUnsafeFfiCalls, "intern_run_prepared", input, errorEnvelope)) {
+        return errorEnvelope;
+    }
+
+    InternJoinSlot slot;
+    std::thread worker(runInternWorker, input, std::ref(slot));
+    worker.join();
+
+    const auto outcome = slot.load();
+    return buildInternResult(input, outcome);
+}
+
 CPtr<agentc::ListreeValue> run(CPtr<agentc::ListreeValue> task,
                                bool allowUnsafeFfiCalls) {
     InternWorkerInput input;
@@ -687,6 +825,20 @@ CPtr<agentc::ListreeValue> run(CPtr<agentc::ListreeValue> task,
 
     const auto outcome = slot.load();
     return buildInternResult(input, outcome);
+}
+
+CPtr<agentc::ListreeValue> startPrepared(CPtr<agentc::ListreeValue> preparedTask,
+                                         bool allowUnsafeFfiCalls) {
+    if (hasExplicitFalseOk(preparedTask)) {
+        return preparedTask;
+    }
+
+    InternWorkerInput input;
+    CPtr<agentc::ListreeValue> errorEnvelope;
+    if (!parseInternTask(preparedTask, allowUnsafeFfiCalls, "intern_start_prepared", input, errorEnvelope)) {
+        return errorEnvelope;
+    }
+    return internJobManager().startPrepared(input);
 }
 
 CPtr<agentc::ListreeValue> start(CPtr<agentc::ListreeValue> task,
@@ -707,6 +859,14 @@ CPtr<agentc::ListreeValue> drainEvents(CPtr<agentc::ListreeValue> jobOrRequest) 
     return internJobManager().drainEvents(jobId);
 }
 
+CPtr<agentc::ListreeValue> requestCancel(CPtr<agentc::ListreeValue> jobOrRequest) {
+    const std::string jobId = jobIdFromValue(jobOrRequest);
+    if (jobId.empty()) {
+        return agentc::createListValue();
+    }
+    return internJobManager().requestCancelEvents(jobId);
+}
+
 CPtr<agentc::ListreeValue> collect(CPtr<agentc::ListreeValue> jobOrRequest,
                                    CPtr<agentc::ListreeValue> events) {
     bool cancel = false;
@@ -722,16 +882,20 @@ CPtr<agentc::ListreeValue> collect(CPtr<agentc::ListreeValue> jobOrRequest,
     return cancel ? internJobManager().cancel(jobId) : internJobManager().collect(jobId, events);
 }
 
+CPtr<agentc::ListreeValue> drop(CPtr<agentc::ListreeValue> jobOrRequest) {
+    const std::string jobId = jobIdFromValue(jobOrRequest);
+    if (jobId.empty()) {
+        return buildDropEnvelope("", false);
+    }
+    return internJobManager().drop(jobId);
+}
+
 CPtr<agentc::ListreeValue> sync(CPtr<agentc::ListreeValue> jobOrRequest) {
     return collect(jobOrRequest, drainEvents(jobOrRequest));
 }
 
 CPtr<agentc::ListreeValue> cancel(CPtr<agentc::ListreeValue> jobOrRequest) {
-    const std::string jobId = jobIdFromValue(jobOrRequest);
-    if (jobId.empty()) {
-        return buildUnknownJobEnvelope("");
-    }
-    return internJobManager().cancel(jobId);
+    return collect(jobOrRequest, requestCancel(jobOrRequest));
 }
 
 } // namespace intern
@@ -790,21 +954,45 @@ extern "C" ltv agentc_worker_edict_active_count_ltv(void) {
     return release_ltv_value(agentc::edict::intern::activeCount());
 }
 
+extern "C" ltv agentc_worker_edict_prepare_task_ltv(ltv task) {
+    return release_ltv_value(agentc::edict::intern::prepareTask(borrow_ltv_value(task), false));
+}
+
+extern "C" ltv agentc_worker_edict_check_capacity_ltv(ltv task_or_spec) {
+    return release_ltv_value(agentc::edict::intern::checkCapacity(borrow_ltv_value(task_or_spec), false));
+}
+
 extern "C" ltv agentc_worker_edict_run_ltv(ltv task) {
     return release_ltv_value(agentc::edict::intern::run(borrow_ltv_value(task), false));
+}
+
+extern "C" ltv agentc_worker_edict_run_prepared_ltv(ltv prepared_task) {
+    return release_ltv_value(agentc::edict::intern::runPrepared(borrow_ltv_value(prepared_task), false));
 }
 
 extern "C" ltv agentc_worker_edict_start_ltv(ltv task) {
     return release_ltv_value(agentc::edict::intern::start(borrow_ltv_value(task), false));
 }
 
+extern "C" ltv agentc_worker_edict_start_prepared_ltv(ltv prepared_task) {
+    return release_ltv_value(agentc::edict::intern::startPrepared(borrow_ltv_value(prepared_task), false));
+}
+
 extern "C" ltv agentc_worker_edict_drain_events_ltv(ltv job_or_request) {
     return release_ltv_value(agentc::edict::intern::drainEvents(borrow_ltv_value(job_or_request)));
+}
+
+extern "C" ltv agentc_worker_edict_request_cancel_ltv(ltv job_or_request) {
+    return release_ltv_value(agentc::edict::intern::requestCancel(borrow_ltv_value(job_or_request)));
 }
 
 extern "C" ltv agentc_worker_edict_collect_ltv(ltv job_or_request, ltv events) {
     return release_ltv_value(agentc::edict::intern::collect(borrow_ltv_value(job_or_request),
                                                            borrow_ltv_value(events)));
+}
+
+extern "C" ltv agentc_worker_edict_drop_ltv(ltv job_or_request) {
+    return release_ltv_value(agentc::edict::intern::drop(borrow_ltv_value(job_or_request)));
 }
 
 extern "C" ltv agentc_worker_edict_sync_ltv(ltv job_or_request) {

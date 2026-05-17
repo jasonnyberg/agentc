@@ -190,21 +190,21 @@ Schematic target, not final syntax:
 ### Phase 2 — Add importable primitive C ABI
 
 - [x] Create an importable C header for worker primitives: `edict/agentc_worker_primitives.h`.
-- [x] Expose minimal LTV primitive functions via Cartographer FFI: `agentc_worker_edict_active_count_ltv`, `agentc_worker_edict_run_ltv`, `agentc_worker_edict_start_ltv`, `agentc_worker_edict_drain_events_ltv`, `agentc_worker_edict_collect_ltv`, `agentc_worker_edict_sync_ltv`, and `agentc_worker_edict_cancel_ltv`. This first slice exports them from `libedict.so`; a later slice may split them into a smaller `libagentc_worker_primitives.so`.
+- [x] Expose minimal LTV primitive functions via Cartographer FFI: `agentc_worker_edict_active_count_ltv`, `agentc_worker_edict_prepare_task_ltv`, `agentc_worker_edict_check_capacity_ltv`, `agentc_worker_edict_run_ltv`, `agentc_worker_edict_run_prepared_ltv`, `agentc_worker_edict_start_ltv`, `agentc_worker_edict_start_prepared_ltv`, `agentc_worker_edict_drain_events_ltv`, `agentc_worker_edict_request_cancel_ltv`, `agentc_worker_edict_collect_ltv`, `agentc_worker_edict_drop_ltv`, `agentc_worker_edict_sync_ltv`, and `agentc_worker_edict_cancel_ltv`. This first slice exports them from `libedict.so`; a later slice may split them into a smaller `libagentc_worker_primitives.so`.
 - [x] Add focused C++/Edict tests that import the library explicitly and exercise module-backed words without relying on direct `VMOP_INTERN_*` invocation for the public surface.
 - [x] Keep raw fd/eventfd/epoll state hidden behind logical ids, waitables, and descriptor objects.
 
 ### Phase 3 — Add Edict primitive modules
 
 - [ ] Add `root1.edict` wrappers for participant registration, polling/awaiting, descriptor send, and mailbox drain.
-- [x] Add first `worker.edict` wrappers for imported active-count and fresh Edict-worker run/start/drain-events/collect/sync/cancel primitives.
+- [x] Add first `worker.edict` wrappers for imported active-count, prepare-task, capacity-check, raw/prepared run/start, drain-events, request-cancel, collect, drop, sync, and cancel primitives.
 - [x] Use adjacent eval sigils and `/` discard style consistently.
 - [x] Document low-level words as substrate API, not the normal user surface.
 
 ### Phase 4 — Rebuild intern words in Edict
 
-- [x] Add first `intern.edict` with public `intern_start!`, `intern_sync!`, `intern_cancel!`, and `intern_run!` over worker primitives. `intern_sync!` now composes `worker.edict_drain_events!` plus `worker.edict_collect!` in Edict; `intern_prepare_task!` and deeper Edict-owned policy remain future work.
-- [ ] Move envelope construction and backpressure/cancellation policy into Edict; current module words still delegate those policies to transitional worker primitives.
+- [x] Add first `intern.edict` with public `intern_start!`, `intern_sync!`, `intern_cancel!`, and `intern_run!` over worker primitives. `intern_run!` now composes `worker.edict_prepare_task!` plus `worker.edict_run_prepared!`; `intern_start!` composes `worker.edict_prepare_task!`, `worker.edict_check_capacity!`, and `worker.edict_start_prepared!`; `intern_sync!` composes `worker.edict_drain_events!` plus `worker.edict_collect!`; and `intern_cancel!` composes `worker.edict_request_cancel!` plus `worker.edict_collect!`.
+- [ ] Move full envelope construction and remaining policy into Edict; current module words own task-preparation branching, start-time capacity/backpressure branching, sync composition, and cancellation composition, but detailed envelopes are still shaped by transitional worker primitives.
 - [x] Keep the public surface compatible with the current examples:
 
   ```edict
@@ -236,17 +236,23 @@ First migration slice landed:
 - Kept `VMOP_INTERN_RUN`, `VMOP_INTERN_START`, and `VMOP_INTERN_SYNC` as temporary compatibility shims that delegate to the service boundary.
 - Added `edict/agentc_worker_primitives.h` plus C ABI LTV exports from `libedict.so`:
   - `agentc_worker_edict_active_count_ltv`
+  - `agentc_worker_edict_prepare_task_ltv`
+  - `agentc_worker_edict_check_capacity_ltv`
   - `agentc_worker_edict_run_ltv`
+  - `agentc_worker_edict_run_prepared_ltv`
   - `agentc_worker_edict_start_ltv`
+  - `agentc_worker_edict_start_prepared_ltv`
   - `agentc_worker_edict_drain_events_ltv`
+  - `agentc_worker_edict_request_cancel_ltv`
   - `agentc_worker_edict_collect_ltv`
+  - `agentc_worker_edict_drop_ltv`
   - `agentc_worker_edict_sync_ltv`
   - `agentc_worker_edict_cancel_ltv`
 - Added `cpp-agent/edict/modules/worker.edict` as the low-level wrapper namespace over imported worker primitives.
-- Added `cpp-agent/edict/modules/intern.edict` as the first module-backed public intern surface. `intern_sync!` now composes the lower-level `worker.edict_drain_events!` and `worker.edict_collect!` words in Edict.
-- Added `InternWorkerTest.ModuleBackedInternWordsUseImportedWorkerPrimitives`, which imports `libedict.so`/`agentc_worker_primitives.h`, loads `worker.edict` and `intern.edict`, then proves module-backed `intern_run!`, `intern_start!`, `intern_sync!`, `intern_cancel!`, active-count, and direct low-level drain/collect behavior.
+- Added `cpp-agent/edict/modules/intern.edict` as the first module-backed public intern surface. `intern_run!` composes prepare-task plus run-prepared, `intern_start!` composes prepare-task plus capacity-check plus start-prepared, `intern_sync!` composes the lower-level `worker.edict_drain_events!` and `worker.edict_collect!` words in Edict, and `intern_cancel!` composes `worker.edict_request_cancel!` and `worker.edict_collect!`.
+- Added `InternWorkerTest.ModuleBackedInternWordsUseImportedWorkerPrimitives`, which imports `libedict.so`/`agentc_worker_primitives.h`, loads `worker.edict` and `intern.edict`, then proves module-backed `intern_run!`, `intern_start!`, `intern_sync!`, `intern_cancel!`, active-count, task preparation, capacity check, module-level backpressure branching, direct low-level drain/collect behavior, direct lower-level request-cancel behavior, and explicit drop cleanup.
 
-This is intentionally transitional: the public words can now be module-backed through FFI and async sync is split into lower-level drain/collect words with an active-count hook, but validation/envelope/backpressure/cancellation policy still mostly lives in the native worker primitive implementation. The next migration slice should expose explicit backpressure/capacity checks, task preparation, and worker cleanup/drop primitives so more policy can move into Edict.
+This is intentionally transitional: the public words can now be module-backed through FFI, async sync is split into lower-level drain/collect words, cancellation is split into request-cancel/collect words, active-count is exposed, task preparation and start-time capacity/backpressure branching are in `intern.edict`, and explicit drop cleanup exists. Detailed envelope shaping and the native hard worker cap still live in the native worker primitive implementation. The next migration slice should expose envelope-construction helpers and/or generic Root1 participant/mailbox primitives so more policy can move into Edict.
 
 Validation:
 
@@ -256,7 +262,8 @@ Validation:
 - `cmake --build build --target reflect_tests cpp_agent_tests -j2` — passed.
 - `./build/tests/reflect_tests --gtest_brief=1` — passed 43/43.
 - `./build/cpp-agent/cpp_agent_tests --gtest_brief=1` — passed 49/49.
-- After splitting module-backed `intern_sync!` into Edict-level drain/collect composition and adding the active-count primitive, repeated validation passed: `cmake --build build --target edict_tests -j2`, `InternWorkerTest.*` 8/8, focused Edict slice 54/54, `reflect_tests` 43/43, and `cpp_agent_tests` 49/49.
+- After splitting module-backed `intern_sync!` into Edict-level drain/collect composition, splitting module-backed `intern_cancel!` into request-cancel/collect composition, adding the active-count primitive, and adding explicit drop cleanup, repeated validation passed: `InternWorkerTest.*` 8/8, focused Edict slice 54/54, `reflect_tests` 43/43, and `cpp_agent_tests` 49/49.
+- After adding prepare-task, capacity-check, run-prepared, and start-prepared primitives, repeated validation passed: `cmake --build build --target edict_tests -j2`, `InternWorkerTest.*` 8/8, focused Edict slice 54/54, `cmake --build build --target reflect_tests cpp_agent_tests -j2`, `reflect_tests` 43/43, and `cpp_agent_tests` 49/49.
 
 ## Acceptance Criteria
 
@@ -265,6 +272,8 @@ Validation:
 - [ ] Native implementation is limited to generic Root1/worker primitives that Edict cannot implement directly.
 - [x] Low-level primitive words are importable and testable independently of direct VM opcode invocation.
 - [ ] Intern task validation, envelope shaping, cancellation, and backpressure policy are implemented in Edict.
+  - [x] Task-preparation and start-time capacity/backpressure branching are now composed in `intern.edict` over low-level worker primitives.
+  - [ ] Detailed public envelope construction remains native/transitional.
 - [x] Existing G091 safety invariants remain true: coordinator-owned Listree state is mutated only on the coordinator thread; worker `input` is snapshotted; shared `context`/`imports` are read-only; worker result is copied/collected safely.
 - [x] Focused regressions pass for blocking run, async start/sync, cancellation, backpressure, unknown job, and shared-context mutation refusal.
 

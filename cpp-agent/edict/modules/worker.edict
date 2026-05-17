@@ -9,9 +9,15 @@
 
 {} @worker
 [workerffi.agentc_worker_edict_active_count_ltv!] @worker.edict_active_count
+[workerffi.agentc_worker_edict_prepare_task_ltv!] @worker.edict_prepare_task
+[workerffi.agentc_worker_edict_check_capacity_ltv!] @worker.edict_check_capacity
 [workerffi.agentc_worker_edict_run_ltv!] @worker.edict_run
+[workerffi.agentc_worker_edict_run_prepared_ltv!] @worker.edict_run_prepared
 [workerffi.agentc_worker_edict_start_ltv!] @worker.edict_start
+[workerffi.agentc_worker_edict_start_prepared_ltv!] @worker.edict_start_prepared
 [workerffi.agentc_worker_edict_drain_events_ltv!] @worker.edict_drain_events
+[workerffi.agentc_worker_edict_request_cancel_ltv!] @worker.edict_request_cancel
 [workerffi.agentc_worker_edict_collect_ltv!] @worker.edict_collect
+[workerffi.agentc_worker_edict_drop_ltv!] @worker.edict_drop
 [workerffi.agentc_worker_edict_sync_ltv!] @worker.edict_sync
 [workerffi.agentc_worker_edict_cancel_ltv!] @worker.edict_cancel

@@ -207,6 +207,58 @@ TEST(InternWorkerTest, ModuleBackedInternWordsUseImportedWorkerPrimitives) {
     EXPECT_EQ(textValue(namedValue(namedValue(runResult, "result"), "label")), "delta");
     EXPECT_EQ(textValue(namedValue(namedValue(runResult, "result"), "mode")), "run");
 
+    auto prepTask = agentc::createNullValue();
+    auto prepInput = agentc::fromJson(R"({"label":"zeta"})");
+    auto prepContext = agentc::fromJson(R"({"fact":"frozen"})");
+    ASSERT_TRUE(prepInput);
+    ASSERT_TRUE(prepContext);
+    agentc::addNamedItem(prepTask, "task_id", agentc::createStringValue("ffi-prepare-demo"));
+    agentc::addNamedItem(prepTask, "program", agentc::createStringValue("input.label @result.label context.fact @result.fact"));
+    agentc::addNamedItem(prepTask, "input", prepInput);
+    agentc::addNamedItem(prepTask, "context", prepContext);
+    agentc::addNamedItem(prepTask, "max_active_jobs", agentc::createStringValue("8"));
+    vm.pushData(prepTask);
+    state = vm.execute(compiler.compile("worker.edict_prepare_task! @prepared prepared worker.edict_check_capacity! @prepared_capacity"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    auto prepared = namedValue(coordinatorRoot, "prepared");
+    ASSERT_TRUE(prepared);
+    EXPECT_EQ(textValue(namedValue(prepared, "state")), "prepared");
+    EXPECT_EQ(textValue(namedValue(prepared, "task_id")), "ffi-prepare-demo");
+    EXPECT_EQ(textValue(namedValue(prepared, "max_active_jobs")), "8");
+    EXPECT_TRUE(namedValue(prepared, "context")->isReadOnly());
+    EXPECT_FALSE(prepInput->isReadOnly());
+    agentc::addNamedItem(prepInput, "label", agentc::createStringValue("changed-after-prepare"));
+    EXPECT_EQ(textValue(namedValue(namedValue(prepared, "input"), "label")), "zeta");
+    auto preparedCapacity = namedValue(coordinatorRoot, "prepared_capacity");
+    ASSERT_TRUE(preparedCapacity);
+    EXPECT_EQ(textValue(namedValue(preparedCapacity, "state")), "capacity_ok");
+    EXPECT_EQ(listStrings(namedValue(preparedCapacity, "ok")), std::vector<std::string>({"ok"}));
+
+    vm.pushData(prepared);
+    state = vm.execute(compiler.compile("worker.edict_run_prepared! @prepared_run_result"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    auto preparedRunResult = namedValue(coordinatorRoot, "prepared_run_result");
+    ASSERT_TRUE(preparedRunResult);
+    EXPECT_EQ(textValue(namedValue(preparedRunResult, "state")), "complete");
+    EXPECT_EQ(textValue(namedValue(namedValue(preparedRunResult, "result"), "label")), "zeta");
+    EXPECT_EQ(textValue(namedValue(namedValue(preparedRunResult, "result"), "fact")), "frozen");
+
+    state = vm.execute(compiler.compile("worker.edict_active_count! @bp_active_before"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    const size_t bpActiveBefore = sizeText(namedValue(coordinatorRoot, "bp_active_before"));
+    auto bpTask = agentc::createNullValue();
+    agentc::addNamedItem(bpTask, "task_id", agentc::createStringValue("ffi-module-backpressure"));
+    agentc::addNamedItem(bpTask, "program", agentc::createStringValue("'unused @result.value"));
+    agentc::addNamedItem(bpTask, "max_active_jobs", agentc::createStringValue("0"));
+    vm.pushData(bpTask);
+    state = vm.execute(compiler.compile("intern_start! @module_backpressure worker.edict_active_count! @bp_active_after"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    auto moduleBackpressure = namedValue(coordinatorRoot, "module_backpressure");
+    ASSERT_TRUE(moduleBackpressure);
+    EXPECT_EQ(textValue(namedValue(moduleBackpressure, "state")), "backpressure");
+    EXPECT_TRUE(eventListContainsKind(namedValue(moduleBackpressure, "events"), "backpressure"));
+    EXPECT_EQ(sizeText(namedValue(coordinatorRoot, "bp_active_after")), bpActiveBefore);
+
     auto asyncTask = agentc::createNullValue();
     agentc::addNamedItem(asyncTask, "task_id", agentc::createStringValue("ffi-async-demo"));
     agentc::addNamedItem(asyncTask, "program", agentc::createStringValue("input.label @result.label 'async @result.mode"));
@@ -274,6 +326,58 @@ TEST(InternWorkerTest, ModuleBackedInternWordsUseImportedWorkerPrimitives) {
     state = vm.execute(compiler.compile("worker.edict_active_count! @active_after"));
     ASSERT_FALSE(state & VM_ERROR) << vm.getError();
     EXPECT_EQ(sizeText(namedValue(coordinatorRoot, "active_after")), activeBefore);
+
+    auto cancelTask = agentc::createNullValue();
+    agentc::addNamedItem(cancelTask, "task_id", agentc::createStringValue("ffi-cancel-demo"));
+    agentc::addNamedItem(cancelTask, "program", agentc::createStringValue("'should-not-merge @result.value"));
+    vm.pushData(cancelTask);
+    state = vm.execute(compiler.compile("worker.edict_start! @cancel_job cancel_job.job_id worker.edict_request_cancel! @cancel_events"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    auto cancelJob = namedValue(coordinatorRoot, "cancel_job");
+    ASSERT_TRUE(cancelJob);
+    const std::string cancelJobId = textValue(namedValue(cancelJob, "job_id"));
+    ASSERT_FALSE(cancelJobId.empty());
+    EXPECT_TRUE(eventListContainsKind(namedValue(coordinatorRoot, "cancel_events"), "cancelled"));
+
+    CPtr<ListreeValue> cancelledStatus;
+    for (int i = 0; i < 100; ++i) {
+        vm.pushData(agentc::createStringValue(cancelJobId));
+        state = vm.execute(compiler.compile("cancel_events worker.edict_collect! @cancelled_status"));
+        ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+        cancelledStatus = namedValue(coordinatorRoot, "cancelled_status");
+        ASSERT_TRUE(cancelledStatus);
+        if (textValue(namedValue(cancelledStatus, "state")) == "cancelled") {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    ASSERT_TRUE(cancelledStatus);
+    EXPECT_EQ(textValue(namedValue(cancelledStatus, "state")), "cancelled");
+    EXPECT_TRUE(eventListContainsKind(namedValue(cancelledStatus, "events"), "cancelled"));
+
+    state = vm.execute(compiler.compile("worker.edict_active_count! @drop_active_before"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    const size_t dropActiveBefore = sizeText(namedValue(coordinatorRoot, "drop_active_before"));
+    auto dropTask = agentc::createNullValue();
+    agentc::addNamedItem(dropTask, "task_id", agentc::createStringValue("ffi-drop-demo"));
+    agentc::addNamedItem(dropTask, "program", agentc::createStringValue("'dropped @result.value"));
+    vm.pushData(dropTask);
+    state = vm.execute(compiler.compile("worker.edict_start! @drop_job worker.edict_active_count! @drop_active_mid"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    auto dropJob = namedValue(coordinatorRoot, "drop_job");
+    ASSERT_TRUE(dropJob);
+    EXPECT_EQ(sizeText(namedValue(coordinatorRoot, "drop_active_mid")), dropActiveBefore + 1);
+    const std::string dropJobId = textValue(namedValue(dropJob, "job_id"));
+    ASSERT_FALSE(dropJobId.empty());
+    vm.pushData(agentc::createStringValue(dropJobId));
+    state = vm.execute(compiler.compile("worker.edict_drop! @drop_status worker.edict_active_count! @drop_active_after"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    EXPECT_EQ(textValue(namedValue(namedValue(coordinatorRoot, "drop_status"), "state")), "dropped");
+    EXPECT_EQ(sizeText(namedValue(coordinatorRoot, "drop_active_after")), dropActiveBefore);
+    vm.pushData(agentc::createStringValue(dropJobId));
+    state = vm.execute(compiler.compile("worker.edict_sync! @dropped_sync"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    EXPECT_EQ(textValue(namedValue(namedValue(namedValue(coordinatorRoot, "dropped_sync"), "error"), "code")), "unknown_job");
 
     vm.pushData(agentc::createStringValue("missing-module-job"));
     state = vm.execute(compiler.compile("intern_cancel! @cancel_status"));

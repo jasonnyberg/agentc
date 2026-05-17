@@ -20,13 +20,23 @@
 namespace agentc::edict::intern {
 
 CPtr<agentc::ListreeValue> activeCount();
+CPtr<agentc::ListreeValue> prepareTask(CPtr<agentc::ListreeValue> task,
+                                       bool allowUnsafeFfiCalls = false);
+CPtr<agentc::ListreeValue> checkCapacity(CPtr<agentc::ListreeValue> taskOrSpec,
+                                         bool allowUnsafeFfiCalls = false);
 CPtr<agentc::ListreeValue> run(CPtr<agentc::ListreeValue> task,
                                bool allowUnsafeFfiCalls = false);
+CPtr<agentc::ListreeValue> runPrepared(CPtr<agentc::ListreeValue> preparedTask,
+                                       bool allowUnsafeFfiCalls = false);
 CPtr<agentc::ListreeValue> start(CPtr<agentc::ListreeValue> task,
                                  bool allowUnsafeFfiCalls = false);
+CPtr<agentc::ListreeValue> startPrepared(CPtr<agentc::ListreeValue> preparedTask,
+                                         bool allowUnsafeFfiCalls = false);
 CPtr<agentc::ListreeValue> drainEvents(CPtr<agentc::ListreeValue> jobOrRequest);
+CPtr<agentc::ListreeValue> requestCancel(CPtr<agentc::ListreeValue> jobOrRequest);
 CPtr<agentc::ListreeValue> collect(CPtr<agentc::ListreeValue> jobOrRequest,
                                    CPtr<agentc::ListreeValue> events);
+CPtr<agentc::ListreeValue> drop(CPtr<agentc::ListreeValue> jobOrRequest);
 CPtr<agentc::ListreeValue> sync(CPtr<agentc::ListreeValue> jobOrRequest);
 CPtr<agentc::ListreeValue> cancel(CPtr<agentc::ListreeValue> jobOrRequest);
 
