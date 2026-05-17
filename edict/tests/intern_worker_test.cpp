@@ -16,6 +16,9 @@
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -88,6 +91,26 @@ bool eventListContainsKind(CPtr<ListreeValue> events, const std::string& kind) {
     return found;
 }
 
+std::string readTextFile(const std::filesystem::path& path) {
+    std::ifstream in(path);
+    std::ostringstream out;
+    out << in.rdbuf();
+    return out.str();
+}
+
+std::string moduleBackedInternPrelude() {
+    const auto edictSourceDir = std::filesystem::path(TEST_EDICT_SOURCE_DIR);
+    const auto repoRoot = edictSourceDir.parent_path();
+    const auto libedict = std::filesystem::path(TEST_EDICT_BIN_DIR) / "libedict.so";
+    const auto primitiveHeader = edictSourceDir / "agentc_worker_primitives.h";
+    const auto workerModule = repoRoot / "cpp-agent" / "edict" / "modules" / "worker.edict";
+    const auto internModule = repoRoot / "cpp-agent" / "edict" / "modules" / "intern.edict";
+
+    return std::string("[") + libedict.string() + "] [" + primitiveHeader.string() + "] resolver.import! @workerffi\n" +
+           readTextFile(workerModule) + "\n" +
+           readTextFile(internModule) + "\n";
+}
+
 } // namespace
 
 TEST(InternWorkerTest, InternRunDispatchesWorkerAndCollectsStructuredResult) {
@@ -152,6 +175,68 @@ TEST(InternWorkerTest, InternRunDispatchesWorkerAndCollectsStructuredResult) {
     // coordinator-owned input object.
     EXPECT_FALSE(input->isReadOnly());
     EXPECT_EQ(textValue(namedValue(input, "label")), "beta");
+}
+
+TEST(InternWorkerTest, ModuleBackedInternWordsUseImportedWorkerPrimitives) {
+    auto coordinatorRoot = agentc::createNullValue();
+    EdictVM vm(coordinatorRoot);
+    EdictCompiler compiler;
+
+    int state = vm.execute(compiler.compile(moduleBackedInternPrelude()));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+
+    auto runTask = agentc::createNullValue();
+    agentc::addNamedItem(runTask, "task_id", agentc::createStringValue("ffi-run-demo"));
+    agentc::addNamedItem(runTask, "program", agentc::createStringValue("input.label @result.label 'run @result.mode"));
+    agentc::addNamedItem(runTask, "input", agentc::fromJson(R"({"label":"delta"})"));
+
+    vm.pushData(runTask);
+    state = vm.execute(compiler.compile("intern_run! @run_result"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    auto runResult = namedValue(coordinatorRoot, "run_result");
+    ASSERT_TRUE(runResult);
+    EXPECT_EQ(textValue(namedValue(runResult, "state")), "complete");
+    EXPECT_EQ(textValue(namedValue(namedValue(runResult, "result"), "label")), "delta");
+    EXPECT_EQ(textValue(namedValue(namedValue(runResult, "result"), "mode")), "run");
+
+    auto asyncTask = agentc::createNullValue();
+    agentc::addNamedItem(asyncTask, "task_id", agentc::createStringValue("ffi-async-demo"));
+    agentc::addNamedItem(asyncTask, "program", agentc::createStringValue("input.label @result.label 'async @result.mode"));
+    agentc::addNamedItem(asyncTask, "input", agentc::fromJson(R"({"label":"epsilon"})"));
+
+    vm.pushData(asyncTask);
+    state = vm.execute(compiler.compile("intern_start! @job"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    auto job = namedValue(coordinatorRoot, "job");
+    ASSERT_TRUE(job);
+    const std::string jobId = textValue(namedValue(job, "job_id"));
+    ASSERT_FALSE(jobId.empty());
+
+    CPtr<ListreeValue> status;
+    for (int i = 0; i < 100; ++i) {
+        vm.pushData(agentc::createStringValue(jobId));
+        state = vm.execute(compiler.compile("intern_sync! @status"));
+        ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+        status = namedValue(coordinatorRoot, "status");
+        ASSERT_TRUE(status);
+        if (textValue(namedValue(status, "state")) == "complete") {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+
+    ASSERT_TRUE(status);
+    EXPECT_EQ(textValue(namedValue(status, "state")), "complete");
+    EXPECT_EQ(textValue(namedValue(namedValue(status, "result"), "label")), "epsilon");
+    EXPECT_EQ(textValue(namedValue(namedValue(status, "result"), "mode")), "async");
+
+    vm.pushData(agentc::createStringValue("missing-module-job"));
+    state = vm.execute(compiler.compile("intern_cancel! @cancel_status"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    auto cancelStatus = namedValue(coordinatorRoot, "cancel_status");
+    ASSERT_TRUE(cancelStatus);
+    EXPECT_EQ(textValue(namedValue(cancelStatus, "state")), "error");
+    EXPECT_EQ(textValue(namedValue(namedValue(cancelStatus, "error"), "code")), "unknown_job");
 }
 
 TEST(InternWorkerTest, InternStartAndSyncCollectsStructuredResultAsynchronously) {

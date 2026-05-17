@@ -95,9 +95,9 @@ Related architecture concept: 🔗[Layered mmap Micro-VM Architecture](../../Con
 
 ## Validation — 2026-05-16
 - `cmake --build build --target edict_tests -j2` — passed.
-- `./build/edict/edict_tests --gtest_filter='InternWorkerTest.*'` — passed 7/7 including async start/sync, cancellation, backpressure, unknown-job coverage, and shared-context assignment/removal refusal.
+- `./build/edict/edict_tests --gtest_filter='InternWorkerTest.*'` — passed 8/8 including async start/sync, cancellation, backpressure, unknown-job coverage, shared-context assignment/removal refusal, and the first G111 module-backed FFI worker-primitive regression.
 - Raw CLI smoke with a multi-line task envelope and `intern_run! to_json! print` returned an `ok` envelope with result `{"observed":"alpha"}`.
-- Focused Edict regression slice including `FreezeBuiltin.*`, `InternWorkerTest.*`, `EdictVM.*`, `VMStackTest.*`, `SimpleAssignTest.*`, `RegressionMatrixTest.*`, and `PiSimulationTest.MiniKanrenLogicExample` passed 53/53 after adding `intern_cancel!` and backpressure coverage.
+- Focused Edict regression slice including `FreezeBuiltin.*`, `InternWorkerTest.*`, `EdictVM.*`, `VMStackTest.*`, `SimpleAssignTest.*`, `RegressionMatrixTest.*`, and `PiSimulationTest.MiniKanrenLogicExample` passed 54/54 after adding the first G111 module-backed intern primitive coverage.
 - `cmake --build build --target cpp_agent_tests -j2` — passed.
 - Session persistence guard checks after adding `intern_run` as a volatile startup builtin passed: `EdictSessionCliTest.*` 2/2 and `SessionStateStoreTest.*` 14/14.
 

@@ -15,6 +15,9 @@
 
 #include "edict_vm.h"
 #include "edict_compiler.h"
+#include "edict_intern_service.h"
+#include "agentc_worker_primitives.h"
+#include "../cartographer/ltv_api.h"
 #include "../core/root1_resource_broker.h"
 
 #include <atomic>
@@ -605,13 +608,14 @@ InternJobManager& internJobManager() {
 
 } // namespace
 
-void EdictVM::op_INTERN_RUN() {
-    auto task = popData();
+namespace intern {
+
+CPtr<agentc::ListreeValue> run(CPtr<agentc::ListreeValue> task,
+                               bool allowUnsafeFfiCalls) {
     InternWorkerInput input;
     CPtr<agentc::ListreeValue> errorEnvelope;
-    if (!parseInternTask(task, getAllowUnsafeFfiCalls(), "intern_run", input, errorEnvelope)) {
-        pushData(errorEnvelope);
-        return;
+    if (!parseInternTask(task, allowUnsafeFfiCalls, "intern_run", input, errorEnvelope)) {
+        return errorEnvelope;
     }
 
     InternJoinSlot slot;
@@ -619,39 +623,105 @@ void EdictVM::op_INTERN_RUN() {
     worker.join();
 
     const auto outcome = slot.load();
-    pushData(buildInternResult(input, outcome));
+    return buildInternResult(input, outcome);
+}
+
+CPtr<agentc::ListreeValue> start(CPtr<agentc::ListreeValue> task,
+                                 bool allowUnsafeFfiCalls) {
+    InternWorkerInput input;
+    CPtr<agentc::ListreeValue> errorEnvelope;
+    if (!parseInternTask(task, allowUnsafeFfiCalls, "intern_start", input, errorEnvelope)) {
+        return errorEnvelope;
+    }
+    return internJobManager().start(input);
+}
+
+CPtr<agentc::ListreeValue> sync(CPtr<agentc::ListreeValue> jobOrRequest) {
+    bool cancel = false;
+    if (jobOrRequest && !jobOrRequest->isListMode()) {
+        const std::string action = stringField(jobOrRequest, "action");
+        cancel = (action == "cancel" || stringField(jobOrRequest, "op") == "cancel");
+    }
+
+    const std::string jobId = jobIdFromValue(jobOrRequest);
+    if (jobId.empty()) {
+        return buildUnknownJobEnvelope("");
+    }
+    return cancel ? internJobManager().cancel(jobId) : internJobManager().sync(jobId);
+}
+
+CPtr<agentc::ListreeValue> cancel(CPtr<agentc::ListreeValue> jobOrRequest) {
+    const std::string jobId = jobIdFromValue(jobOrRequest);
+    if (jobId.empty()) {
+        return buildUnknownJobEnvelope("");
+    }
+    return internJobManager().cancel(jobId);
+}
+
+} // namespace intern
+
+void EdictVM::op_INTERN_RUN() {
+    pushData(intern::run(popData(), getAllowUnsafeFfiCalls()));
 }
 
 void EdictVM::op_INTERN_START() {
-    auto task = popData();
-    InternWorkerInput input;
-    CPtr<agentc::ListreeValue> errorEnvelope;
-    if (!parseInternTask(task, getAllowUnsafeFfiCalls(), "intern_start", input, errorEnvelope)) {
-        pushData(errorEnvelope);
-        return;
-    }
-    pushData(internJobManager().start(input));
+    pushData(intern::start(popData(), getAllowUnsafeFfiCalls()));
 }
 
 void EdictVM::op_INTERN_SYNC() {
     auto value = popData();
-    bool cancel = false;
 
     std::string marker;
     if (value && !value->isListMode() && valueToString(value, marker) && marker == "cancel") {
-        cancel = true;
-        value = popData();
-    } else if (value && !value->isListMode()) {
-        const std::string action = stringField(value, "action");
-        cancel = (action == "cancel" || stringField(value, "op") == "cancel");
-    }
-
-    const std::string jobId = jobIdFromValue(value);
-    if (jobId.empty()) {
-        pushData(buildUnknownJobEnvelope(""));
+        pushData(intern::cancel(popData()));
         return;
     }
-    pushData(cancel ? internJobManager().cancel(jobId) : internJobManager().sync(jobId));
+
+    pushData(intern::sync(value));
 }
 
 } // namespace agentc::edict
+
+namespace {
+
+LTV decode_ltv_handle(ltv value) {
+    return LTV(static_cast<uint16_t>(value & 0xffffu),
+               static_cast<uint16_t>((value >> 16) & 0xffffu));
+}
+
+ltv encode_ltv_handle(LTV value) {
+    return static_cast<ltv>(static_cast<uint32_t>(value.first)
+                            | (static_cast<uint32_t>(value.second) << 16));
+}
+
+CPtr<agentc::ListreeValue> borrow_ltv_value(ltv value) {
+    if (value == 0) {
+        return nullptr;
+    }
+    return agentc::ltv_borrow(decode_ltv_handle(value));
+}
+
+ltv release_ltv_value(CPtr<agentc::ListreeValue> value) {
+    if (!value) {
+        value = agentc::createNullValue();
+    }
+    return encode_ltv_handle(value.release());
+}
+
+} // namespace
+
+extern "C" ltv agentc_worker_edict_run_ltv(ltv task) {
+    return release_ltv_value(agentc::edict::intern::run(borrow_ltv_value(task), false));
+}
+
+extern "C" ltv agentc_worker_edict_start_ltv(ltv task) {
+    return release_ltv_value(agentc::edict::intern::start(borrow_ltv_value(task), false));
+}
+
+extern "C" ltv agentc_worker_edict_sync_ltv(ltv job_or_request) {
+    return release_ltv_value(agentc::edict::intern::sync(borrow_ltv_value(job_or_request)));
+}
+
+extern "C" ltv agentc_worker_edict_cancel_ltv(ltv job_or_request) {
+    return release_ltv_value(agentc::edict::intern::cancel(borrow_ltv_value(job_or_request)));
+}

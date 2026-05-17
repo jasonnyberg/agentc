@@ -1,0 +1,14 @@
+# intern.edict — G111 public intern surface over worker primitives
+#
+# Prerequisite: worker.edict has installed the `worker` namespace.
+#
+# This transitional module preserves the current public intern surface while
+# moving the words themselves out of VM opcode registration.  The native worker
+# primitives still carry much of the existing policy in this first slice; later
+# G111 phases should move validation, envelope shaping, cancellation, and
+# backpressure policy down into this Edict layer.
+
+[worker.edict_run!] @intern_run
+[worker.edict_start!] @intern_start
+[worker.edict_sync!] @intern_sync
+[@job job worker.edict_cancel!] @intern_cancel

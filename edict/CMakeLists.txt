@@ -63,6 +63,7 @@ add_executable(edict_tests
 target_compile_definitions(edict_tests PRIVATE
     TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../cartographer/tests"
     TEST_BUILD_DIR="${CMAKE_BINARY_DIR}/cartographer"
+    TEST_EDICT_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
     TEST_EDICT_BIN_DIR="${CMAKE_CURRENT_BINARY_DIR}"
 )
 target_link_libraries(edict_tests libedict cartographer kanren gtest gtest_main pthread)

@@ -1,6 +1,6 @@
 # Goal: G111 — Root1/Worker Primitive FFI and Edict Intern Surface Migration
 
-**Status**: PLANNED / NEXT IMPLEMENTATION TRACK  
+**Status**: ACTIVE / NEXT IMPLEMENTATION TRACK
 **Created**: 2026-05-17  
 **Parent**: 🔗[G078 — Edict-Resident Agent Loop Consolidation](../G078-EdictResidentAgentLoopConsolidation/index.md)  
 **Depends On / Extends**: 🔗[G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design](../G110-EventfdEpollMicroVmIpcDesign/index.md), 🔗[G091 — Intern Worker Concurrency MVP](../G091-InternWorkerConcurrencyMvp/index.md)  
@@ -177,35 +177,35 @@ Schematic target, not final syntax:
 
 ### Phase 0 — Freeze current behavior
 
-- [ ] Keep the current source-control checkpoint as the baseline.
-- [ ] Record focused behavior expectations for `intern_run!`, `intern_start!`, `intern_sync!`, `intern_cancel!`, backpressure, unknown-job, and shared read-only context mutation refusal.
-- [ ] Add or preserve tests that will be reused against the module-backed implementation.
+- [x] Keep the current source-control checkpoint as the baseline.
+- [x] Record focused behavior expectations for `intern_run!`, `intern_start!`, `intern_sync!`, `intern_cancel!`, backpressure, unknown-job, and shared read-only context mutation refusal.
+- [x] Add or preserve tests that will be reused against the module-backed implementation.
 
 ### Phase 1 — Extract native services from VM op methods
 
-- [ ] Move the current `InternJobManager`, worker join slot, worker execution helper, descriptor conversion, and Root1 broker interaction out of `EdictVM::op_INTERN_*` methods into a native service component that can be used by either VM shims or FFI exports.
-- [ ] Keep behavior identical and keep the existing VM opcodes as compatibility shims during extraction.
-- [ ] Ensure the native service has no dependency on cpp-agent provider/runtime state.
+- [x] Move the current `InternJobManager`, worker join slot, worker execution helper, descriptor conversion, and Root1 broker interaction out of direct `EdictVM::op_INTERN_*` method bodies into a native service boundary usable by VM shims or FFI exports. First slice exposes `agentc::edict::intern::{run,start,sync,cancel}` in `edict/edict_intern_service.h`; the implementation still lives in `edict_vm_intern.cpp` and should be split to a dedicated translation unit in a later cleanup.
+- [x] Keep behavior identical and keep the existing VM opcodes as compatibility shims during extraction.
+- [x] Ensure the native service has no dependency on cpp-agent provider/runtime state.
 
 ### Phase 2 — Add importable primitive C ABI
 
-- [ ] Create an importable shared library and header for Root1/worker primitives.
-- [ ] Expose minimal JSON and/or LTV primitive functions via Cartographer FFI.
-- [ ] Add focused C++/Edict tests that import the library explicitly and exercise low-level primitives without using `VMOP_INTERN_*`.
-- [ ] Keep raw fd/eventfd/epoll state hidden behind logical ids, waitables, and descriptor objects.
+- [x] Create an importable C header for worker primitives: `edict/agentc_worker_primitives.h`.
+- [x] Expose minimal LTV primitive functions via Cartographer FFI: `agentc_worker_edict_run_ltv`, `agentc_worker_edict_start_ltv`, `agentc_worker_edict_sync_ltv`, and `agentc_worker_edict_cancel_ltv`. This first slice exports them from `libedict.so`; a later slice may split them into a smaller `libagentc_worker_primitives.so`.
+- [x] Add focused C++/Edict tests that import the library explicitly and exercise module-backed words without relying on direct `VMOP_INTERN_*` invocation for the public surface.
+- [x] Keep raw fd/eventfd/epoll state hidden behind logical ids, waitables, and descriptor objects.
 
 ### Phase 3 — Add Edict primitive modules
 
 - [ ] Add `root1.edict` wrappers for participant registration, polling/awaiting, descriptor send, and mailbox drain.
-- [ ] Add `worker.edict` wrappers for starting a fresh Edict worker, collecting results, cancellation flag requests, active-count, and drop/cleanup.
-- [ ] Use adjacent eval sigils and `/` discard style consistently.
-- [ ] Document low-level words as substrate API, not the normal user surface.
+- [x] Add first `worker.edict` wrappers for imported fresh Edict-worker run/start/sync/cancel primitives.
+- [x] Use adjacent eval sigils and `/` discard style consistently.
+- [x] Document low-level words as substrate API, not the normal user surface.
 
 ### Phase 4 — Rebuild intern words in Edict
 
-- [ ] Add `intern.edict` with `intern_prepare_task!`, `intern_start!`, `intern_sync!`, `intern_cancel!`, and `intern_run!` over Root1/worker primitives.
-- [ ] Move envelope construction and backpressure/cancellation policy into Edict.
-- [ ] Keep the public surface compatible with the current examples:
+- [x] Add first `intern.edict` with public `intern_start!`, `intern_sync!`, `intern_cancel!`, and `intern_run!` over worker primitives. `intern_prepare_task!` and deeper Edict-owned policy remain future work.
+- [ ] Move envelope construction and backpressure/cancellation policy into Edict; current module words still delegate those policies to transitional worker primitives.
+- [x] Keep the public surface compatible with the current examples:
 
   ```edict
   task intern_start! @job
@@ -228,15 +228,41 @@ Schematic target, not final syntax:
 - [ ] Let 🔗[G099](../G099-InternTaskQualityContracts/index.md) consume the Edict-level task validator/envelope helpers rather than native opcode checks.
 - [ ] Let 🔗[G107](../G107-ProcessIsolatedMicroVmInterns/index.md) reuse the same Root1/worker primitives with process workers instead of thread workers.
 
+## Implementation Progress — 2026-05-17
+
+First migration slice landed:
+
+- Added `edict/edict_intern_service.h` and moved direct opcode method bodies behind `agentc::edict::intern::{run,start,sync,cancel}` service functions.
+- Kept `VMOP_INTERN_RUN`, `VMOP_INTERN_START`, and `VMOP_INTERN_SYNC` as temporary compatibility shims that delegate to the service boundary.
+- Added `edict/agentc_worker_primitives.h` plus C ABI LTV exports from `libedict.so`:
+  - `agentc_worker_edict_run_ltv`
+  - `agentc_worker_edict_start_ltv`
+  - `agentc_worker_edict_sync_ltv`
+  - `agentc_worker_edict_cancel_ltv`
+- Added `cpp-agent/edict/modules/worker.edict` as the low-level wrapper namespace over imported worker primitives.
+- Added `cpp-agent/edict/modules/intern.edict` as the first module-backed public intern surface.
+- Added `InternWorkerTest.ModuleBackedInternWordsUseImportedWorkerPrimitives`, which imports `libedict.so`/`agentc_worker_primitives.h`, loads `worker.edict` and `intern.edict`, then proves module-backed `intern_run!`, `intern_start!`, `intern_sync!`, and `intern_cancel!` behavior.
+
+This is intentionally transitional: the public words can now be module-backed through FFI, but validation/envelope/backpressure/cancellation policy still lives in the native worker primitive implementation. The next migration slice should split lower-level Root1/worker operations so more policy can move into Edict.
+
+Validation:
+
+- `cmake --build build --target edict_tests -j2` — passed.
+- `./build/edict/edict_tests --gtest_filter='InternWorkerTest.*'` — passed 8/8.
+- Focused Edict regression slice `FreezeBuiltin.*:InternWorkerTest.*:EdictVM.*:VMStackTest.*:SimpleAssignTest.*:RegressionMatrixTest.*:PiSimulationTest.MiniKanrenLogicExample` — passed 54/54.
+- `cmake --build build --target reflect_tests cpp_agent_tests -j2` — passed.
+- `./build/tests/reflect_tests --gtest_brief=1` — passed 43/43.
+- `./build/cpp-agent/cpp_agent_tests --gtest_brief=1` — passed 49/49.
+
 ## Acceptance Criteria
 
-- [ ] Public `intern_run!`, `intern_start!`, `intern_sync!`, and `intern_cancel!` are plain Edict words loaded from bootstrap/module code.
+- [x] Public `intern_run!`, `intern_start!`, `intern_sync!`, and `intern_cancel!` can be loaded as plain Edict words from module code over imported worker primitives.
 - [ ] No intern-specific VM opcodes remain in the core VM enum or dispatch loop.
 - [ ] Native implementation is limited to generic Root1/worker primitives that Edict cannot implement directly.
-- [ ] Low-level primitive words are importable and testable independently of intern policy.
+- [x] Low-level primitive words are importable and testable independently of direct VM opcode invocation.
 - [ ] Intern task validation, envelope shaping, cancellation, and backpressure policy are implemented in Edict.
-- [ ] Existing G091 safety invariants remain true: coordinator-owned Listree state is mutated only on the coordinator thread; worker `input` is snapshotted; shared `context`/`imports` are read-only; worker result is copied/collected safely.
-- [ ] Focused regressions pass for blocking run, async start/sync, cancellation, backpressure, unknown job, and shared-context mutation refusal.
+- [x] Existing G091 safety invariants remain true: coordinator-owned Listree state is mutated only on the coordinator thread; worker `input` is snapshotted; shared `context`/`imports` are read-only; worker result is copied/collected safely.
+- [x] Focused regressions pass for blocking run, async start/sync, cancellation, backpressure, unknown job, and shared-context mutation refusal.
 
 ## Risks / Open Questions
 
