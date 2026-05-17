@@ -89,7 +89,7 @@ Target behavior:
 - `intern_run!` remains blocking convenience over the same worker helper.
 
 Preferred implementation approach:
-1. Build on G110's first Root1 broker prototype (`ResourceKey`, participant eventfds, mailbox descriptors, bounded ring, file-backed `CoordinationSlab`, mapped resource state words, grant events) to define logical job waitable ids, event kinds, ownership/error states, backpressure/cancel states, and future publication handles before committing to the async backend.
+1. Build on G110's first Root1 broker prototype (`ResourceKey`, participant eventfds, mailbox descriptors, bounded ring, file-backed `CoordinationSlab`, mapped resource state words, fd reconstruction, grant/cancel/backpressure/owner-death events) to define logical job waitable ids, event kinds, ownership/error states, backpressure/cancel states, and future publication handles before committing to the async backend.
 2. If quick implementation is needed, create an Edict-local `InternJobManager` modeled on `StreamManager`, but keep its IDs/envelopes compatible with the future Root1 broker.
 3. Do not couple raw `libedict` directly to the full `cpp-agent` runtime/provider stack.
 

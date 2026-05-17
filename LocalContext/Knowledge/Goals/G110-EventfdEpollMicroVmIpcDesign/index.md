@@ -195,7 +195,9 @@ On resume, Root1 recreates eventfds, rebuilds the epoll set, rescans mailbox/res
 - [x] Define the participant eventfd/mailbox model and Root1 epoll loop responsibilities.
 - [x] Specify acquire/release memory ordering and the lost-wake avoidance protocol.
 - [x] Decide whether the first ownership grant semantics allow barging or require broker-granted fairness; first prototype uses broker-granted transfer.
-- [ ] Define pidfd/process-death and abandoned-resource recovery behavior for process-isolated workers.
+- [x] Reconstruct participant eventfds/epoll registrations from mapped participant mailbox records after remap/resume.
+- [x] Add first cancellation/backpressure descriptor states and broker send helpers.
+- [x] Add first pidfd/process-death descriptor path for process-isolated workers; broader abandoned-resource recovery policy remains future work.
 - [x] Prototype a tiny Linux C++ broker smoke test outside VM dispatch: two participants contend for one logical resource and Root1 wakes waiters in order.
 - [x] Add a descriptor-drain test for participant mailbox events through eventfd/epoll.
 - [x] Extend the prototype to a bounded mmap-compatible mailbox ring.
@@ -208,7 +210,7 @@ On resume, Root1 recreates eventfds, rebuilds the epoll set, rescans mailbox/res
 - [x] The design has a concrete `ResourceKey`, resource state, participant, and grant-token model.
 - [x] The design clearly separates persistent slab metadata from process-local/kernel fd state.
 - [x] The design explains fast-path atomic acquire/release and slow-path Root1 parking/wakeup, including lost-wake prevention.
-- [ ] The design covers mailbox IPC, async intern jobs, future `await!`, cancellation/backpressure, and owner-death recovery.
+- [ ] The design covers mailbox IPC, async intern jobs, future `await!`, cancellation/backpressure, and owner-death recovery. Cancellation/backpressure and first pidfd owner-death descriptors are prototyped; async intern/await integration and abandoned-resource recovery policy remain.
 - [x] A minimal Linux prototype demonstrates eventfd wakeup, epoll dispatch, contended resource grant, bounded mailbox ring behavior, and mailbox descriptor drain.
 
 ## First Prototype Slices — 2026-05-16
@@ -227,21 +229,24 @@ Prototype capabilities:
 - `MailboxRing` defines a bounded 64-slot SPSC-style ring with release/acquire publication and no dynamic allocation in the ring layout.
 - `CoordinationSlab` defines the first file-backed/anonymous mmap-compatible layout: header, 16 participant slots, participant mailbox rings, 64 resource slots, resource keys, and mapped `ResourceState` words.
 - `registerParticipantOnSlab(...)` lets the broker write descriptors directly into a mapped participant mailbox while fd/eventfd state remains process-local.
-- Mailbox path: `sendMailboxMessage(...)`, `sendMailboxDescriptor(...)`, `pollReadyParticipants(...)`, `drainMailbox(...)`, and `drainMailboxDescriptors(...)` demonstrate descriptor delivery through eventfd/epoll.
+- `reconstructParticipantsFromSlab(...)` and `reconstructParticipantFromSlab(...)` rebuild process-local eventfds/epoll registrations from mapped participant slots after remap/resume and can notify participants with pending mailbox descriptors.
+- `sendCancellation(...)` and `sendBackpressure(...)` add first broker-level cancellation/backpressure descriptor states.
+- `attachParticipantPid(...)` adds first pidfd-based owner-death monitoring; process exit is reported as an `OwnerDied` mailbox descriptor.
+- Mailbox path: `sendMailboxMessage(...)`, `sendMailboxDescriptor(...)`, `sendCancellation(...)`, `sendBackpressure(...)`, pidfd `OwnerDied` reports, `pollReadyParticipants(...)`, `drainMailbox(...)`, and `drainMailboxDescriptors(...)` demonstrate descriptor delivery through eventfd/epoll.
 
 Prototype limits:
 
 - Broker wait queues remain process-local sidecar maps; only participant mailbox rings and resource state slots have a first mapped layout.
-- No pidfd owner-death recovery yet.
-- No explicit cancellation/backpressure states yet.
+- First pidfd owner-death reporting exists, but abandoned-resource recovery/release policy is not implemented yet.
+- Cancellation/backpressure descriptor states exist, but no scheduler-level policy consumes them yet.
 - No Edict opcode/module surface yet.
 - The mailbox ring is SPSC-style and broker-serialized in the current prototype; MPSC/per-producer lanes are still future work.
 
 Validation:
 
 - `cmake --build build --target reflect_tests -j2` — passed.
-- `./build/tests/reflect_tests --gtest_filter='Root1ResourceBrokerTest.*'` — passed 7/7.
-- `./build/tests/reflect_tests` — passed 40/40.
+- `./build/tests/reflect_tests --gtest_filter='Root1ResourceBrokerTest.*'` — passed 10/10.
+- `./build/tests/reflect_tests` — passed 43/43.
 - `cmake --build build --target edict_tests -j2` — passed.
 - `cmake --build build --target cpp_agent_tests -j2` — passed.
 

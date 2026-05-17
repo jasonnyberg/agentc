@@ -26,6 +26,7 @@
 #include <string_view>
 #include <unordered_map>
 #include <vector>
+#include <sys/types.h>
 
 namespace agentc::root1 {
 
@@ -83,6 +84,7 @@ enum class MailboxEventKind : uint16_t {
     Error = 5,
     Cancelled = 6,
     Backpressure = 7,
+    OwnerDied = 8,
 };
 
 enum class MailboxPayloadKind : uint16_t {
@@ -228,8 +230,11 @@ public:
 
     ParticipantId registerParticipant();
     ParticipantId registerParticipantOnSlab(CoordinationSlab& slab);
+    bool reconstructParticipantFromSlab(CoordinationSlab& slab, ParticipantId participant, bool notifyPending = true);
+    std::vector<ParticipantId> reconstructParticipantsFromSlab(CoordinationSlab& slab, bool notifyPending = true);
     bool hasParticipant(ParticipantId participant) const;
     int participantEventFd(ParticipantId participant) const;
+    bool attachParticipantPid(ParticipantId participant, pid_t pid);
 
     bool tryAcquire(ResourceState& state, ParticipantId participant) const;
     AcquireStatus acquireOrQueue(const ResourceKey& key, ResourceState& state, ParticipantId participant);
@@ -237,6 +242,8 @@ public:
 
     bool sendMailboxMessage(ParticipantId participant, std::string payload, uint64_t sequence = 0);
     bool sendMailboxDescriptor(ParticipantId participant, const MailboxDescriptor& descriptor);
+    bool sendCancellation(ParticipantId participant, uint64_t correlationId, std::string reason = {});
+    bool sendBackpressure(ParticipantId participant, uint64_t correlationId, std::string reason = {});
     std::vector<ParticipantId> pollReadyParticipants(int timeoutMs, size_t maxEvents = 16);
     std::vector<BrokerEvent> drainMailbox(ParticipantId participant);
     std::vector<MailboxDescriptor> drainMailboxDescriptors(ParticipantId participant);
@@ -247,6 +254,8 @@ private:
         std::vector<BrokerEvent> mailbox;
         std::unique_ptr<MailboxRing> ownedDescriptorMailbox;
         MailboxRing* descriptorMailbox = nullptr;
+        int pidFd = -1;
+        bool pidDeathReported = false;
     };
 
     bool isValidParticipantLocked(ParticipantId participant) const;

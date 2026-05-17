@@ -28,6 +28,7 @@
 #include <sys/eventfd.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/syscall.h>
 #include <unistd.h>
 #endif
 
@@ -41,6 +42,28 @@ size_t mixHash(size_t seed, uint64_t value) {
 }
 
 #if defined(__linux__)
+uint64_t encodeEpollData(ParticipantId participant, bool pidFd) {
+    return (participant << 1) | (pidFd ? 1ull : 0ull);
+}
+
+ParticipantId decodeEpollParticipant(uint64_t data) {
+    return data >> 1;
+}
+
+bool decodeEpollIsPidFd(uint64_t data) {
+    return (data & 1ull) != 0;
+}
+
+int openPidFd(pid_t pid) {
+#ifdef SYS_pidfd_open
+    return static_cast<int>(syscall(SYS_pidfd_open, pid, 0));
+#else
+    (void)pid;
+    errno = ENOSYS;
+    return -1;
+#endif
+}
+
 bool drainEventFd(int fd) {
     bool drainedAny = false;
     while (true) {
@@ -396,7 +419,7 @@ ParticipantId Root1ResourceBroker::registerParticipant() {
 
     epoll_event event{};
     event.events = EPOLLIN;
-    event.data.u64 = id;
+    event.data.u64 = encodeEpollData(id, false);
     if (epoll_ctl(epollFd_, EPOLL_CTL_ADD, fd, &event) != 0) {
         close(fd);
         throw std::runtime_error("Root1ResourceBroker: epoll_ctl add failed");
@@ -430,7 +453,7 @@ ParticipantId Root1ResourceBroker::registerParticipantOnSlab(CoordinationSlab& s
 
     epoll_event event{};
     event.events = EPOLLIN;
-    event.data.u64 = id;
+    event.data.u64 = encodeEpollData(id, false);
     if (epoll_ctl(epollFd_, EPOLL_CTL_ADD, fd, &event) != 0) {
         close(fd);
         throw std::runtime_error("Root1ResourceBroker: epoll_ctl add failed");
@@ -447,6 +470,76 @@ ParticipantId Root1ResourceBroker::registerParticipantOnSlab(CoordinationSlab& s
 #endif
 }
 
+bool Root1ResourceBroker::reconstructParticipantFromSlab(CoordinationSlab& slab,
+                                                         ParticipantId participant,
+                                                         bool notifyPending) {
+#if defined(__linux__)
+    if (participant == 0) {
+        return false;
+    }
+
+    CoordinationParticipantSlot* slot = slab.findParticipantSlot(participant);
+    if (!slot) {
+        return false;
+    }
+
+    int fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+    if (fd < 0) {
+        throw std::runtime_error("Root1ResourceBroker: eventfd failed");
+    }
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (participants_.find(participant) != participants_.end()) {
+        close(fd);
+        return true;
+    }
+
+    epoll_event event{};
+    event.events = EPOLLIN;
+    event.data.u64 = encodeEpollData(participant, false);
+    if (epoll_ctl(epollFd_, EPOLL_CTL_ADD, fd, &event) != 0) {
+        close(fd);
+        throw std::runtime_error("Root1ResourceBroker: epoll_ctl add failed");
+    }
+
+    ParticipantRecord record;
+    record.eventFd = fd;
+    record.descriptorMailbox = &slot->mailbox;
+    participants_.emplace(participant, std::move(record));
+    if (participant >= nextParticipant_) {
+        nextParticipant_ = participant + 1;
+    }
+    if (notifyPending && slot->mailbox.approximateSize() > 0) {
+        notifyParticipantLocked(participant);
+    }
+    return true;
+#else
+    (void)slab;
+    (void)participant;
+    (void)notifyPending;
+    return false;
+#endif
+}
+
+std::vector<ParticipantId> Root1ResourceBroker::reconstructParticipantsFromSlab(CoordinationSlab& slab,
+                                                                                bool notifyPending) {
+    std::vector<ParticipantId> reconstructed;
+    for (size_t i = 0; i < kCoordinationParticipantSlots; ++i) {
+        auto* slot = slab.participantSlot(i);
+        if (!slot) {
+            continue;
+        }
+        ParticipantId participant = slot->participantId.load(std::memory_order_acquire);
+        if (participant == 0) {
+            continue;
+        }
+        if (reconstructParticipantFromSlab(slab, participant, notifyPending)) {
+            reconstructed.push_back(participant);
+        }
+    }
+    return reconstructed;
+}
+
 bool Root1ResourceBroker::hasParticipant(ParticipantId participant) const {
     std::lock_guard<std::mutex> lock(mutex_);
     return isValidParticipantLocked(participant);
@@ -456,6 +549,46 @@ int Root1ResourceBroker::participantEventFd(ParticipantId participant) const {
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = participants_.find(participant);
     return it == participants_.end() ? -1 : it->second.eventFd;
+}
+
+bool Root1ResourceBroker::attachParticipantPid(ParticipantId participant, pid_t pid) {
+#if defined(__linux__)
+    if (participant == 0 || pid <= 0) {
+        return false;
+    }
+
+    int pidFd = openPidFd(pid);
+    if (pidFd < 0) {
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = participants_.find(participant);
+    if (it == participants_.end()) {
+        close(pidFd);
+        return false;
+    }
+
+    epoll_event event{};
+    event.events = EPOLLIN;
+    event.data.u64 = encodeEpollData(participant, true);
+    if (epoll_ctl(epollFd_, EPOLL_CTL_ADD, pidFd, &event) != 0) {
+        close(pidFd);
+        return false;
+    }
+
+    if (it->second.pidFd >= 0) {
+        epoll_ctl(epollFd_, EPOLL_CTL_DEL, it->second.pidFd, nullptr);
+        close(it->second.pidFd);
+    }
+    it->second.pidFd = pidFd;
+    it->second.pidDeathReported = false;
+    return true;
+#else
+    (void)participant;
+    (void)pid;
+    return false;
+#endif
 }
 
 bool Root1ResourceBroker::tryAcquire(ResourceState& state, ParticipantId participant) const {
@@ -571,6 +704,26 @@ bool Root1ResourceBroker::sendMailboxDescriptor(ParticipantId participant, const
     return pushDescriptorLocked(participant, descriptor);
 }
 
+bool Root1ResourceBroker::sendCancellation(ParticipantId participant, uint64_t correlationId, std::string reason) {
+    MailboxDescriptor descriptor;
+    descriptor.eventKind = MailboxEventKind::Cancelled;
+    descriptor.correlationId = correlationId;
+    if (!reason.empty() && !setInlinePayload(descriptor, reason)) {
+        return false;
+    }
+    return sendMailboxDescriptor(participant, descriptor);
+}
+
+bool Root1ResourceBroker::sendBackpressure(ParticipantId participant, uint64_t correlationId, std::string reason) {
+    MailboxDescriptor descriptor;
+    descriptor.eventKind = MailboxEventKind::Backpressure;
+    descriptor.correlationId = correlationId;
+    if (!reason.empty() && !setInlinePayload(descriptor, reason)) {
+        return false;
+    }
+    return sendMailboxDescriptor(participant, descriptor);
+}
+
 std::vector<ParticipantId> Root1ResourceBroker::pollReadyParticipants(int timeoutMs, size_t maxEvents) {
     std::vector<ParticipantId> ready;
     if (maxEvents == 0 || epollFd_ < 0) {
@@ -586,12 +739,29 @@ std::vector<ParticipantId> Root1ResourceBroker::pollReadyParticipants(int timeou
 
     std::lock_guard<std::mutex> lock(mutex_);
     for (int i = 0; i < count; ++i) {
-        ParticipantId participant = events[static_cast<size_t>(i)].data.u64;
+        const uint64_t data = events[static_cast<size_t>(i)].data.u64;
+        ParticipantId participant = decodeEpollParticipant(data);
+        const bool pidFdEvent = decodeEpollIsPidFd(data);
         auto it = participants_.find(participant);
         if (it == participants_.end()) {
             continue;
         }
-        drainEventFd(it->second.eventFd);
+
+        if (pidFdEvent) {
+            if (!it->second.pidDeathReported) {
+                it->second.pidDeathReported = true;
+                if (it->second.pidFd >= 0) {
+                    epoll_ctl(epollFd_, EPOLL_CTL_DEL, it->second.pidFd, nullptr);
+                }
+                MailboxDescriptor descriptor;
+                descriptor.eventKind = MailboxEventKind::OwnerDied;
+                descriptor.correlationId = participant;
+                setInlinePayload(descriptor, "participant process exited");
+                pushDescriptorLocked(participant, descriptor);
+            }
+        } else {
+            drainEventFd(it->second.eventFd);
+        }
         ready.push_back(participant);
     }
 #endif
@@ -676,6 +846,10 @@ void Root1ResourceBroker::closeAllFds() {
         if (entry.second.eventFd >= 0) {
             close(entry.second.eventFd);
             entry.second.eventFd = -1;
+        }
+        if (entry.second.pidFd >= 0) {
+            close(entry.second.pidFd);
+            entry.second.pidFd = -1;
         }
     }
     participants_.clear();

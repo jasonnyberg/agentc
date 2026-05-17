@@ -22,6 +22,7 @@
 #include <string>
 
 #if defined(__linux__)
+#include <sys/wait.h>
 #include <unistd.h>
 #endif
 
@@ -155,6 +156,52 @@ TEST(Root1ResourceBrokerTest, BrokerWritesDescriptorsIntoFileBackedCoordinationS
         EXPECT_EQ(descriptor.eventKind, MailboxEventKind::Progress);
         EXPECT_EQ(descriptor.sequence, 456u);
         EXPECT_EQ(agentc::root1::inlinePayload(descriptor), "mapped-broker-descriptor");
+    }
+
+    std::filesystem::remove(path);
+#endif
+}
+
+TEST(Root1ResourceBrokerTest, ReconstructsParticipantEventfdForPendingMappedMailboxAfterRemap) {
+#if !defined(__linux__)
+    GTEST_SKIP() << "CoordinationSlab prototype requires Linux mmap";
+#else
+    const auto path = std::filesystem::temp_directory_path() /
+        ("agentc_root1_coord_" + std::to_string(::getpid()) + "_reconstruct.bin");
+    std::filesystem::remove(path);
+    agentc::root1::ParticipantId participant = 0;
+
+    {
+        auto slab = CoordinationSlab::createFileBacked(path.string(), true);
+        Root1ResourceBroker broker;
+        participant = broker.registerParticipantOnSlab(*slab);
+        ASSERT_GT(participant, 0u);
+
+        MailboxDescriptor descriptor;
+        descriptor.eventKind = MailboxEventKind::Progress;
+        descriptor.sequence = 789;
+        ASSERT_TRUE(agentc::root1::setInlinePayload(descriptor, "pending-after-remap"));
+        ASSERT_TRUE(broker.sendMailboxDescriptor(participant, descriptor));
+        ASSERT_TRUE(slab->flush());
+    }
+
+    {
+        auto slab = CoordinationSlab::createFileBacked(path.string(), false);
+        Root1ResourceBroker broker;
+        auto reconstructed = broker.reconstructParticipantsFromSlab(*slab);
+        ASSERT_EQ(reconstructed.size(), 1u);
+        EXPECT_EQ(reconstructed.front(), participant);
+        EXPECT_TRUE(broker.hasParticipant(participant));
+        EXPECT_GE(broker.participantEventFd(participant), 0);
+
+        auto ready = broker.pollReadyParticipants(1000);
+        ASSERT_TRUE(containsParticipant(ready, participant));
+
+        auto descriptors = broker.drainMailboxDescriptors(participant);
+        ASSERT_EQ(descriptors.size(), 1u);
+        EXPECT_EQ(descriptors.front().eventKind, MailboxEventKind::Progress);
+        EXPECT_EQ(descriptors.front().sequence, 789u);
+        EXPECT_EQ(agentc::root1::inlinePayload(descriptors.front()), "pending-after-remap");
     }
 
     std::filesystem::remove(path);
@@ -296,5 +343,60 @@ TEST(Root1ResourceBrokerTest, DeliversMmapCompatibleMailboxDescriptorsThroughEpo
     EXPECT_EQ(descriptors.front().sequence, 77u);
     EXPECT_EQ(descriptors.front().correlationId, 1234u);
     EXPECT_EQ(agentc::root1::inlinePayload(descriptors.front()), "descriptor-progress");
+#endif
+}
+
+TEST(Root1ResourceBrokerTest, DeliversCancellationAndBackpressureDescriptors) {
+#if !defined(__linux__)
+    GTEST_SKIP() << "Root1ResourceBroker prototype requires Linux eventfd/epoll";
+#else
+    Root1ResourceBroker broker;
+    auto participant = broker.registerParticipant();
+
+    ASSERT_TRUE(broker.sendCancellation(participant, 1001, "cancel requested"));
+    ASSERT_TRUE(broker.sendBackpressure(participant, 1002, "mailbox full"));
+
+    auto ready = broker.pollReadyParticipants(1000);
+    ASSERT_TRUE(containsParticipant(ready, participant));
+
+    auto descriptors = broker.drainMailboxDescriptors(participant);
+    ASSERT_EQ(descriptors.size(), 2u);
+    EXPECT_EQ(descriptors[0].eventKind, MailboxEventKind::Cancelled);
+    EXPECT_EQ(descriptors[0].correlationId, 1001u);
+    EXPECT_EQ(agentc::root1::inlinePayload(descriptors[0]), "cancel requested");
+    EXPECT_EQ(descriptors[1].eventKind, MailboxEventKind::Backpressure);
+    EXPECT_EQ(descriptors[1].correlationId, 1002u);
+    EXPECT_EQ(agentc::root1::inlinePayload(descriptors[1]), "mailbox full");
+#endif
+}
+
+TEST(Root1ResourceBrokerTest, ReportsOwnerDeathThroughPidfdDescriptorWhenAvailable) {
+#if !defined(__linux__)
+    GTEST_SKIP() << "Root1ResourceBroker prototype requires Linux pidfd/eventfd/epoll";
+#else
+    pid_t child = fork();
+    ASSERT_GE(child, 0);
+    if (child == 0) {
+        _exit(0);
+    }
+
+    Root1ResourceBroker broker;
+    auto participant = broker.registerParticipant();
+    if (!broker.attachParticipantPid(participant, child)) {
+        int status = 0;
+        waitpid(child, &status, 0);
+        GTEST_SKIP() << "pidfd_open is not available in this kernel/container";
+    }
+
+    auto ready = broker.pollReadyParticipants(3000);
+    int status = 0;
+    waitpid(child, &status, 0);
+
+    ASSERT_TRUE(containsParticipant(ready, participant));
+    auto descriptors = broker.drainMailboxDescriptors(participant);
+    ASSERT_EQ(descriptors.size(), 1u);
+    EXPECT_EQ(descriptors.front().eventKind, MailboxEventKind::OwnerDied);
+    EXPECT_EQ(descriptors.front().correlationId, participant);
+    EXPECT_EQ(agentc::root1::inlinePayload(descriptors.front()), "participant process exited");
 #endif
 }
