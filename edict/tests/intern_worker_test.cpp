@@ -62,6 +62,14 @@ std::vector<std::string> listStrings(CPtr<ListreeValue> value) {
     return out;
 }
 
+size_t sizeText(CPtr<ListreeValue> value) {
+    const std::string text = textValue(value);
+    if (text.empty()) {
+        return 0;
+    }
+    return static_cast<size_t>(std::stoull(text));
+}
+
 size_t listCount(CPtr<ListreeValue> value) {
     size_t count = 0;
     if (!value || !value->isListMode()) {
@@ -229,6 +237,43 @@ TEST(InternWorkerTest, ModuleBackedInternWordsUseImportedWorkerPrimitives) {
     EXPECT_EQ(textValue(namedValue(status, "state")), "complete");
     EXPECT_EQ(textValue(namedValue(namedValue(status, "result"), "label")), "epsilon");
     EXPECT_EQ(textValue(namedValue(namedValue(status, "result"), "mode")), "async");
+    EXPECT_GE(listCount(namedValue(status, "events")), 1u);
+
+    state = vm.execute(compiler.compile("worker.edict_active_count! @active_before"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    const size_t activeBefore = sizeText(namedValue(coordinatorRoot, "active_before"));
+
+    auto rawTask = agentc::createNullValue();
+    agentc::addNamedItem(rawTask, "task_id", agentc::createStringValue("ffi-raw-demo"));
+    agentc::addNamedItem(rawTask, "program", agentc::createStringValue("'raw @result.mode"));
+    vm.pushData(rawTask);
+    state = vm.execute(compiler.compile("worker.edict_start! @raw_job worker.edict_active_count! @active_mid"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    auto rawJob = namedValue(coordinatorRoot, "raw_job");
+    ASSERT_TRUE(rawJob);
+    EXPECT_EQ(sizeText(namedValue(coordinatorRoot, "active_mid")), activeBefore + 1);
+    const std::string rawJobId = textValue(namedValue(rawJob, "job_id"));
+    ASSERT_FALSE(rawJobId.empty());
+
+    CPtr<ListreeValue> rawStatus;
+    for (int i = 0; i < 100; ++i) {
+        vm.pushData(agentc::createStringValue(rawJobId));
+        state = vm.execute(compiler.compile("worker.edict_drain_events! @raw_events raw_job.job_id raw_events worker.edict_collect! @raw_status"));
+        ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+        rawStatus = namedValue(coordinatorRoot, "raw_status");
+        ASSERT_TRUE(rawStatus);
+        if (textValue(namedValue(rawStatus, "state")) == "complete") {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    ASSERT_TRUE(rawStatus);
+    EXPECT_EQ(textValue(namedValue(rawStatus, "state")), "complete");
+    EXPECT_EQ(textValue(namedValue(namedValue(rawStatus, "result"), "mode")), "raw");
+    EXPECT_GE(listCount(namedValue(rawStatus, "events")), 1u);
+    state = vm.execute(compiler.compile("worker.edict_active_count! @active_after"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    EXPECT_EQ(sizeText(namedValue(coordinatorRoot, "active_after")), activeBefore);
 
     vm.pushData(agentc::createStringValue("missing-module-job"));
     state = vm.execute(compiler.compile("intern_cancel! @cancel_status"));

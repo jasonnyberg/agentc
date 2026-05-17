@@ -312,14 +312,48 @@ CPtr<agentc::ListreeValue> descriptorsToList(const std::vector<agentc::root1::Ma
     return list;
 }
 
-bool descriptorsContainKind(const std::vector<agentc::root1::MailboxDescriptor>& descriptors,
-                            agentc::root1::MailboxEventKind kind) {
-    for (const auto& descriptor : descriptors) {
-        if (descriptor.eventKind == kind) {
-            return true;
-        }
+bool eventListEmpty(CPtr<agentc::ListreeValue> events) {
+    if (!events || !events->isListMode()) {
+        return true;
     }
-    return false;
+    bool empty = true;
+    events->forEachList([&](CPtr<agentc::ListreeValueRef>& ref) {
+        if (ref && ref->getValue()) {
+            empty = false;
+        }
+    });
+    return empty;
+}
+
+bool eventListContainsKind(CPtr<agentc::ListreeValue> events,
+                           agentc::root1::MailboxEventKind kind) {
+    if (!events || !events->isListMode()) {
+        return false;
+    }
+    const std::string wanted = descriptorEventName(kind);
+    bool found = false;
+    events->forEachList([&](CPtr<agentc::ListreeValueRef>& ref) {
+        if (found || !ref || !ref->getValue()) {
+            return;
+        }
+        if (stringField(ref->getValue(), "kind") == wanted) {
+            found = true;
+        }
+    });
+    return found;
+}
+
+CPtr<agentc::ListreeValue> ensureEventList(CPtr<agentc::ListreeValue> events) {
+    if (events && events->isListMode()) {
+        return events;
+    }
+    return agentc::createListValue();
+}
+
+CPtr<agentc::ListreeValue> replaceEvents(CPtr<agentc::ListreeValue> envelope,
+                                         CPtr<agentc::ListreeValue> events) {
+    agentc::addNamedItem(envelope, "events", ensureEventList(events));
+    return envelope;
 }
 
 agentc::root1::MailboxDescriptor makeDescriptor(agentc::root1::MailboxEventKind kind,
@@ -471,6 +505,11 @@ struct AsyncInternJob {
 
 class InternJobManager {
 public:
+    size_t activeCount() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return jobs_.size();
+    }
+
     CPtr<agentc::ListreeValue> start(InternWorkerInput input) {
         const size_t maxActiveJobs = input.hasMaxActiveJobs ? input.maxActiveJobs : defaultMaxActiveJobs_;
         {
@@ -531,54 +570,70 @@ public:
         return buildCancelRequestedEnvelope(job->input, job->jobId, job->participant, events);
     }
 
-    CPtr<agentc::ListreeValue> sync(const std::string& jobId) {
+    CPtr<agentc::ListreeValue> drainEvents(const std::string& jobId) {
         std::shared_ptr<AsyncInternJob> job;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             auto it = jobs_.find(jobId);
             if (it == jobs_.end()) {
-                return buildUnknownJobEnvelope(jobId);
+                return agentc::createListValue();
             }
             job = it->second;
         }
 
         broker_.pollReadyParticipants(0);
-        auto events = broker_.drainMailboxDescriptors(job->participant);
+        return descriptorsToList(broker_.drainMailboxDescriptors(job->participant));
+    }
+
+    CPtr<agentc::ListreeValue> collect(const std::string& jobId,
+                                       CPtr<agentc::ListreeValue> providedEvents) {
+        std::shared_ptr<AsyncInternJob> job;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            auto it = jobs_.find(jobId);
+            if (it == jobs_.end()) {
+                return replaceEvents(buildUnknownJobEnvelope(jobId), providedEvents);
+            }
+            job = it->second;
+        }
+
         const bool ready = job->slot->ready();
         const bool cancelRequested = job->cancelRequested.load();
         if (cancelRequested && !ready) {
-            return buildCancelRequestedEnvelope(job->input, job->jobId, job->participant, events);
+            return replaceEvents(buildCancelRequestedEnvelope(job->input, job->jobId, job->participant, {}),
+                                 providedEvents);
         }
         if (!ready) {
-            return buildRunningEnvelope(job->input, job->jobId, job->participant, events);
+            return replaceEvents(buildRunningEnvelope(job->input, job->jobId, job->participant, {}),
+                                 providedEvents);
         }
 
         const auto outcome = job->slot->load();
-        if (events.empty()) {
-            events.push_back(makeDescriptor(
+        CPtr<agentc::ListreeValue> events = ensureEventList(providedEvents);
+        if (eventListEmpty(events)) {
+            events = singletonDescriptorList(
                 cancelRequested
                     ? agentc::root1::MailboxEventKind::Cancelled
                     : (outcome.ok
                         ? agentc::root1::MailboxEventKind::Complete
                         : agentc::root1::MailboxEventKind::Error),
                 job->numericId,
-                cancelRequested ? "intern job cancellation requested" : (outcome.ok ? "complete" : "error")));
-        }
-        if (cancelRequested && !descriptorsContainKind(events, agentc::root1::MailboxEventKind::Cancelled)) {
-            events.push_back(makeDescriptor(agentc::root1::MailboxEventKind::Cancelled,
-                                            job->numericId,
-                                            "intern job cancellation requested"));
+                cancelRequested ? "intern job cancellation requested" : (outcome.ok ? "complete" : "error"));
+        } else if (cancelRequested && !eventListContainsKind(events, agentc::root1::MailboxEventKind::Cancelled)) {
+            events = singletonDescriptorList(agentc::root1::MailboxEventKind::Cancelled,
+                                             job->numericId,
+                                             "intern job cancellation requested");
         }
 
         CPtr<agentc::ListreeValue> envelope;
         if (cancelRequested) {
-            envelope = buildCancelledFinalEnvelope(job->input, job->jobId, job->participant, events);
+            envelope = replaceEvents(buildCancelledFinalEnvelope(job->input, job->jobId, job->participant, {}), events);
         } else {
             envelope = buildInternResult(job->input, outcome);
             agentc::addNamedItem(envelope, "job_id", agentc::createStringValue(job->jobId));
             agentc::addNamedItem(envelope, "worker", agentc::createStringValue("edict-thread-async"));
             agentc::addNamedItem(envelope, "waitable", waitableValue(job->jobId, job->participant));
-            agentc::addNamedItem(envelope, "events", descriptorsToList(events));
+            agentc::addNamedItem(envelope, "events", events);
         }
 
         {
@@ -588,8 +643,12 @@ public:
         return envelope;
     }
 
+    CPtr<agentc::ListreeValue> sync(const std::string& jobId) {
+        return collect(jobId, drainEvents(jobId));
+    }
+
 private:
-    std::mutex mutex_;
+    mutable std::mutex mutex_;
     agentc::root1::Root1ResourceBroker broker_;
     uint64_t nextJobId_ = 1;
     size_t defaultMaxActiveJobs_ = 64;
@@ -609,6 +668,10 @@ InternJobManager& internJobManager() {
 } // namespace
 
 namespace intern {
+
+CPtr<agentc::ListreeValue> activeCount() {
+    return agentc::createStringValue(std::to_string(internJobManager().activeCount()));
+}
 
 CPtr<agentc::ListreeValue> run(CPtr<agentc::ListreeValue> task,
                                bool allowUnsafeFfiCalls) {
@@ -636,7 +699,16 @@ CPtr<agentc::ListreeValue> start(CPtr<agentc::ListreeValue> task,
     return internJobManager().start(input);
 }
 
-CPtr<agentc::ListreeValue> sync(CPtr<agentc::ListreeValue> jobOrRequest) {
+CPtr<agentc::ListreeValue> drainEvents(CPtr<agentc::ListreeValue> jobOrRequest) {
+    const std::string jobId = jobIdFromValue(jobOrRequest);
+    if (jobId.empty()) {
+        return agentc::createListValue();
+    }
+    return internJobManager().drainEvents(jobId);
+}
+
+CPtr<agentc::ListreeValue> collect(CPtr<agentc::ListreeValue> jobOrRequest,
+                                   CPtr<agentc::ListreeValue> events) {
     bool cancel = false;
     if (jobOrRequest && !jobOrRequest->isListMode()) {
         const std::string action = stringField(jobOrRequest, "action");
@@ -645,9 +717,13 @@ CPtr<agentc::ListreeValue> sync(CPtr<agentc::ListreeValue> jobOrRequest) {
 
     const std::string jobId = jobIdFromValue(jobOrRequest);
     if (jobId.empty()) {
-        return buildUnknownJobEnvelope("");
+        return replaceEvents(buildUnknownJobEnvelope(""), events);
     }
-    return cancel ? internJobManager().cancel(jobId) : internJobManager().sync(jobId);
+    return cancel ? internJobManager().cancel(jobId) : internJobManager().collect(jobId, events);
+}
+
+CPtr<agentc::ListreeValue> sync(CPtr<agentc::ListreeValue> jobOrRequest) {
+    return collect(jobOrRequest, drainEvents(jobOrRequest));
 }
 
 CPtr<agentc::ListreeValue> cancel(CPtr<agentc::ListreeValue> jobOrRequest) {
@@ -710,12 +786,25 @@ ltv release_ltv_value(CPtr<agentc::ListreeValue> value) {
 
 } // namespace
 
+extern "C" ltv agentc_worker_edict_active_count_ltv(void) {
+    return release_ltv_value(agentc::edict::intern::activeCount());
+}
+
 extern "C" ltv agentc_worker_edict_run_ltv(ltv task) {
     return release_ltv_value(agentc::edict::intern::run(borrow_ltv_value(task), false));
 }
 
 extern "C" ltv agentc_worker_edict_start_ltv(ltv task) {
     return release_ltv_value(agentc::edict::intern::start(borrow_ltv_value(task), false));
+}
+
+extern "C" ltv agentc_worker_edict_drain_events_ltv(ltv job_or_request) {
+    return release_ltv_value(agentc::edict::intern::drainEvents(borrow_ltv_value(job_or_request)));
+}
+
+extern "C" ltv agentc_worker_edict_collect_ltv(ltv job_or_request, ltv events) {
+    return release_ltv_value(agentc::edict::intern::collect(borrow_ltv_value(job_or_request),
+                                                           borrow_ltv_value(events)));
 }
 
 extern "C" ltv agentc_worker_edict_sync_ltv(ltv job_or_request) {

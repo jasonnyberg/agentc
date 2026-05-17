@@ -19,10 +19,14 @@
 
 namespace agentc::edict::intern {
 
+CPtr<agentc::ListreeValue> activeCount();
 CPtr<agentc::ListreeValue> run(CPtr<agentc::ListreeValue> task,
                                bool allowUnsafeFfiCalls = false);
 CPtr<agentc::ListreeValue> start(CPtr<agentc::ListreeValue> task,
                                  bool allowUnsafeFfiCalls = false);
+CPtr<agentc::ListreeValue> drainEvents(CPtr<agentc::ListreeValue> jobOrRequest);
+CPtr<agentc::ListreeValue> collect(CPtr<agentc::ListreeValue> jobOrRequest,
+                                   CPtr<agentc::ListreeValue> events);
 CPtr<agentc::ListreeValue> sync(CPtr<agentc::ListreeValue> jobOrRequest);
 CPtr<agentc::ListreeValue> cancel(CPtr<agentc::ListreeValue> jobOrRequest);
 

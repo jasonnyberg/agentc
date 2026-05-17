@@ -8,7 +8,10 @@
 # jobs.  intern.edict layers the public intern words over this namespace.
 
 {} @worker
+[workerffi.agentc_worker_edict_active_count_ltv!] @worker.edict_active_count
 [workerffi.agentc_worker_edict_run_ltv!] @worker.edict_run
 [workerffi.agentc_worker_edict_start_ltv!] @worker.edict_start
+[workerffi.agentc_worker_edict_drain_events_ltv!] @worker.edict_drain_events
+[workerffi.agentc_worker_edict_collect_ltv!] @worker.edict_collect
 [workerffi.agentc_worker_edict_sync_ltv!] @worker.edict_sync
 [workerffi.agentc_worker_edict_cancel_ltv!] @worker.edict_cancel

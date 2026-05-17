@@ -30,8 +30,11 @@ typedef unsigned int ltv;
 // opcode dispatch.  They intentionally traffic in LTV values rather than raw
 // fds/pointers; future Root1/worker primitives should further split start,
 // mailbox drain, collect, cancel, and cleanup policy.
+ltv agentc_worker_edict_active_count_ltv(void);
 ltv agentc_worker_edict_run_ltv(ltv task);
 ltv agentc_worker_edict_start_ltv(ltv task);
+ltv agentc_worker_edict_drain_events_ltv(ltv job_or_request);
+ltv agentc_worker_edict_collect_ltv(ltv job_or_request, ltv events);
 ltv agentc_worker_edict_sync_ltv(ltv job_or_request);
 ltv agentc_worker_edict_cancel_ltv(ltv job_or_request);
 

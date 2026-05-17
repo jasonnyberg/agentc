@@ -10,5 +10,5 @@
 
 [worker.edict_run!] @intern_run
 [worker.edict_start!] @intern_start
-[worker.edict_sync!] @intern_sync
+[@job job worker.edict_drain_events! @events job events worker.edict_collect!] @intern_sync
 [@job job worker.edict_cancel!] @intern_cancel
