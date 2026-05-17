@@ -635,22 +635,23 @@ void EdictVM::op_INTERN_START() {
 
 void EdictVM::op_INTERN_SYNC() {
     auto value = popData();
-    const std::string jobId = jobIdFromValue(value);
-    if (jobId.empty()) {
-        pushData(buildUnknownJobEnvelope(""));
-        return;
-    }
-    pushData(internJobManager().sync(jobId));
-}
+    bool cancel = false;
 
-void EdictVM::op_INTERN_CANCEL() {
-    auto value = popData();
+    std::string marker;
+    if (value && !value->isListMode() && valueToString(value, marker) && marker == "cancel") {
+        cancel = true;
+        value = popData();
+    } else if (value && !value->isListMode()) {
+        const std::string action = stringField(value, "action");
+        cancel = (action == "cancel" || stringField(value, "op") == "cancel");
+    }
+
     const std::string jobId = jobIdFromValue(value);
     if (jobId.empty()) {
         pushData(buildUnknownJobEnvelope(""));
         return;
     }
-    pushData(internJobManager().cancel(jobId));
+    pushData(cancel ? internJobManager().cancel(jobId) : internJobManager().sync(jobId));
 }
 
 } // namespace agentc::edict

@@ -54,7 +54,7 @@ First async slice details:
 - `intern_start!` parses the same task envelope, freezes/snapshots the boundary, creates a broker-compatible job id/waitable, launches a detached worker thread, and returns a handle with `state: "started"` plus a `waitable` object.
 - The current backend uses an Edict-local `InternJobManager` and the G110 `Root1ResourceBroker` descriptor model. Worker completion publishes a `Complete`/`Error` mailbox descriptor and reserves `publication: null` for future slab results.
 - `intern_sync!` accepts a job id string or handle object, drains broker descriptors on the coordinator thread, returns `state: "running"` or `state: "cancel_requested"` while incomplete, and returns the final structured result copied through JSON once ready.
-- `intern_cancel!` requests cooperative cancellation, emits a `Cancelled` descriptor, and causes final sync to return `state: "cancelled"` without merging the worker result. It does not preemptively kill the current detached thread.
+- `intern_cancel!` is now hoisted into a plain bootstrap Edict word over `intern_sync!` rather than a dedicated VM opcode; it requests cooperative cancellation, emits a `Cancelled` descriptor, and causes final sync to return `state: "cancelled"` without merging the worker result. It does not preemptively kill the current detached thread.
 - `intern_start!` supports task `max_active_jobs`; when the active-job count is at the limit it returns `state: "backpressure"`, `error.code: "backpressure"`, and a `Backpressure` descriptor without launching a worker.
 - `intern_run!` remains blocking convenience over the same deterministic worker helper.
 

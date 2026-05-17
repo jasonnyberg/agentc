@@ -267,7 +267,6 @@ private:
     void op_INTERN_RUN();
     void op_INTERN_START();
     void op_INTERN_SYNC();
-    void op_INTERN_CANCEL();
 
     // Cursor navigation ops (registered via registerCursorOperations)
     void op_CURSOR_DOWN();  // Move cursor to first child; push bool result

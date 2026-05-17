@@ -123,10 +123,9 @@ enum VMOpcode {
     VMOP_FREEZE,        // Pop data stack top, mark it read-only (recursive), push it back
     VMOP_TO_JSON,       // Pop data stack top, serialize to JSON string, push result
     VMOP_FROM_JSON,     // Pop JSON string, parse into Listree value, push result
-    VMOP_INTERN_RUN,     // Pop intern task envelope, run bounded worker VM, push structured result
-    VMOP_INTERN_START,   // Pop intern task envelope, launch async worker job, push job handle
-    VMOP_INTERN_SYNC,    // Pop async intern job id/handle, push current status or final result
-    VMOP_INTERN_CANCEL,  // Pop async intern job id/handle, request cancellation and push status
+    VMOP_INTERN_RUN,    // Pop intern task envelope, run bounded worker VM, push structured result
+    VMOP_INTERN_START,  // Pop intern task envelope, launch async worker job, push job handle
+    VMOP_INTERN_SYNC,   // Pop async intern job id/handle/control marker, push current status/cancel result
     
     // Number of opcodes (must be last)
     VMOP_COUNT

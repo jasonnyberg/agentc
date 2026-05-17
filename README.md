@@ -332,8 +332,9 @@ job.job_id intern_cancel! @cancel_status
 `EdictVM` with a private `workspace`, executes the bounded Edict `program`, joins the worker,
 and returns a structured envelope with `ok`, `task_id`, `state`, `result`, `error`, and
 `safety` fields. `intern_start!` uses the same boundary but returns a broker-shaped waitable;
-`intern_sync!` drains running/final status on the coordinator thread; `intern_cancel!` requests
-cooperative cancellation. Worker results are copied back through JSON only on the coordinator
+`intern_sync!` drains running/final status on the coordinator thread; `intern_cancel!` is a plain
+Edict word over `intern_sync!` that requests cooperative cancellation. Worker results are copied
+back through JSON only on the coordinator
 thread; the coordinator decides what to merge. Async tasks can also use `max_active_jobs` for
 first-pass backpressure.
 

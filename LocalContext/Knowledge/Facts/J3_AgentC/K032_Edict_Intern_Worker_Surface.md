@@ -26,7 +26,7 @@ job.job_id intern_sync! @status
 job.job_id intern_cancel! @cancel_status
 ```
 
-`intern_start!` returns a job handle with `job_id`, `state: "started"`, a broker-shaped `waitable`, and reserved `publication: null`. `intern_sync!` returns `state: "running"` or `state: "cancel_requested"` until the worker completes, then returns the same structured final result shape as `intern_run!` plus `job_id`, `waitable`, and broker descriptor `events`. `intern_cancel!` requests cooperative cancellation and final sync reports `state: "cancelled"` without merging the worker result.
+`intern_start!` returns a job handle with `job_id`, `state: "started"`, a broker-shaped `waitable`, and reserved `publication: null`. `intern_sync!` returns `state: "running"` or `state: "cancel_requested"` until the worker completes, then returns the same structured final result shape as `intern_run!` plus `job_id`, `waitable`, and broker descriptor `events`. `intern_cancel!` is a plain bootstrap Edict word over `intern_sync!`; it requests cooperative cancellation and final sync reports `state: "cancelled"` without merging the worker result.
 
 ## Task Envelope
 | Field | Required | Meaning |
@@ -96,7 +96,7 @@ Implemented behavior:
 - `intern_start!` freezes/snapshots the task boundary, creates a job id/waitable descriptor, launches a detached/background worker, and returns immediately.
 - The background worker owns blocking Edict worker execution and publishes final `Complete`/`Error` descriptors through a G110 `Root1ResourceBroker` participant mailbox.
 - `intern_sync!` runs on the coordinator thread, drains events, observes completion/error/cancellation, parses final JSON into coordinator-owned Listree state only for non-cancelled success, removes completed jobs, and returns a final structured envelope.
-- `intern_cancel!` marks an active job as cooperatively cancelled, emits a `Cancelled` descriptor, and causes final sync to return `state: "cancelled"`; this first slice does not preemptively kill the detached worker thread.
+- `intern_cancel!` is implemented as a plain bootstrap Edict word that pushes the `'cancel` control marker and delegates to `intern_sync!`; it marks an active job as cooperatively cancelled, emits a `Cancelled` descriptor, and causes final sync to return `state: "cancelled"`; this first slice does not preemptively kill the detached worker thread.
 - `intern_start!` reports `Backpressure` when `max_active_jobs` is exceeded and does not launch a worker.
 - `intern_run!` remains blocking convenience over the same worker helper.
 
