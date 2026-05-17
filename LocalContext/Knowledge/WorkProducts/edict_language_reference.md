@@ -1143,13 +1143,21 @@ worker thunk in a fresh VM. The supported cross-thread data model is intentional
 - direct concurrent mutation of arbitrary live `ListreeValue` graphs or reuse of one live
   `EdictVM` across threads is not part of the supported model
 
-### Deterministic intern worker MVP
+### Deterministic and async intern worker MVP
 
-`intern_run!` is the first coordinator-owned intern-worker dispatch primitive. It accepts a task
+`intern_run!` is the synchronous coordinator-owned intern-worker dispatch primitive. It accepts a task
 envelope and returns a structured result envelope:
 
 ```edict
 worker_task intern_run! @worker_result
+```
+
+`intern_start!` / `intern_sync!` are the first broker-compatible async surface. They use the same
+task envelope, launch a detached worker, and let the coordinator poll for structured status/result:
+
+```edict
+worker_task intern_start! @job
+job.job_id intern_sync! @status
 ```
 
 Task envelope fields:
@@ -1179,11 +1187,20 @@ Result envelope fields:
 |-------|---------|
 | `ok` | `["ok"]` on success, `[]` on failure. |
 | `task_id` | Task id. |
-| `state` | `complete` or `error`. |
-| `worker` | Current worker backend (`edict-thread`). |
+| `state` | `complete` or `error`. Async `intern_sync!` can also return `running`. |
+| `worker` | Current worker backend (`edict-thread` or `edict-thread-async`). |
 | `result` | Worker result copied back through JSON on the coordinator thread. |
 | `error` | Error object or null. |
 | `safety` | Read-only/snapshot/merge-thread metadata. |
+| `publication` | Reserved for future read-only slab publication handles; currently null. |
+
+Async-specific fields:
+
+| Field | Meaning |
+|-------|---------|
+| `job_id` | Broker-compatible async job id. |
+| `waitable` | Object with `kind: "root1-broker"`, `job_id`, and participant metadata. |
+| `events` | Broker descriptor events drained by `intern_sync!`; completion currently reports `complete`/`error`. |
 
 Safe intern-task rule: keep tasks bounded, pass explicit inputs/context/imports, state clear
 success criteria in `program`, and merge only the returned structured `result` from the
@@ -1310,6 +1327,8 @@ reset   -- clear VM_ERROR flag and error message; resume from error state
 | `VMOP_SPLICE` | `^` or `^name` | Splice current frame into named node |
 | `VMOP_SPECULATE` | `speculate [code]` | Run code in isolated snapshot |
 | `VMOP_INTERN_RUN` | `intern_run!` | Run bounded worker task envelope in fresh worker VM |
+| `VMOP_INTERN_START` | `intern_start!` | Launch bounded worker task asynchronously and return a broker-compatible job handle |
+| `VMOP_INTERN_SYNC` | `intern_sync!` | Poll/drain async intern job status or final result on the coordinator thread |
 | `VMOP_REWRITE_DEFINE` | `rewrite_define!` | Register a rewrite rule |
 | `VMOP_REWRITE_LIST` | `rewrite_list!` | List all rules |
 | `VMOP_REWRITE_REMOVE` | `rewrite_remove!` | Remove rule by index |

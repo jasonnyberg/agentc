@@ -15,12 +15,16 @@
 
 #include "edict_vm.h"
 #include "edict_compiler.h"
+#include "../core/root1_resource_broker.h"
 
+#include <memory>
 #include <mutex>
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 namespace agentc::edict {
 namespace {
@@ -98,6 +102,7 @@ public:
     void store(InternWorkerOutcome value) {
         std::lock_guard<std::mutex> lock(mutex_);
         outcome_ = std::move(value);
+        ready_ = true;
     }
 
     InternWorkerOutcome load() const {
@@ -105,9 +110,15 @@ public:
         return outcome_;
     }
 
+    bool ready() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return ready_;
+    }
+
 private:
     mutable std::mutex mutex_;
     InternWorkerOutcome outcome_;
+    bool ready_ = false;
 };
 
 void runInternWorker(const InternWorkerInput input, InternJoinSlot& slot) {
@@ -160,6 +171,7 @@ CPtr<agentc::ListreeValue> buildInternResult(const InternWorkerInput& input,
 
     auto result = agentc::fromJson(outcome.resultJson);
     agentc::addNamedItem(envelope, "result", result ? result : agentc::createNullValue());
+    agentc::addNamedItem(envelope, "publication", agentc::createNullValue());
 
     if (outcome.ok) {
         agentc::addNamedItem(envelope, "error", agentc::createNullValue());
@@ -180,32 +192,33 @@ CPtr<agentc::ListreeValue> buildInternResult(const InternWorkerInput& input,
     return envelope;
 }
 
-} // namespace
-
-void EdictVM::op_INTERN_RUN() {
-    auto task = popData();
+bool parseInternTask(CPtr<agentc::ListreeValue> task,
+                     bool allowUnsafeFfiCalls,
+                     const std::string& opName,
+                     InternWorkerInput& input,
+                     CPtr<agentc::ListreeValue>& errorEnvelope) {
     if (!task || task->isListMode()) {
-        pushData(buildInternResult({"", "", nullptr, nullptr, nullptr, getAllowUnsafeFfiCalls()},
-                                   {false, VM_ERROR, "null", "invalid_task", "intern_run expects a task object"}));
-        return;
+        input.allowUnsafeFfiCalls = allowUnsafeFfiCalls;
+        errorEnvelope = buildInternResult(input,
+            {false, VM_ERROR, "null", "invalid_task", opName + " expects a task object"});
+        return false;
     }
 
-    InternWorkerInput input;
     input.taskId = stringField(task, "task_id");
     if (input.taskId.empty()) {
         input.taskId = stringField(task, "id");
     }
     input.program = stringField(task, "program");
-    input.allowUnsafeFfiCalls = getAllowUnsafeFfiCalls();
+    input.allowUnsafeFfiCalls = allowUnsafeFfiCalls;
 
     if (input.taskId.empty()) {
         input.taskId = "intern-task";
     }
 
     if (input.program.empty()) {
-        pushData(buildInternResult(input,
-                                   {false, VM_ERROR, "null", "missing_program", "intern task is missing a non-empty program string"}));
-        return;
+        errorEnvelope = buildInternResult(input,
+            {false, VM_ERROR, "null", "missing_program", "intern task is missing a non-empty program string"});
+        return false;
     }
 
     input.inputSnapshot = jsonSnapshot(namedValue(task, "input"));
@@ -226,12 +239,249 @@ void EdictVM::op_INTERN_RUN() {
         input.importsSharedReadOnly->setReadOnly(true);
     }
 
+    return true;
+}
+
+std::string descriptorEventName(agentc::root1::MailboxEventKind kind) {
+    using agentc::root1::MailboxEventKind;
+    switch (kind) {
+        case MailboxEventKind::None: return "none";
+        case MailboxEventKind::Message: return "message";
+        case MailboxEventKind::OwnershipGranted: return "ownership_granted";
+        case MailboxEventKind::Progress: return "progress";
+        case MailboxEventKind::Complete: return "complete";
+        case MailboxEventKind::Error: return "error";
+        case MailboxEventKind::Cancelled: return "cancelled";
+        case MailboxEventKind::Backpressure: return "backpressure";
+        case MailboxEventKind::OwnerDied: return "owner_died";
+    }
+    return "unknown";
+}
+
+CPtr<agentc::ListreeValue> descriptorToValue(const agentc::root1::MailboxDescriptor& descriptor) {
+    auto value = agentc::createNullValue();
+    agentc::addNamedItem(value, "kind", agentc::createStringValue(descriptorEventName(descriptor.eventKind)));
+    agentc::addNamedItem(value, "sequence", agentc::createStringValue(std::to_string(descriptor.sequence)));
+    agentc::addNamedItem(value, "correlation_id", agentc::createStringValue(std::to_string(descriptor.correlationId)));
+    agentc::addNamedItem(value, "grant_token", agentc::createStringValue(std::to_string(descriptor.grantToken)));
+    const auto payload = agentc::root1::inlinePayload(descriptor);
+    if (!payload.empty()) {
+        agentc::addNamedItem(value, "payload", agentc::createStringValue(std::string(payload)));
+    } else {
+        agentc::addNamedItem(value, "payload", agentc::createNullValue());
+    }
+    return value;
+}
+
+CPtr<agentc::ListreeValue> descriptorsToList(const std::vector<agentc::root1::MailboxDescriptor>& descriptors) {
+    auto list = agentc::createListValue();
+    for (const auto& descriptor : descriptors) {
+        agentc::addListItem(list, descriptorToValue(descriptor));
+    }
+    return list;
+}
+
+CPtr<agentc::ListreeValue> waitableValue(const std::string& jobId,
+                                         agentc::root1::ParticipantId participant) {
+    auto waitable = agentc::createNullValue();
+    agentc::addNamedItem(waitable, "kind", agentc::createStringValue("root1-broker"));
+    agentc::addNamedItem(waitable, "job_id", agentc::createStringValue(jobId));
+    agentc::addNamedItem(waitable, "participant_id", agentc::createStringValue(std::to_string(participant)));
+    return waitable;
+}
+
+CPtr<agentc::ListreeValue> buildStartEnvelope(const InternWorkerInput& input,
+                                              const std::string& jobId,
+                                              agentc::root1::ParticipantId participant) {
+    auto envelope = agentc::createNullValue();
+    agentc::addNamedItem(envelope, "ok", statusList(true));
+    agentc::addNamedItem(envelope, "state", agentc::createStringValue("started"));
+    agentc::addNamedItem(envelope, "job_id", agentc::createStringValue(jobId));
+    agentc::addNamedItem(envelope, "task_id", agentc::createStringValue(input.taskId));
+    agentc::addNamedItem(envelope, "worker", agentc::createStringValue("edict-thread-async"));
+    agentc::addNamedItem(envelope, "waitable", waitableValue(jobId, participant));
+    agentc::addNamedItem(envelope, "publication", agentc::createNullValue());
+    return envelope;
+}
+
+CPtr<agentc::ListreeValue> buildRunningEnvelope(const InternWorkerInput& input,
+                                                const std::string& jobId,
+                                                agentc::root1::ParticipantId participant,
+                                                const std::vector<agentc::root1::MailboxDescriptor>& events) {
+    auto envelope = agentc::createNullValue();
+    agentc::addNamedItem(envelope, "ok", statusList(true));
+    agentc::addNamedItem(envelope, "state", agentc::createStringValue("running"));
+    agentc::addNamedItem(envelope, "job_id", agentc::createStringValue(jobId));
+    agentc::addNamedItem(envelope, "task_id", agentc::createStringValue(input.taskId));
+    agentc::addNamedItem(envelope, "worker", agentc::createStringValue("edict-thread-async"));
+    agentc::addNamedItem(envelope, "waitable", waitableValue(jobId, participant));
+    agentc::addNamedItem(envelope, "events", descriptorsToList(events));
+    agentc::addNamedItem(envelope, "complete", statusList(false));
+    agentc::addNamedItem(envelope, "publication", agentc::createNullValue());
+    return envelope;
+}
+
+CPtr<agentc::ListreeValue> buildUnknownJobEnvelope(const std::string& jobId) {
+    InternWorkerInput input;
+    input.taskId = jobId;
+    auto envelope = buildInternResult(input,
+        {false, VM_ERROR, "null", "unknown_job", "unknown intern job id: " + jobId});
+    agentc::addNamedItem(envelope, "job_id", agentc::createStringValue(jobId));
+    return envelope;
+}
+
+std::string jobIdFromValue(CPtr<agentc::ListreeValue> value) {
+    std::string jobId;
+    if (!value) {
+        return jobId;
+    }
+    if (!value->isListMode() && valueToString(value, jobId)) {
+        return jobId;
+    }
+    jobId = stringField(value, "job_id");
+    if (jobId.empty()) {
+        jobId = stringField(value, "id");
+    }
+    return jobId;
+}
+
+struct AsyncInternJob {
+    uint64_t numericId = 0;
+    std::string jobId;
+    agentc::root1::ParticipantId participant = 0;
+    InternWorkerInput input;
+    std::shared_ptr<InternJoinSlot> slot;
+};
+
+class InternJobManager {
+public:
+    CPtr<agentc::ListreeValue> start(InternWorkerInput input) {
+        auto job = std::make_shared<AsyncInternJob>();
+        job->numericId = nextJobId_++;
+        job->jobId = "intern-job-" + std::to_string(job->numericId);
+        job->participant = broker_.registerParticipant();
+        job->input = input;
+        job->slot = std::make_shared<InternJoinSlot>();
+
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            jobs_[job->jobId] = job;
+        }
+
+        std::thread([this, job]() {
+            runInternWorker(job->input, *job->slot);
+            const auto outcome = job->slot->load();
+            agentc::root1::MailboxDescriptor descriptor;
+            descriptor.eventKind = outcome.ok
+                ? agentc::root1::MailboxEventKind::Complete
+                : agentc::root1::MailboxEventKind::Error;
+            descriptor.correlationId = job->numericId;
+            descriptor.sequence = job->numericId;
+            agentc::root1::setInlinePayload(descriptor, outcome.ok ? "complete" : "error");
+            broker_.sendMailboxDescriptor(job->participant, descriptor);
+        }).detach();
+
+        return buildStartEnvelope(job->input, job->jobId, job->participant);
+    }
+
+    CPtr<agentc::ListreeValue> sync(const std::string& jobId) {
+        std::shared_ptr<AsyncInternJob> job;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            auto it = jobs_.find(jobId);
+            if (it == jobs_.end()) {
+                return buildUnknownJobEnvelope(jobId);
+            }
+            job = it->second;
+        }
+
+        broker_.pollReadyParticipants(0);
+        auto events = broker_.drainMailboxDescriptors(job->participant);
+        const bool ready = job->slot->ready();
+        if (!ready) {
+            return buildRunningEnvelope(job->input, job->jobId, job->participant, events);
+        }
+
+        const auto outcome = job->slot->load();
+        if (events.empty()) {
+            agentc::root1::MailboxDescriptor descriptor;
+            descriptor.eventKind = outcome.ok
+                ? agentc::root1::MailboxEventKind::Complete
+                : agentc::root1::MailboxEventKind::Error;
+            descriptor.correlationId = job->numericId;
+            descriptor.sequence = job->numericId;
+            agentc::root1::setInlinePayload(descriptor, outcome.ok ? "complete" : "error");
+            events.push_back(descriptor);
+        }
+
+        auto envelope = buildInternResult(job->input, outcome);
+        agentc::addNamedItem(envelope, "job_id", agentc::createStringValue(job->jobId));
+        agentc::addNamedItem(envelope, "worker", agentc::createStringValue("edict-thread-async"));
+        agentc::addNamedItem(envelope, "waitable", waitableValue(job->jobId, job->participant));
+        agentc::addNamedItem(envelope, "events", descriptorsToList(events));
+
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            jobs_.erase(job->jobId);
+        }
+        return envelope;
+    }
+
+private:
+    std::mutex mutex_;
+    agentc::root1::Root1ResourceBroker broker_;
+    uint64_t nextJobId_ = 1;
+    std::unordered_map<std::string, std::shared_ptr<AsyncInternJob>> jobs_;
+};
+
+InternJobManager& internJobManager() {
+    // Intentionally leak the process-lifetime manager: async jobs use detached
+    // worker threads that may still be unwinding during process shutdown.  The
+    // OS will reclaim eventfds/threads on exit; running the broker destructor
+    // while a detached worker can still publish a completion descriptor would
+    // be unsafe.
+    static auto* manager = new InternJobManager();
+    return *manager;
+}
+
+} // namespace
+
+void EdictVM::op_INTERN_RUN() {
+    auto task = popData();
+    InternWorkerInput input;
+    CPtr<agentc::ListreeValue> errorEnvelope;
+    if (!parseInternTask(task, getAllowUnsafeFfiCalls(), "intern_run", input, errorEnvelope)) {
+        pushData(errorEnvelope);
+        return;
+    }
+
     InternJoinSlot slot;
     std::thread worker(runInternWorker, input, std::ref(slot));
     worker.join();
 
     const auto outcome = slot.load();
     pushData(buildInternResult(input, outcome));
+}
+
+void EdictVM::op_INTERN_START() {
+    auto task = popData();
+    InternWorkerInput input;
+    CPtr<agentc::ListreeValue> errorEnvelope;
+    if (!parseInternTask(task, getAllowUnsafeFfiCalls(), "intern_start", input, errorEnvelope)) {
+        pushData(errorEnvelope);
+        return;
+    }
+    pushData(internJobManager().start(input));
+}
+
+void EdictVM::op_INTERN_SYNC() {
+    auto value = popData();
+    const std::string jobId = jobIdFromValue(value);
+    if (jobId.empty()) {
+        pushData(buildUnknownJobEnvelope(""));
+        return;
+    }
+    pushData(internJobManager().sync(jobId));
 }
 
 } // namespace agentc::edict

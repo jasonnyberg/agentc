@@ -15,7 +15,9 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "../edict_compiler.h"
@@ -55,6 +57,19 @@ std::vector<std::string> listStrings(CPtr<ListreeValue> value) {
         }
     });
     return out;
+}
+
+size_t listCount(CPtr<ListreeValue> value) {
+    size_t count = 0;
+    if (!value || !value->isListMode()) {
+        return count;
+    }
+    value->forEachList([&](CPtr<agentc::ListreeValueRef>& ref) {
+        if (ref && ref->getValue()) {
+            ++count;
+        }
+    });
+    return count;
 }
 
 } // namespace
@@ -120,6 +135,79 @@ TEST(InternWorkerTest, InternRunDispatchesWorkerAndCollectsStructuredResult) {
     // coordinator-owned input object.
     EXPECT_FALSE(input->isReadOnly());
     EXPECT_EQ(textValue(namedValue(input, "label")), "beta");
+}
+
+TEST(InternWorkerTest, InternStartAndSyncCollectsStructuredResultAsynchronously) {
+    auto coordinatorRoot = agentc::createNullValue();
+    EdictVM vm(coordinatorRoot);
+    EdictCompiler compiler;
+
+    auto task = agentc::createNullValue();
+    agentc::addNamedItem(task, "task_id", agentc::createStringValue("async-demo"));
+    agentc::addNamedItem(task, "program", agentc::createStringValue(
+        "input.label @result.label "
+        "'done @result.status"));
+    agentc::addNamedItem(task, "input", agentc::fromJson(R"({"label":"gamma"})"));
+
+    vm.pushData(task);
+    int state = vm.execute(compiler.compile("intern_start! @job"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+
+    auto job = namedValue(coordinatorRoot, "job");
+    ASSERT_TRUE(job);
+    const std::string jobId = textValue(namedValue(job, "job_id"));
+    ASSERT_FALSE(jobId.empty());
+    EXPECT_EQ(textValue(namedValue(job, "state")), "started");
+    EXPECT_EQ(textValue(namedValue(job, "worker")), "edict-thread-async");
+    ASSERT_TRUE(namedValue(job, "waitable"));
+    EXPECT_EQ(textValue(namedValue(namedValue(job, "waitable"), "kind")), "root1-broker");
+
+    CPtr<ListreeValue> status;
+    for (int i = 0; i < 100; ++i) {
+        vm.pushData(agentc::createStringValue(jobId));
+        state = vm.execute(compiler.compile("intern_sync! @status"));
+        ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+        status = namedValue(coordinatorRoot, "status");
+        ASSERT_TRUE(status);
+        if (textValue(namedValue(status, "state")) == "complete") {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+
+    ASSERT_TRUE(status);
+    EXPECT_EQ(textValue(namedValue(status, "job_id")), jobId);
+    EXPECT_EQ(textValue(namedValue(status, "state")), "complete");
+    EXPECT_EQ(textValue(namedValue(status, "worker")), "edict-thread-async");
+    EXPECT_EQ(listStrings(namedValue(status, "ok")), std::vector<std::string>({"ok"}));
+
+    auto result = namedValue(status, "result");
+    ASSERT_TRUE(result);
+    EXPECT_EQ(textValue(namedValue(result, "label")), "gamma");
+    EXPECT_EQ(textValue(namedValue(result, "status")), "done");
+
+    auto events = namedValue(status, "events");
+    ASSERT_TRUE(events);
+    EXPECT_TRUE(events->isListMode());
+    EXPECT_GE(listCount(events), 1u);
+}
+
+TEST(InternWorkerTest, InternSyncReportsUnknownJobAsStructuredError) {
+    EdictVM vm;
+    EdictCompiler compiler;
+
+    vm.pushData(agentc::createStringValue("missing-job"));
+    const int state = vm.execute(compiler.compile("intern_sync!"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+
+    auto envelope = vm.popData();
+    ASSERT_TRUE(envelope);
+    EXPECT_TRUE(listStrings(namedValue(envelope, "ok")).empty());
+    EXPECT_EQ(textValue(namedValue(envelope, "job_id")), "missing-job");
+    EXPECT_EQ(textValue(namedValue(envelope, "state")), "error");
+    auto error = namedValue(envelope, "error");
+    ASSERT_TRUE(error);
+    EXPECT_EQ(textValue(namedValue(error, "code")), "unknown_job");
 }
 
 TEST(InternWorkerTest, InternRunReportsMissingProgramAsStructuredError) {

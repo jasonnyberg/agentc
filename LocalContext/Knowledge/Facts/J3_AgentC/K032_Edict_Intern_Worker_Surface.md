@@ -7,18 +7,25 @@
 **Last Referenced**: 2026-05-16
 
 ## Overview
-🔗[G091 — Intern Worker Concurrency MVP](../../Goals/G091-InternWorkerConcurrencyMvp/index.md) landed the first deterministic intern-worker substrate in raw Edict: `intern_run!`.
+🔗[G091 — Intern Worker Concurrency MVP](../../Goals/G091-InternWorkerConcurrencyMvp/index.md) landed the first deterministic intern-worker substrate in raw Edict: `intern_run!`. It now also has the first broker-compatible async surface: `intern_start!` / `intern_sync!`.
 
 The purpose is to prove the safe coordinator/worker boundary before introducing live local-model interns or a larger scheduler.
 
 ## Coordinator Contract
-The coordinator VM owns mutable root state. It dispatches a bounded worker task by pushing a task envelope and evaluating `intern_run!`:
+The coordinator VM owns mutable root state. It can dispatch a bounded worker task synchronously by pushing a task envelope and evaluating `intern_run!`:
 
 ```edict
 worker_task intern_run! @worker_result
 ```
 
-`intern_run!` returns a structured envelope; the coordinator decides whether and how to merge `worker_result.result` into its own state.
+`intern_run!` returns a structured envelope; the coordinator decides whether and how to merge `worker_result.result` into its own state. For async dispatch, use:
+
+```edict
+worker_task intern_start! @job
+job.job_id intern_sync! @status
+```
+
+`intern_start!` returns a job handle with `job_id`, `state: "started"`, a broker-shaped `waitable`, and reserved `publication: null`. `intern_sync!` returns `state: "running"` until the worker completes, then returns the same structured final result shape as `intern_run!` plus `job_id`, `waitable`, and broker descriptor `events`.
 
 ## Task Envelope
 | Field | Required | Meaning |
@@ -71,10 +78,10 @@ The worker runs in a fresh `EdictVM` with these root fields:
 - structured result collection into coordinator-owned root state
 - structured error result when the task envelope is invalid
 
-Latest focused validation: `./build/edict/edict_tests --gtest_filter='InternWorkerTest.*'` passed 2/2 on 2026-05-14.
+Latest focused validation: `./build/edict/edict_tests --gtest_filter='InternWorkerTest.*'` passed 4/4 on 2026-05-16, including async `intern_start!` / `intern_sync!` and unknown-job coverage.
 
-## Primary Async Path
-The primary implementation path after the synchronous `intern_run!` slice should now be broker-compatible with 🔗[G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design](../../Goals/G110-EventfdEpollMicroVmIpcDesign/index.md). The LLM streaming/ghost-queue mechanics remain useful as an in-process reference, but the durable abstraction should be a logical job waitable/mailbox:
+## Async Path
+The async path is broker-compatible with 🔗[G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design](../../Goals/G110-EventfdEpollMicroVmIpcDesign/index.md). The LLM streaming/ghost-queue mechanics remain useful as an in-process reference, but the durable abstraction is now a logical job waitable/mailbox:
 
 ```edict
 task intern_start! @job
@@ -82,21 +89,21 @@ task intern_start! @job
 job.job_id intern_sync! @status
 ```
 
-Target behavior:
+Implemented behavior:
 - `intern_start!` freezes/snapshots the task boundary, creates a job id/waitable descriptor, launches a detached/background worker, and returns immediately.
-- The background worker owns blocking Edict worker execution and publishes events/final result JSON or future publication handles into a broker-compatible result slot/mailbox.
-- `intern_sync!` runs on the coordinator thread, drains events, observes completion/error, parses final JSON into coordinator-owned Listree state, and removes completed jobs.
+- The background worker owns blocking Edict worker execution and publishes final `Complete`/`Error` descriptors through a G110 `Root1ResourceBroker` participant mailbox.
+- `intern_sync!` runs on the coordinator thread, drains events, observes completion/error, parses final JSON into coordinator-owned Listree state, removes completed jobs, and returns a final structured envelope.
 - `intern_run!` remains blocking convenience over the same worker helper.
 
-Preferred implementation approach:
-1. Build on G110's first Root1 broker prototype (`ResourceKey`, participant eventfds, mailbox descriptors, bounded ring, file-backed `CoordinationSlab`, mapped resource state words, fd reconstruction, grant/cancel/backpressure/owner-death events) to define logical job waitable ids, event kinds, ownership/error states, backpressure/cancel states, and future publication handles before committing to the async backend.
-2. If quick implementation is needed, create an Edict-local `InternJobManager` modeled on `StreamManager`, but keep its IDs/envelopes compatible with the future Root1 broker.
-3. Do not couple raw `libedict` directly to the full `cpp-agent` runtime/provider stack.
+Implementation approach:
+1. Uses an Edict-local `InternJobManager` rather than coupling raw `libedict` to the full `cpp-agent` runtime/provider stack.
+2. Job handles and final envelopes expose broker-compatible `waitable.kind = "root1-broker"`, `job_id`, `events`, and reserved `publication` fields.
+3. G110's mapped coordination slabs and pidfd owner-death descriptors remain available for later process-isolated workers.
 
 Longer-term memory substrate: 🔗[Layered mmap Micro-VM Architecture](../../Concepts/LayeredMmapMicroVmArchitecture/index.md) records the proposed static read-only core/import slabs, private per-VM overlays, Root1-brokered mutable coordination/mailbox slabs, optional published communication slabs, eventfd/epoll waitables, and process-isolated micro-VM cores.
 
 ## Current Limits
-- `intern_run!` is synchronous spawn-and-join; broker-compatible async `intern_start!` / `intern_sync!` are the primary next implementation path.
+- `intern_start!` / `intern_sync!` are implemented, but cancellation/backpressure policy, explicit worker arena lifecycle cleanup, and process-isolated workers remain future work.
 - Shared context mutation safety needs 🔗[G109 — Listree ReadOnly Mutation Surface Hardening](../../Goals/G109-ListreeReadOnlyMutationSurfaceHardening/index.md) before untrusted/parallel workers are trusted with read-only context.
 - Live local-model intern execution remains out of scope.
 - Re-entrancy metadata for imported native functions is future 🔗[G092 — Cartographer FFI Re-entrancy Metadata](../../Goals/G092-CartographerFfiReentrancyMetadata/index.md).

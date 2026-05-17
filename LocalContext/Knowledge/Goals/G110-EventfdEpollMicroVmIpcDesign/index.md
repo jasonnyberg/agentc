@@ -201,7 +201,7 @@ On resume, Root1 recreates eventfds, rebuilds the epoll set, rescans mailbox/res
 - [x] Prototype a tiny Linux C++ broker smoke test outside VM dispatch: two participants contend for one logical resource and Root1 wakes waiters in order.
 - [x] Add a descriptor-drain test for participant mailbox events through eventfd/epoll.
 - [x] Extend the prototype to a bounded mmap-compatible mailbox ring.
-- [ ] Decide whether G091 async interns adopt the broker immediately or land a minimal broker-compatible in-process backend first.
+- [x] Decide whether G091 async interns adopt the broker immediately or land a minimal broker-compatible in-process backend first: implemented Edict-local `InternJobManager` backed by G110 broker descriptors and waitable-shaped envelopes.
 - [ ] Define how future Edict `await!` parks/resumes VM continuations through Root1 waitables.
 
 ## Acceptance Criteria
@@ -210,7 +210,7 @@ On resume, Root1 recreates eventfds, rebuilds the epoll set, rescans mailbox/res
 - [x] The design has a concrete `ResourceKey`, resource state, participant, and grant-token model.
 - [x] The design clearly separates persistent slab metadata from process-local/kernel fd state.
 - [x] The design explains fast-path atomic acquire/release and slow-path Root1 parking/wakeup, including lost-wake prevention.
-- [ ] The design covers mailbox IPC, async intern jobs, future `await!`, cancellation/backpressure, and owner-death recovery. Cancellation/backpressure and first pidfd owner-death descriptors are prototyped; async intern/await integration and abandoned-resource recovery policy remain.
+- [ ] The design covers mailbox IPC, async intern jobs, future `await!`, cancellation/backpressure, and owner-death recovery. Mailbox IPC, first async intern jobs, cancellation/backpressure descriptors, and first pidfd owner-death descriptors are prototyped; future `await!` and abandoned-resource recovery policy remain.
 - [x] A minimal Linux prototype demonstrates eventfd wakeup, epoll dispatch, contended resource grant, bounded mailbox ring behavior, and mailbox descriptor drain.
 
 ## First Prototype Slices — 2026-05-16
@@ -232,6 +232,7 @@ Prototype capabilities:
 - `reconstructParticipantsFromSlab(...)` and `reconstructParticipantFromSlab(...)` rebuild process-local eventfds/epoll registrations from mapped participant slots after remap/resume and can notify participants with pending mailbox descriptors.
 - `sendCancellation(...)` and `sendBackpressure(...)` add first broker-level cancellation/backpressure descriptor states.
 - `attachParticipantPid(...)` adds first pidfd-based owner-death monitoring; process exit is reported as an `OwnerDied` mailbox descriptor.
+- G091 async interns now use an Edict-local `InternJobManager` backed by G110 `Root1ResourceBroker` descriptors and waitable-shaped job envelopes.
 - Mailbox path: `sendMailboxMessage(...)`, `sendMailboxDescriptor(...)`, `sendCancellation(...)`, `sendBackpressure(...)`, pidfd `OwnerDied` reports, `pollReadyParticipants(...)`, `drainMailbox(...)`, and `drainMailboxDescriptors(...)` demonstrate descriptor delivery through eventfd/epoll.
 
 Prototype limits:
@@ -252,7 +253,7 @@ Validation:
 
 ## Integration With Existing Goals
 
-- 🔗[G091](../G091-InternWorkerConcurrencyMvp/index.md): G110 should move ahead of or tightly precede the next async intern backend decision. `intern_start!` / `intern_sync!` should either use the broker directly or remain explicitly broker-compatible.
+- 🔗[G091](../G091-InternWorkerConcurrencyMvp/index.md): the first async intern backend now uses an Edict-local `InternJobManager` with G110 broker-compatible waitables/descriptors; future process workers can move this onto mapped coordination slabs without changing the high-level envelope shape.
 - 🔗[G109](../G109-ListreeReadOnlyMutationSurfaceHardening/index.md): logical read-only safety remains necessary for shared context/imports; the broker handles mutable coordination resources, not arbitrary frozen-tree mutation.
 - 🔗[G099](../G099-InternTaskQualityContracts/index.md): task/result contracts should include event kinds, progress, cancellation, timeout, backpressure, waitable ids, and ownership/error states if the broker path is adopted.
 - 🔗[G105](../G105-ReadOnlyStaticSlabOwnershipModel/index.md): broker-managed mutable coordination slabs must be separate from read-only static/import/result slabs.

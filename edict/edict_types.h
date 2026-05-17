@@ -124,6 +124,8 @@ enum VMOpcode {
     VMOP_TO_JSON,       // Pop data stack top, serialize to JSON string, push result
     VMOP_FROM_JSON,     // Pop JSON string, parse into Listree value, push result
     VMOP_INTERN_RUN,    // Pop intern task envelope, run bounded worker VM, push structured result
+    VMOP_INTERN_START,  // Pop intern task envelope, launch async worker job, push job handle
+    VMOP_INTERN_SYNC,   // Pop async intern job id/handle, push current status or final result
     
     // Number of opcodes (must be last)
     VMOP_COUNT
