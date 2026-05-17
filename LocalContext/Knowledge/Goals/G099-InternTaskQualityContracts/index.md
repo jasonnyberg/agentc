@@ -23,7 +23,7 @@ The intern architecture only works if delegated tasks are bounded and checkable.
 - Async-job limits: timeout, max events, max result bytes, expected publication mode, cancellation semantics, waitable id, and broker backpressure behavior.
 
 ## Current Priority — Full-Send Slab Plan
-G099 should follow the broker-shaped async planning in 🔗[G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design](../G110-EventfdEpollMicroVmIpcDesign/index.md) and the async 🔗[G091](../G091-InternWorkerConcurrencyMvp/index.md) `intern_start!` / `intern_sync!` slice. The first contract does not need the full future policy layer; it should minimally bound async workers so the coordinator can reject underspecified jobs before they become background processes or broker waitables.
+G099 should follow the broker-shaped async planning in 🔗[G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design](../G110-EventfdEpollMicroVmIpcDesign/index.md) and the async 🔗[G091](../G091-InternWorkerConcurrencyMvp/index.md) `intern_start!` / `intern_sync!` / `intern_cancel!` slice. The first contract does not need the full future policy layer; it should minimally bound async workers so the coordinator can reject underspecified jobs before they become background processes or broker waitables.
 
 Minimal first schema target:
 
@@ -45,8 +45,9 @@ Minimal first schema target:
   },
   "async": {
     "waitable": null,
-    "event_kinds": ["started", "progress", "complete", "error"],
-    "backpressure": "reject"
+    "event_kinds": ["started", "progress", "complete", "error", "cancelled", "backpressure"],
+    "backpressure": "reject",
+    "cancellation": "cooperative"
   }
 }
 ```

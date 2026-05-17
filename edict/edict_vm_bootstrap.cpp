@@ -230,6 +230,7 @@ void EdictVM::loadCoreBuiltins() {
     addBuiltinThunk(dictVal, "intern_run", VMOP_INTERN_RUN);
     addBuiltinThunk(dictVal, "intern_start", VMOP_INTERN_START);
     addBuiltinThunk(dictVal, "intern_sync", VMOP_INTERN_SYNC);
+    addBuiltinThunk(dictVal, "intern_cancel", VMOP_INTERN_CANCEL);
 }
 
 void EdictVM::installBootstrapImportCapsule() {
@@ -258,6 +259,7 @@ void EdictVM::installBootstrapImportCapsule() {
     addBuiltinThunk(capsule, "intern_run", VMOP_INTERN_RUN);
     addBuiltinThunk(capsule, "intern_start", VMOP_INTERN_START);
     addBuiltinThunk(capsule, "intern_sync", VMOP_INTERN_SYNC);
+    addBuiltinThunk(capsule, "intern_cancel", VMOP_INTERN_CANCEL);
     agentc::addNamedItem(dictVal, "__bootstrap_import", capsule);
 }
 

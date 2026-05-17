@@ -7,7 +7,7 @@
 **Last Referenced**: 2026-05-16
 
 ## Overview
-🔗[G091 — Intern Worker Concurrency MVP](../../Goals/G091-InternWorkerConcurrencyMvp/index.md) landed the first deterministic intern-worker substrate in raw Edict: `intern_run!`. It now also has the first broker-compatible async surface: `intern_start!` / `intern_sync!`.
+🔗[G091 — Intern Worker Concurrency MVP](../../Goals/G091-InternWorkerConcurrencyMvp/index.md) landed the first deterministic intern-worker substrate in raw Edict: `intern_run!`. It now also has the first broker-compatible async surface: `intern_start!` / `intern_sync!` / `intern_cancel!`.
 
 The purpose is to prove the safe coordinator/worker boundary before introducing live local-model interns or a larger scheduler.
 
@@ -23,9 +23,10 @@ worker_task intern_run! @worker_result
 ```edict
 worker_task intern_start! @job
 job.job_id intern_sync! @status
+job.job_id intern_cancel! @cancel_status
 ```
 
-`intern_start!` returns a job handle with `job_id`, `state: "started"`, a broker-shaped `waitable`, and reserved `publication: null`. `intern_sync!` returns `state: "running"` until the worker completes, then returns the same structured final result shape as `intern_run!` plus `job_id`, `waitable`, and broker descriptor `events`.
+`intern_start!` returns a job handle with `job_id`, `state: "started"`, a broker-shaped `waitable`, and reserved `publication: null`. `intern_sync!` returns `state: "running"` or `state: "cancel_requested"` until the worker completes, then returns the same structured final result shape as `intern_run!` plus `job_id`, `waitable`, and broker descriptor `events`. `intern_cancel!` requests cooperative cancellation and final sync reports `state: "cancelled"` without merging the worker result.
 
 ## Task Envelope
 | Field | Required | Meaning |
@@ -35,6 +36,7 @@ job.job_id intern_sync! @status
 | `input` | optional | Private worker input copied through JSON before dispatch. |
 | `context` | optional | Shared context subtree recursively frozen before dispatch. |
 | `imports` | optional | Shared import namespace recursively frozen before dispatch. |
+| `max_active_jobs` | optional | Async backpressure limit. If active jobs are already at this limit, `intern_start!` returns `state: "backpressure"` and does not launch a worker. |
 
 ## Worker Root
 The worker runs in a fresh `EdictVM` with these root fields:
@@ -78,7 +80,7 @@ The worker runs in a fresh `EdictVM` with these root fields:
 - structured result collection into coordinator-owned root state
 - structured error result when the task envelope is invalid
 
-Latest focused validation: `./build/edict/edict_tests --gtest_filter='InternWorkerTest.*'` passed 4/4 on 2026-05-16, including async `intern_start!` / `intern_sync!` and unknown-job coverage.
+Latest focused validation: `./build/edict/edict_tests --gtest_filter='InternWorkerTest.*'` passed 7/7 on 2026-05-16, including async `intern_start!` / `intern_sync!`, `intern_cancel!`, backpressure, and unknown-job coverage.
 
 ## Async Path
 The async path is broker-compatible with 🔗[G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design](../../Goals/G110-EventfdEpollMicroVmIpcDesign/index.md). The LLM streaming/ghost-queue mechanics remain useful as an in-process reference, but the durable abstraction is now a logical job waitable/mailbox:
@@ -87,23 +89,26 @@ The async path is broker-compatible with 🔗[G110 — Root1 eventfd/epoll Resou
 task intern_start! @job
 -- coordinator continues other work
 job.job_id intern_sync! @status
+job.job_id intern_cancel! @cancel_status
 ```
 
 Implemented behavior:
 - `intern_start!` freezes/snapshots the task boundary, creates a job id/waitable descriptor, launches a detached/background worker, and returns immediately.
 - The background worker owns blocking Edict worker execution and publishes final `Complete`/`Error` descriptors through a G110 `Root1ResourceBroker` participant mailbox.
-- `intern_sync!` runs on the coordinator thread, drains events, observes completion/error, parses final JSON into coordinator-owned Listree state, removes completed jobs, and returns a final structured envelope.
+- `intern_sync!` runs on the coordinator thread, drains events, observes completion/error/cancellation, parses final JSON into coordinator-owned Listree state only for non-cancelled success, removes completed jobs, and returns a final structured envelope.
+- `intern_cancel!` marks an active job as cooperatively cancelled, emits a `Cancelled` descriptor, and causes final sync to return `state: "cancelled"`; this first slice does not preemptively kill the detached worker thread.
+- `intern_start!` reports `Backpressure` when `max_active_jobs` is exceeded and does not launch a worker.
 - `intern_run!` remains blocking convenience over the same worker helper.
 
 Implementation approach:
 1. Uses an Edict-local `InternJobManager` rather than coupling raw `libedict` to the full `cpp-agent` runtime/provider stack.
-2. Job handles and final envelopes expose broker-compatible `waitable.kind = "root1-broker"`, `job_id`, `events`, and reserved `publication` fields.
+2. Job handles and final envelopes expose broker-compatible `waitable.kind = "root1-broker"`, `job_id`, `events`, cancellation/backpressure states, and reserved `publication` fields.
 3. G110's mapped coordination slabs and pidfd owner-death descriptors remain available for later process-isolated workers.
 
 Longer-term memory substrate: 🔗[Layered mmap Micro-VM Architecture](../../Concepts/LayeredMmapMicroVmArchitecture/index.md) records the proposed static read-only core/import slabs, private per-VM overlays, Root1-brokered mutable coordination/mailbox slabs, optional published communication slabs, eventfd/epoll waitables, and process-isolated micro-VM cores.
 
 ## Current Limits
-- `intern_start!` / `intern_sync!` are implemented, but cancellation/backpressure policy, explicit worker arena lifecycle cleanup, and process-isolated workers remain future work.
+- `intern_start!` / `intern_sync!` / `intern_cancel!` are implemented, but cancellation is cooperative-only; explicit worker arena lifecycle cleanup and process-isolated workers remain future work.
 - 🔗[G109 — Listree ReadOnly Mutation Surface Hardening](../../Goals/G109-ListreeReadOnlyMutationSurfaceHardening/index.md) is complete for public VM/Cursor paths: recursive shared-context freeze now blocks assignment, path removal, remove-head, list pop, and cleanup-pruning mutation attempts.
 - Live local-model intern execution remains out of scope.
 - Re-entrancy metadata for imported native functions is future 🔗[G092 — Cartographer FFI Re-entrancy Metadata](../../Goals/G092-CartographerFfiReentrancyMetadata/index.md).

@@ -232,14 +232,14 @@ Prototype capabilities:
 - `reconstructParticipantsFromSlab(...)` and `reconstructParticipantFromSlab(...)` rebuild process-local eventfds/epoll registrations from mapped participant slots after remap/resume and can notify participants with pending mailbox descriptors.
 - `sendCancellation(...)` and `sendBackpressure(...)` add first broker-level cancellation/backpressure descriptor states.
 - `attachParticipantPid(...)` adds first pidfd-based owner-death monitoring; process exit is reported as an `OwnerDied` mailbox descriptor.
-- G091 async interns now use an Edict-local `InternJobManager` backed by G110 `Root1ResourceBroker` descriptors and waitable-shaped job envelopes.
+- G091 async interns now use an Edict-local `InternJobManager` backed by G110 `Root1ResourceBroker` descriptors and waitable-shaped job envelopes, including cooperative `Cancelled` and `Backpressure` descriptor policy.
 - Mailbox path: `sendMailboxMessage(...)`, `sendMailboxDescriptor(...)`, `sendCancellation(...)`, `sendBackpressure(...)`, pidfd `OwnerDied` reports, `pollReadyParticipants(...)`, `drainMailbox(...)`, and `drainMailboxDescriptors(...)` demonstrate descriptor delivery through eventfd/epoll.
 
 Prototype limits:
 
 - Broker wait queues remain process-local sidecar maps; only participant mailbox rings and resource state slots have a first mapped layout.
 - First pidfd owner-death reporting exists, but abandoned-resource recovery/release policy is not implemented yet.
-- Cancellation/backpressure descriptor states exist, but no scheduler-level policy consumes them yet.
+- G091 now consumes cancellation/backpressure descriptor states for cooperative `intern_cancel!` and `max_active_jobs` backpressure; broader scheduler-level policy for process workers and future `await!` remains.
 - No Edict opcode/module surface yet.
 - The mailbox ring is SPSC-style and broker-serialized in the current prototype; MPSC/per-producer lanes are still future work.
 
@@ -253,7 +253,7 @@ Validation:
 
 ## Integration With Existing Goals
 
-- 🔗[G091](../G091-InternWorkerConcurrencyMvp/index.md): the first async intern backend now uses an Edict-local `InternJobManager` with G110 broker-compatible waitables/descriptors; future process workers can move this onto mapped coordination slabs without changing the high-level envelope shape.
+- 🔗[G091](../G091-InternWorkerConcurrencyMvp/index.md): the first async intern backend now uses an Edict-local `InternJobManager` with G110 broker-compatible waitables/descriptors, cooperative cancellation, and active-job backpressure; future process workers can move this onto mapped coordination slabs without changing the high-level envelope shape.
 - 🔗[G109](../G109-ListreeReadOnlyMutationSurfaceHardening/index.md): logical read-only safety remains necessary for shared context/imports; the broker handles mutable coordination resources, not arbitrary frozen-tree mutation.
 - 🔗[G099](../G099-InternTaskQualityContracts/index.md): task/result contracts should include event kinds, progress, cancellation, timeout, backpressure, waitable ids, and ownership/error states if the broker path is adopted.
 - 🔗[G105](../G105-ReadOnlyStaticSlabOwnershipModel/index.md): broker-managed mutable coordination slabs must be separate from read-only static/import/result slabs.

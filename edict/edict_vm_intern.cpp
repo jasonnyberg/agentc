@@ -17,6 +17,7 @@
 #include "edict_compiler.h"
 #include "../core/root1_resource_broker.h"
 
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
@@ -56,6 +57,26 @@ std::string stringField(CPtr<agentc::ListreeValue> value,
     return out;
 }
 
+bool sizeField(CPtr<agentc::ListreeValue> value,
+               const std::string& name,
+               size_t& out) {
+    const std::string text = stringField(value, name);
+    if (text.empty()) {
+        return false;
+    }
+    try {
+        size_t parsedChars = 0;
+        const unsigned long long parsed = std::stoull(text, &parsedChars, 10);
+        if (parsedChars != text.size()) {
+            return false;
+        }
+        out = static_cast<size_t>(parsed);
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
 CPtr<agentc::ListreeValue> jsonSnapshot(CPtr<agentc::ListreeValue> value) {
     if (!value) {
         return agentc::createNullValue();
@@ -87,6 +108,8 @@ struct InternWorkerInput {
     CPtr<agentc::ListreeValue> contextSharedReadOnly;
     CPtr<agentc::ListreeValue> importsSharedReadOnly;
     bool allowUnsafeFfiCalls = false;
+    bool hasMaxActiveJobs = false;
+    size_t maxActiveJobs = 0;
 };
 
 struct InternWorkerOutcome {
@@ -210,6 +233,11 @@ bool parseInternTask(CPtr<agentc::ListreeValue> task,
     }
     input.program = stringField(task, "program");
     input.allowUnsafeFfiCalls = allowUnsafeFfiCalls;
+    size_t maxActiveJobs = 0;
+    if (sizeField(task, "max_active_jobs", maxActiveJobs)) {
+        input.hasMaxActiveJobs = true;
+        input.maxActiveJobs = maxActiveJobs;
+    }
 
     if (input.taskId.empty()) {
         input.taskId = "intern-task";
@@ -281,6 +309,37 @@ CPtr<agentc::ListreeValue> descriptorsToList(const std::vector<agentc::root1::Ma
     return list;
 }
 
+bool descriptorsContainKind(const std::vector<agentc::root1::MailboxDescriptor>& descriptors,
+                            agentc::root1::MailboxEventKind kind) {
+    for (const auto& descriptor : descriptors) {
+        if (descriptor.eventKind == kind) {
+            return true;
+        }
+    }
+    return false;
+}
+
+agentc::root1::MailboxDescriptor makeDescriptor(agentc::root1::MailboxEventKind kind,
+                                                uint64_t correlationId,
+                                                const std::string& payload) {
+    agentc::root1::MailboxDescriptor descriptor;
+    descriptor.eventKind = kind;
+    descriptor.correlationId = correlationId;
+    descriptor.sequence = correlationId;
+    if (!payload.empty()) {
+        agentc::root1::setInlinePayload(descriptor, payload);
+    }
+    return descriptor;
+}
+
+CPtr<agentc::ListreeValue> singletonDescriptorList(agentc::root1::MailboxEventKind kind,
+                                                   uint64_t correlationId,
+                                                   const std::string& payload) {
+    std::vector<agentc::root1::MailboxDescriptor> descriptors;
+    descriptors.push_back(makeDescriptor(kind, correlationId, payload));
+    return descriptorsToList(descriptors);
+}
+
 CPtr<agentc::ListreeValue> waitableValue(const std::string& jobId,
                                          agentc::root1::ParticipantId participant) {
     auto waitable = agentc::createNullValue();
@@ -321,6 +380,59 @@ CPtr<agentc::ListreeValue> buildRunningEnvelope(const InternWorkerInput& input,
     return envelope;
 }
 
+CPtr<agentc::ListreeValue> buildCancelRequestedEnvelope(const InternWorkerInput& input,
+                                                       const std::string& jobId,
+                                                       agentc::root1::ParticipantId participant,
+                                                       const std::vector<agentc::root1::MailboxDescriptor>& events) {
+    auto envelope = agentc::createNullValue();
+    agentc::addNamedItem(envelope, "ok", statusList(true));
+    agentc::addNamedItem(envelope, "state", agentc::createStringValue("cancel_requested"));
+    agentc::addNamedItem(envelope, "job_id", agentc::createStringValue(jobId));
+    agentc::addNamedItem(envelope, "task_id", agentc::createStringValue(input.taskId));
+    agentc::addNamedItem(envelope, "worker", agentc::createStringValue("edict-thread-async"));
+    agentc::addNamedItem(envelope, "waitable", waitableValue(jobId, participant));
+    agentc::addNamedItem(envelope, "events", descriptorsToList(events));
+    agentc::addNamedItem(envelope, "complete", statusList(false));
+    agentc::addNamedItem(envelope, "publication", agentc::createNullValue());
+    return envelope;
+}
+
+CPtr<agentc::ListreeValue> buildCancelledFinalEnvelope(const InternWorkerInput& input,
+                                                       const std::string& jobId,
+                                                       agentc::root1::ParticipantId participant,
+                                                       const std::vector<agentc::root1::MailboxDescriptor>& events) {
+    auto envelope = buildInternResult(input,
+        {false, VM_NORMAL, "null", "cancelled", "intern job was cancelled before result collection"});
+    agentc::addNamedItem(envelope, "state", agentc::createStringValue("cancelled"));
+    agentc::addNamedItem(envelope, "job_id", agentc::createStringValue(jobId));
+    agentc::addNamedItem(envelope, "worker", agentc::createStringValue("edict-thread-async"));
+    agentc::addNamedItem(envelope, "waitable", waitableValue(jobId, participant));
+    agentc::addNamedItem(envelope, "events", descriptorsToList(events));
+    return envelope;
+}
+
+CPtr<agentc::ListreeValue> buildBackpressureEnvelope(const InternWorkerInput& input,
+                                                     size_t activeJobs,
+                                                     size_t maxActiveJobs) {
+    auto envelope = agentc::createNullValue();
+    agentc::addNamedItem(envelope, "ok", statusList(false));
+    agentc::addNamedItem(envelope, "state", agentc::createStringValue("backpressure"));
+    agentc::addNamedItem(envelope, "task_id", agentc::createStringValue(input.taskId));
+    agentc::addNamedItem(envelope, "worker", agentc::createStringValue("edict-thread-async"));
+    agentc::addNamedItem(envelope, "job_id", agentc::createNullValue());
+    agentc::addNamedItem(envelope, "waitable", agentc::createNullValue());
+    agentc::addNamedItem(envelope, "publication", agentc::createNullValue());
+    agentc::addNamedItem(envelope, "error", errorObject(
+        "backpressure",
+        "intern job limit reached: active=" + std::to_string(activeJobs) +
+            " max=" + std::to_string(maxActiveJobs)));
+    agentc::addNamedItem(envelope, "events", singletonDescriptorList(
+        agentc::root1::MailboxEventKind::Backpressure,
+        0,
+        "intern job limit reached"));
+    return envelope;
+}
+
 CPtr<agentc::ListreeValue> buildUnknownJobEnvelope(const std::string& jobId) {
     InternWorkerInput input;
     input.taskId = jobId;
@@ -351,11 +463,20 @@ struct AsyncInternJob {
     agentc::root1::ParticipantId participant = 0;
     InternWorkerInput input;
     std::shared_ptr<InternJoinSlot> slot;
+    std::atomic<bool> cancelRequested{false};
 };
 
 class InternJobManager {
 public:
     CPtr<agentc::ListreeValue> start(InternWorkerInput input) {
+        const size_t maxActiveJobs = input.hasMaxActiveJobs ? input.maxActiveJobs : defaultMaxActiveJobs_;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (jobs_.size() >= maxActiveJobs) {
+                return buildBackpressureEnvelope(input, jobs_.size(), maxActiveJobs);
+            }
+        }
+
         auto job = std::make_shared<AsyncInternJob>();
         job->numericId = nextJobId_++;
         job->jobId = "intern-job-" + std::to_string(job->numericId);
@@ -371,17 +492,40 @@ public:
         std::thread([this, job]() {
             runInternWorker(job->input, *job->slot);
             const auto outcome = job->slot->load();
-            agentc::root1::MailboxDescriptor descriptor;
-            descriptor.eventKind = outcome.ok
-                ? agentc::root1::MailboxEventKind::Complete
-                : agentc::root1::MailboxEventKind::Error;
-            descriptor.correlationId = job->numericId;
-            descriptor.sequence = job->numericId;
-            agentc::root1::setInlinePayload(descriptor, outcome.ok ? "complete" : "error");
+            auto descriptor = makeDescriptor(
+                outcome.ok
+                    ? agentc::root1::MailboxEventKind::Complete
+                    : agentc::root1::MailboxEventKind::Error,
+                job->numericId,
+                outcome.ok ? "complete" : "error");
             broker_.sendMailboxDescriptor(job->participant, descriptor);
         }).detach();
 
         return buildStartEnvelope(job->input, job->jobId, job->participant);
+    }
+
+    CPtr<agentc::ListreeValue> cancel(const std::string& jobId) {
+        std::shared_ptr<AsyncInternJob> job;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            auto it = jobs_.find(jobId);
+            if (it == jobs_.end()) {
+                return buildUnknownJobEnvelope(jobId);
+            }
+            job = it->second;
+        }
+
+        const bool firstRequest = !job->cancelRequested.exchange(true);
+        if (firstRequest) {
+            broker_.sendCancellation(job->participant,
+                                     job->numericId,
+                                     "intern job cancellation requested");
+        }
+        std::vector<agentc::root1::MailboxDescriptor> events;
+        events.push_back(makeDescriptor(agentc::root1::MailboxEventKind::Cancelled,
+                                        job->numericId,
+                                        "intern job cancellation requested"));
+        return buildCancelRequestedEnvelope(job->input, job->jobId, job->participant, events);
     }
 
     CPtr<agentc::ListreeValue> sync(const std::string& jobId) {
@@ -398,27 +542,41 @@ public:
         broker_.pollReadyParticipants(0);
         auto events = broker_.drainMailboxDescriptors(job->participant);
         const bool ready = job->slot->ready();
+        const bool cancelRequested = job->cancelRequested.load();
+        if (cancelRequested && !ready) {
+            return buildCancelRequestedEnvelope(job->input, job->jobId, job->participant, events);
+        }
         if (!ready) {
             return buildRunningEnvelope(job->input, job->jobId, job->participant, events);
         }
 
         const auto outcome = job->slot->load();
         if (events.empty()) {
-            agentc::root1::MailboxDescriptor descriptor;
-            descriptor.eventKind = outcome.ok
-                ? agentc::root1::MailboxEventKind::Complete
-                : agentc::root1::MailboxEventKind::Error;
-            descriptor.correlationId = job->numericId;
-            descriptor.sequence = job->numericId;
-            agentc::root1::setInlinePayload(descriptor, outcome.ok ? "complete" : "error");
-            events.push_back(descriptor);
+            events.push_back(makeDescriptor(
+                cancelRequested
+                    ? agentc::root1::MailboxEventKind::Cancelled
+                    : (outcome.ok
+                        ? agentc::root1::MailboxEventKind::Complete
+                        : agentc::root1::MailboxEventKind::Error),
+                job->numericId,
+                cancelRequested ? "intern job cancellation requested" : (outcome.ok ? "complete" : "error")));
+        }
+        if (cancelRequested && !descriptorsContainKind(events, agentc::root1::MailboxEventKind::Cancelled)) {
+            events.push_back(makeDescriptor(agentc::root1::MailboxEventKind::Cancelled,
+                                            job->numericId,
+                                            "intern job cancellation requested"));
         }
 
-        auto envelope = buildInternResult(job->input, outcome);
-        agentc::addNamedItem(envelope, "job_id", agentc::createStringValue(job->jobId));
-        agentc::addNamedItem(envelope, "worker", agentc::createStringValue("edict-thread-async"));
-        agentc::addNamedItem(envelope, "waitable", waitableValue(job->jobId, job->participant));
-        agentc::addNamedItem(envelope, "events", descriptorsToList(events));
+        CPtr<agentc::ListreeValue> envelope;
+        if (cancelRequested) {
+            envelope = buildCancelledFinalEnvelope(job->input, job->jobId, job->participant, events);
+        } else {
+            envelope = buildInternResult(job->input, outcome);
+            agentc::addNamedItem(envelope, "job_id", agentc::createStringValue(job->jobId));
+            agentc::addNamedItem(envelope, "worker", agentc::createStringValue("edict-thread-async"));
+            agentc::addNamedItem(envelope, "waitable", waitableValue(job->jobId, job->participant));
+            agentc::addNamedItem(envelope, "events", descriptorsToList(events));
+        }
 
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -431,6 +589,7 @@ private:
     std::mutex mutex_;
     agentc::root1::Root1ResourceBroker broker_;
     uint64_t nextJobId_ = 1;
+    size_t defaultMaxActiveJobs_ = 64;
     std::unordered_map<std::string, std::shared_ptr<AsyncInternJob>> jobs_;
 };
 
@@ -482,6 +641,16 @@ void EdictVM::op_INTERN_SYNC() {
         return;
     }
     pushData(internJobManager().sync(jobId));
+}
+
+void EdictVM::op_INTERN_CANCEL() {
+    auto value = popData();
+    const std::string jobId = jobIdFromValue(value);
+    if (jobId.empty()) {
+        pushData(buildUnknownJobEnvelope(""));
+        return;
+    }
+    pushData(internJobManager().cancel(jobId));
 }
 
 } // namespace agentc::edict

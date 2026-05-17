@@ -30,6 +30,7 @@ The intern model is the clearest application-level payoff for AgentC's substrate
 - [x] Copy/merge the result Listree into the coordinator slab on the coordinator/main thread.
 - [x] Add async intern jobs as the primary next path, shaped by the G110 Root1 resource-broker/waitable model; LLM streaming/ghost-queue mechanics remain a fallback/reference for the in-process queue.
 - [x] Add `intern_start!` / `intern_sync!` while keeping `intern_run!` as blocking convenience over the same worker helper.
+- [x] Add broker-compatible async cancellation/backpressure policy and regression coverage.
 - [ ] Harden explicit private slab/arena cleanup for the later multi-worker scheduler; the first slice uses normal `CPtr`/VM lifetime cleanup and JSON result copying.
 
 ## Acceptance Criteria
@@ -40,22 +41,24 @@ The intern model is the clearest application-level payoff for AgentC's substrate
 - [x] Documentation captures the safe intern-task rule: bounded task, explicit inputs, clear success criteria.
 
 ## Current Status — 2026-05-16
-G091 is active. The first deterministic substrate slice is implemented as the `intern_run!` builtin, and the first broker-compatible async slice is now implemented as `intern_start!` / `intern_sync!`:
+G091 is active. The first deterministic substrate slice is implemented as the `intern_run!` builtin, and the broker-compatible async slice now includes `intern_start!` / `intern_sync!` / `intern_cancel!`:
 
 - The coordinator pushes a task envelope with `task_id`/`id`, required `program`, optional `input`, `context`, and `imports`.
 - `intern_run!` recursively freezes `context` and `imports`, snapshots `input` through JSON, launches a fresh worker `EdictVM` on a native thread with private `workspace`, joins the worker, and returns a structured result envelope.
 - Worker output is serialized to JSON in the worker and parsed back into a coordinator-owned `ListreeValue` after join, so coordinator state is merged only on the coordinator thread.
-- `edict/tests/intern_worker_test.cpp` proves deterministic worker execution, structured result collection, refused mutation of shared read-only context, private input snapshot behavior, and structured invalid-envelope errors.
+- `edict/tests/intern_worker_test.cpp` proves deterministic worker execution, structured result collection, refused assignment/removal mutation of shared read-only context, private input snapshot behavior, async cancellation/backpressure envelopes, and structured invalid-envelope errors.
 - Documentation now captures the safe intern-task rule in the README, Edict language reference, LLM guide, and 🔗[K032 — Edict Intern Worker Surface](../../Facts/J3_AgentC/K032_Edict_Intern_Worker_Surface.md).
 
 First async slice details:
 
 - `intern_start!` parses the same task envelope, freezes/snapshots the boundary, creates a broker-compatible job id/waitable, launches a detached worker thread, and returns a handle with `state: "started"` plus a `waitable` object.
 - The current backend uses an Edict-local `InternJobManager` and the G110 `Root1ResourceBroker` descriptor model. Worker completion publishes a `Complete`/`Error` mailbox descriptor and reserves `publication: null` for future slab results.
-- `intern_sync!` accepts a job id string or handle object, drains broker descriptors on the coordinator thread, returns `state: "running"` while incomplete, and returns the final structured result copied through JSON once ready.
+- `intern_sync!` accepts a job id string or handle object, drains broker descriptors on the coordinator thread, returns `state: "running"` or `state: "cancel_requested"` while incomplete, and returns the final structured result copied through JSON once ready.
+- `intern_cancel!` requests cooperative cancellation, emits a `Cancelled` descriptor, and causes final sync to return `state: "cancelled"` without merging the worker result. It does not preemptively kill the current detached thread.
+- `intern_start!` supports task `max_active_jobs`; when the active-job count is at the limit it returns `state: "backpressure"`, `error.code: "backpressure"`, and a `Backpressure` descriptor without launching a worker.
 - `intern_run!` remains blocking convenience over the same deterministic worker helper.
 
-Remaining G091 hardening before closure: decide whether explicit worker arena/slab lifecycle cleanup is required, add cancellation/backpressure policy on top of the descriptor surface, and then promote 🔗[G099 — Intern Task Quality Contracts](../G099-InternTaskQualityContracts/index.md).
+Remaining G091 hardening before closure: decide whether explicit worker arena/slab lifecycle cleanup is required, then promote 🔗[G099 — Intern Task Quality Contracts](../G099-InternTaskQualityContracts/index.md) with the now-concrete event/backpressure/cancel fields.
 
 ## Implemented Path — Async Intern Jobs
 The G091 async slice is shaped by 🔗[G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design](../G110-EventfdEpollMicroVmIpcDesign/index.md). The earlier ghost-queue mechanics remain a useful implementation reference and fallback, but the implemented abstraction is a broker-compatible waitable job/mailbox:
@@ -74,11 +77,12 @@ Edict surface:
 task intern_start! @job
 -- coordinator may keep working here
 job.job_id intern_sync! @status
+job.job_id intern_cancel! @cancel_status
 ```
 
 Implementation choice:
 - Added an Edict-local `InternJobManager` modeled on the intended G110 broker shape instead of coupling raw `libedict` to the full cpp-agent runtime/provider stack.
-- Job handles expose broker-compatible `waitable.kind = "root1-broker"`, job ids, worker identity, events, and reserved `publication` fields.
+- Job handles expose broker-compatible `waitable.kind = "root1-broker"`, job ids, worker identity, events, cancel/backpressure states, and reserved `publication` fields.
 - Later cleanup may still extract shared queue/result mechanics, but only if it preserves the Root1 broker abstraction.
 
 `intern_run!` should remain as blocking sugar over the same worker helper so existing tests and script examples continue to work.
@@ -91,9 +95,9 @@ Related architecture concept: 🔗[Layered mmap Micro-VM Architecture](../../Con
 
 ## Validation — 2026-05-16
 - `cmake --build build --target edict_tests -j2` — passed.
-- `./build/edict/edict_tests --gtest_filter='InternWorkerTest.*'` — passed 4/4 including async start/sync, unknown-job coverage, and shared-context assignment/removal refusal.
+- `./build/edict/edict_tests --gtest_filter='InternWorkerTest.*'` — passed 7/7 including async start/sync, cancellation, backpressure, unknown-job coverage, and shared-context assignment/removal refusal.
 - Raw CLI smoke with a multi-line task envelope and `intern_run! to_json! print` returned an `ok` envelope with result `{"observed":"alpha"}`.
-- Focused Edict regression slice including `FreezeBuiltin.*`, `InternWorkerTest.*`, `EdictVM.*`, `VMStackTest.*`, `SimpleAssignTest.*`, `RegressionMatrixTest.*`, and `PiSimulationTest.MiniKanrenLogicExample` passed 50/50 after G109.
+- Focused Edict regression slice including `FreezeBuiltin.*`, `InternWorkerTest.*`, `EdictVM.*`, `VMStackTest.*`, `SimpleAssignTest.*`, `RegressionMatrixTest.*`, and `PiSimulationTest.MiniKanrenLogicExample` passed 53/53 after adding `intern_cancel!` and backpressure coverage.
 - `cmake --build build --target cpp_agent_tests -j2` — passed.
 - Session persistence guard checks after adding `intern_run` as a volatile startup builtin passed: `EdictSessionCliTest.*` 2/2 and `SessionStateStoreTest.*` 14/14.
 

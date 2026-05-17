@@ -72,6 +72,22 @@ size_t listCount(CPtr<ListreeValue> value) {
     return count;
 }
 
+bool eventListContainsKind(CPtr<ListreeValue> events, const std::string& kind) {
+    if (!events || !events->isListMode()) {
+        return false;
+    }
+    bool found = false;
+    events->forEachList([&](CPtr<agentc::ListreeValueRef>& ref) {
+        if (found || !ref || !ref->getValue()) {
+            return;
+        }
+        if (textValue(namedValue(ref->getValue(), "kind")) == kind) {
+            found = true;
+        }
+    });
+    return found;
+}
+
 } // namespace
 
 TEST(InternWorkerTest, InternRunDispatchesWorkerAndCollectsStructuredResult) {
@@ -193,12 +209,103 @@ TEST(InternWorkerTest, InternStartAndSyncCollectsStructuredResultAsynchronously)
     EXPECT_GE(listCount(events), 1u);
 }
 
+TEST(InternWorkerTest, InternStartReportsBackpressureWhenActiveLimitIsReached) {
+    EdictVM vm;
+    EdictCompiler compiler;
+
+    auto task = agentc::createNullValue();
+    agentc::addNamedItem(task, "task_id", agentc::createStringValue("backpressure-demo"));
+    agentc::addNamedItem(task, "program", agentc::createStringValue("'unused @result.value"));
+    agentc::addNamedItem(task, "max_active_jobs", agentc::createStringValue("0"));
+
+    vm.pushData(task);
+    const int state = vm.execute(compiler.compile("intern_start!"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+
+    auto envelope = vm.popData();
+    ASSERT_TRUE(envelope);
+    EXPECT_TRUE(listStrings(namedValue(envelope, "ok")).empty());
+    EXPECT_EQ(textValue(namedValue(envelope, "state")), "backpressure");
+    auto error = namedValue(envelope, "error");
+    ASSERT_TRUE(error);
+    EXPECT_EQ(textValue(namedValue(error, "code")), "backpressure");
+    EXPECT_TRUE(eventListContainsKind(namedValue(envelope, "events"), "backpressure"));
+}
+
+TEST(InternWorkerTest, InternCancelRequestsCancellationAndFinalSyncReportsCancelled) {
+    auto coordinatorRoot = agentc::createNullValue();
+    EdictVM vm(coordinatorRoot);
+    EdictCompiler compiler;
+
+    auto task = agentc::createNullValue();
+    agentc::addNamedItem(task, "task_id", agentc::createStringValue("cancel-demo"));
+    agentc::addNamedItem(task, "program", agentc::createStringValue("'should-not-merge @result.value"));
+
+    vm.pushData(task);
+    int state = vm.execute(compiler.compile("intern_start! @job"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+
+    auto job = namedValue(coordinatorRoot, "job");
+    ASSERT_TRUE(job);
+    const std::string jobId = textValue(namedValue(job, "job_id"));
+    ASSERT_FALSE(jobId.empty());
+
+    vm.pushData(agentc::createStringValue(jobId));
+    state = vm.execute(compiler.compile("intern_cancel! @cancel_status"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    auto cancelStatus = namedValue(coordinatorRoot, "cancel_status");
+    ASSERT_TRUE(cancelStatus);
+    EXPECT_EQ(textValue(namedValue(cancelStatus, "state")), "cancel_requested");
+    EXPECT_EQ(listStrings(namedValue(cancelStatus, "ok")), std::vector<std::string>({"ok"}));
+    EXPECT_TRUE(eventListContainsKind(namedValue(cancelStatus, "events"), "cancelled"));
+
+    CPtr<ListreeValue> status;
+    for (int i = 0; i < 100; ++i) {
+        vm.pushData(agentc::createStringValue(jobId));
+        state = vm.execute(compiler.compile("intern_sync! @status"));
+        ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+        status = namedValue(coordinatorRoot, "status");
+        ASSERT_TRUE(status);
+        if (textValue(namedValue(status, "state")) == "cancelled") {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+
+    ASSERT_TRUE(status);
+    EXPECT_EQ(textValue(namedValue(status, "job_id")), jobId);
+    EXPECT_EQ(textValue(namedValue(status, "state")), "cancelled");
+    EXPECT_TRUE(listStrings(namedValue(status, "ok")).empty());
+    auto error = namedValue(status, "error");
+    ASSERT_TRUE(error);
+    EXPECT_EQ(textValue(namedValue(error, "code")), "cancelled");
+    EXPECT_TRUE(eventListContainsKind(namedValue(status, "events"), "cancelled"));
+}
+
 TEST(InternWorkerTest, InternSyncReportsUnknownJobAsStructuredError) {
     EdictVM vm;
     EdictCompiler compiler;
 
     vm.pushData(agentc::createStringValue("missing-job"));
     const int state = vm.execute(compiler.compile("intern_sync!"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+
+    auto envelope = vm.popData();
+    ASSERT_TRUE(envelope);
+    EXPECT_TRUE(listStrings(namedValue(envelope, "ok")).empty());
+    EXPECT_EQ(textValue(namedValue(envelope, "job_id")), "missing-job");
+    EXPECT_EQ(textValue(namedValue(envelope, "state")), "error");
+    auto error = namedValue(envelope, "error");
+    ASSERT_TRUE(error);
+    EXPECT_EQ(textValue(namedValue(error, "code")), "unknown_job");
+}
+
+TEST(InternWorkerTest, InternCancelReportsUnknownJobAsStructuredError) {
+    EdictVM vm;
+    EdictCompiler compiler;
+
+    vm.pushData(agentc::createStringValue("missing-job"));
+    const int state = vm.execute(compiler.compile("intern_cancel!"));
     ASSERT_FALSE(state & VM_ERROR) << vm.getError();
 
     auto envelope = vm.popData();
