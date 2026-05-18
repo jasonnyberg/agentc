@@ -326,6 +326,32 @@ CPtr<agentc::ListreeValue> buildCapacityOkEnvelope(const InternWorkerInput& inpu
     return envelope;
 }
 
+CPtr<agentc::ListreeValue> buildCapacityStatusEnvelope(const InternWorkerInput& input,
+                                                       size_t activeJobs) {
+    const bool allowed = !input.hasMaxActiveJobs || activeJobs < input.maxActiveJobs;
+    auto envelope = agentc::createNullValue();
+    agentc::addNamedItem(envelope, "ok", statusList(true));
+    agentc::addNamedItem(envelope, "state", agentc::createStringValue("capacity"));
+    agentc::addNamedItem(envelope, "task_id", agentc::createStringValue(input.taskId));
+    agentc::addNamedItem(envelope, "worker", agentc::createStringValue("edict-thread-async"));
+    agentc::addNamedItem(envelope, "active_jobs", agentc::createStringValue(std::to_string(activeJobs)));
+    if (input.hasMaxActiveJobs) {
+        agentc::addNamedItem(envelope, "max_active_jobs", agentc::createStringValue(std::to_string(input.maxActiveJobs)));
+    } else {
+        agentc::addNamedItem(envelope, "max_active_jobs", agentc::createNullValue());
+    }
+    agentc::addNamedItem(envelope, "allowed", statusList(allowed));
+    agentc::addNamedItem(envelope, "message", agentc::createStringValue(
+        allowed
+            ? "intern job capacity available"
+            : "intern job limit reached: active=" + std::to_string(activeJobs) +
+                  " max=" + std::to_string(input.maxActiveJobs)));
+    agentc::addNamedItem(envelope, "error", agentc::createNullValue());
+    agentc::addNamedItem(envelope, "events", agentc::createListValue());
+    agentc::addNamedItem(envelope, "publication", agentc::createNullValue());
+    return envelope;
+}
+
 std::string descriptorEventName(agentc::root1::MailboxEventKind kind) {
     using agentc::root1::MailboxEventKind;
     switch (kind) {
@@ -791,6 +817,21 @@ CPtr<agentc::ListreeValue> checkCapacity(CPtr<agentc::ListreeValue> taskOrSpec,
     return buildCapacityOkEnvelope(input, activeJobs);
 }
 
+CPtr<agentc::ListreeValue> capacityStatus(CPtr<agentc::ListreeValue> taskOrSpec,
+                                          bool allowUnsafeFfiCalls) {
+    if (hasExplicitFalseOk(taskOrSpec)) {
+        return taskOrSpec;
+    }
+
+    InternWorkerInput input;
+    CPtr<agentc::ListreeValue> errorEnvelope;
+    if (!parseInternTask(taskOrSpec, allowUnsafeFfiCalls, "intern_capacity_status", input, errorEnvelope)) {
+        return errorEnvelope;
+    }
+
+    return buildCapacityStatusEnvelope(input, internJobManager().activeCount());
+}
+
 CPtr<agentc::ListreeValue> runPrepared(CPtr<agentc::ListreeValue> preparedTask,
                                        bool allowUnsafeFfiCalls) {
     if (hasExplicitFalseOk(preparedTask)) {
@@ -960,6 +1001,10 @@ extern "C" ltv agentc_worker_edict_prepare_task_ltv(ltv task) {
 
 extern "C" ltv agentc_worker_edict_check_capacity_ltv(ltv task_or_spec) {
     return release_ltv_value(agentc::edict::intern::checkCapacity(borrow_ltv_value(task_or_spec), false));
+}
+
+extern "C" ltv agentc_worker_edict_capacity_status_ltv(ltv task_or_spec) {
+    return release_ltv_value(agentc::edict::intern::capacityStatus(borrow_ltv_value(task_or_spec), false));
 }
 
 extern "C" ltv agentc_worker_edict_run_ltv(ltv task) {

@@ -218,7 +218,7 @@ TEST(InternWorkerTest, ModuleBackedInternWordsUseImportedWorkerPrimitives) {
     agentc::addNamedItem(prepTask, "context", prepContext);
     agentc::addNamedItem(prepTask, "max_active_jobs", agentc::createStringValue("8"));
     vm.pushData(prepTask);
-    state = vm.execute(compiler.compile("worker.edict_prepare_task! @prepared prepared worker.edict_check_capacity! @prepared_capacity"));
+    state = vm.execute(compiler.compile("worker.edict_prepare_task! @prepared prepared worker.edict_check_capacity! @prepared_capacity prepared worker.edict_capacity_status! @prepared_capacity_status"));
     ASSERT_FALSE(state & VM_ERROR) << vm.getError();
     auto prepared = namedValue(coordinatorRoot, "prepared");
     ASSERT_TRUE(prepared);
@@ -233,6 +233,10 @@ TEST(InternWorkerTest, ModuleBackedInternWordsUseImportedWorkerPrimitives) {
     ASSERT_TRUE(preparedCapacity);
     EXPECT_EQ(textValue(namedValue(preparedCapacity, "state")), "capacity_ok");
     EXPECT_EQ(listStrings(namedValue(preparedCapacity, "ok")), std::vector<std::string>({"ok"}));
+    auto preparedCapacityStatus = namedValue(coordinatorRoot, "prepared_capacity_status");
+    ASSERT_TRUE(preparedCapacityStatus);
+    EXPECT_EQ(textValue(namedValue(preparedCapacityStatus, "state")), "capacity");
+    EXPECT_EQ(listStrings(namedValue(preparedCapacityStatus, "allowed")), std::vector<std::string>({"ok"}));
 
     vm.pushData(prepared);
     state = vm.execute(compiler.compile("worker.edict_run_prepared! @prepared_run_result"));

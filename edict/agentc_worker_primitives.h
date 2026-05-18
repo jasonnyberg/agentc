@@ -33,6 +33,7 @@ typedef unsigned int ltv;
 ltv agentc_worker_edict_active_count_ltv(void);
 ltv agentc_worker_edict_prepare_task_ltv(ltv task);
 ltv agentc_worker_edict_check_capacity_ltv(ltv task_or_spec);
+ltv agentc_worker_edict_capacity_status_ltv(ltv task_or_spec);
 ltv agentc_worker_edict_run_ltv(ltv task);
 ltv agentc_worker_edict_run_prepared_ltv(ltv prepared_task);
 ltv agentc_worker_edict_start_ltv(ltv task);

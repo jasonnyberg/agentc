@@ -24,6 +24,8 @@ CPtr<agentc::ListreeValue> prepareTask(CPtr<agentc::ListreeValue> task,
                                        bool allowUnsafeFfiCalls = false);
 CPtr<agentc::ListreeValue> checkCapacity(CPtr<agentc::ListreeValue> taskOrSpec,
                                          bool allowUnsafeFfiCalls = false);
+CPtr<agentc::ListreeValue> capacityStatus(CPtr<agentc::ListreeValue> taskOrSpec,
+                                          bool allowUnsafeFfiCalls = false);
 CPtr<agentc::ListreeValue> run(CPtr<agentc::ListreeValue> task,
                                bool allowUnsafeFfiCalls = false);
 CPtr<agentc::ListreeValue> runPrepared(CPtr<agentc::ListreeValue> preparedTask,
