@@ -249,6 +249,54 @@
         envelope
 ] @intern.start_envelope
 
+[
+    @task
+    task.program test &
+        task.expect.success_field test &
+            {"ok": ["ok"], "state": "contract_valid", "kind": "intern_task_contract"} @status
+            task.task_id @status.task_id
+            task.limits @status.limits
+            task.expect @status.expect
+            {} @status.error
+            status
+        |
+            {"ok": [], "state": "contract_error", "kind": "intern_task_contract"} @status
+            task.task_id @status.task_id
+            {} @error
+            'missing_success_field @error.code
+            'intern task contract requires expect.success_field @error.message
+            error @status.error
+            status
+    |
+        {"ok": [], "state": "contract_error", "kind": "intern_task_contract"} @status
+        task.task_id @status.task_id
+        {} @error
+        'missing_program @error.code
+        'intern task contract requires a non-empty program @error.message
+        error @status.error
+        status
+] @intern.validate_task_contract
+
+[
+    @envelope
+    envelope.state test &
+        {"ok": ["ok"], "state": "envelope_valid", "kind": "intern_status_envelope"} @status
+        envelope.state @status.envelope_state
+        envelope.job_id @status.job_id
+        envelope.task_id @status.task_id
+        envelope.publication @status.publication
+        {} @status.error
+        status
+    |
+        {"ok": [], "state": "contract_error", "kind": "intern_status_envelope"} @status
+        envelope.task_id @status.task_id
+        {} @error
+        'missing_state @error.code
+        'intern status envelope requires state @error.message
+        error @status.error
+        status
+] @intern.validate_status_envelope
+
 [@task task worker.edict_prepare_task! @spec spec.ok test & spec worker.edict_run_status_prepared! @status status intern.run_envelope! | spec] @intern_run
 [@task task worker.edict_prepare_task! @spec spec.ok test & spec worker.edict_capacity_status! @capacity capacity.ok test & capacity.allowed test & spec worker.edict_start_status_prepared! @status status intern.start_envelope! | spec capacity intern.backpressure_envelope! | capacity | spec] @intern_start
 [@job job worker.edict_drain_events! @events job events worker.edict_collect_status! @status status intern.sync_envelope!] @intern_sync

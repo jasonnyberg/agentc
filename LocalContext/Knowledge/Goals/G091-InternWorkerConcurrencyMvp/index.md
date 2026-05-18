@@ -31,7 +31,8 @@ The intern model is the clearest application-level payoff for AgentC's substrate
 - [x] Add async intern jobs as the primary next path, shaped by the G110 Root1 resource-broker/waitable model; LLM streaming/ghost-queue mechanics remain a fallback/reference for the in-process queue.
 - [x] Add `intern_start!` / `intern_sync!` while keeping `intern_run!` as blocking convenience over the same worker helper.
 - [x] Add broker-compatible async cancellation/backpressure policy and regression coverage.
-- [ ] Harden explicit private slab/arena cleanup for the later multi-worker scheduler; the first slice uses normal `CPtr`/VM lifetime cleanup and JSON result copying.
+- [x] Harden first lifecycle/drop semantics for the current thread-worker backend: active counts now exclude terminal retained jobs, final async statuses are retained for repeated sync until explicit drop or bounded retention sweep, running drops explicitly abandon the handle without killing the detached worker, and cancellation is non-retroactive once a worker is terminal.
+- [ ] Harden explicit private slab/arena cleanup for the later multi-worker scheduler; the current thread-worker slice still uses normal `CPtr`/VM lifetime cleanup and JSON result copying.
 
 ## Acceptance Criteria
 - [x] A checked-in test demonstrates coordinator dispatch to at least one worker VM and structured result collection.
@@ -58,7 +59,7 @@ First async slice details:
 - `intern_start!` supports task `max_active_jobs`; when the active-job count is at the limit it returns `state: "backpressure"`, `error.code: "backpressure"`, and a `Backpressure` descriptor without launching a worker.
 - `intern_run!` remains blocking convenience over the same deterministic worker helper.
 
-Remaining G091 hardening before closure: decide whether explicit worker arena/slab lifecycle cleanup is required and execute/coordinate 🔗[G111 — Root1/Worker Primitive FFI and Edict Intern Surface Migration](../G111-Root1WorkerPrimitiveFfiEdictInternMigration/index.md), which is moving the remaining intern-specific opcode behavior behind importable Root1/worker primitives and plain Edict words. The first G111 slices now provide module-backed intern words and split module-backed `intern_sync!` into lower-level drain/collect composition; deeper task-prep/backpressure/cancellation/envelope policy still needs to move into Edict. Then promote 🔗[G099 — Intern Task Quality Contracts](../G099-InternTaskQualityContracts/index.md) with the now-concrete event/backpressure/cancel fields.
+G111 is complete, so remaining G091 hardening is now lifecycle/resource policy over the module-backed worker surface: deeper private arena/slab cleanup for the later scheduler, clearer abandoned detached-worker accounting, and eventual worker-visible cancellation checkpoints. First lifecycle cleanup landed on 2026-05-18: terminal async jobs are retained for repeated `intern_sync!` until `worker.edict_drop!` or bounded terminal-retention sweep, `worker.edict_active_count!` counts only non-terminal/non-abandoned jobs, dropping a running job returns `state: "abandoned"` and suppresses later mailbox publication, dropping a terminal retained job returns `state: "dropped"`, and cancellation is non-retroactive after terminal completion. Then promote 🔗[G099 — Intern Task Quality Contracts](../G099-InternTaskQualityContracts/index.md) with the now-concrete event/backpressure/cancel fields.
 
 ## Implemented Path — Async Intern Jobs
 The G091 async slice is shaped by 🔗[G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design](../G110-EventfdEpollMicroVmIpcDesign/index.md). The earlier ghost-queue mechanics remain a useful implementation reference and fallback, but the implemented abstraction is a broker-compatible waitable job/mailbox:
@@ -83,6 +84,12 @@ job.job_id intern_cancel! @cancel_status
 Implementation choice:
 - Added an Edict-local `InternJobManager` modeled on the intended G110 broker shape instead of coupling raw `libedict` to the full cpp-agent runtime/provider stack.
 - Job handles expose broker-compatible `waitable.kind = "root1-broker"`, job ids, worker identity, events, cancel/backpressure states, and reserved `publication` fields.
+- Lifecycle policy after the first cleanup slice:
+  - active count means jobs whose worker has not reached terminal state and whose handle has not been abandoned;
+  - terminal jobs are retained so repeated `intern_sync!` returns the same final envelope until explicit `worker.edict_drop!` or bounded terminal-retention sweep;
+  - `worker.edict_drop!` on a terminal job forgets the retained result and returns `state: "dropped"`;
+  - `worker.edict_drop!` on a running job forgets the handle, marks the job `abandoned`, returns `state: "abandoned"`, and lets the detached thread unwind without publishing a now-orphaned completion descriptor;
+  - `intern_cancel!` / `worker.edict_request_cancel!` is cooperative and non-retroactive: if the worker is still running, final collection reports `cancelled`; if the worker is already terminal, cancellation is a no-op and collection returns the terminal complete/error result.
 - Later cleanup may still extract shared queue/result mechanics, but only if it preserves the Root1 broker abstraction.
 
 `intern_run!` should remain as blocking sugar over the same worker helper so existing tests and script examples continue to work.
@@ -93,11 +100,14 @@ Safety hardening discovered after the first slice is now addressed for public VM
 
 Related architecture concept: 🔗[Layered mmap Micro-VM Architecture](../../Concepts/LayeredMmapMicroVmArchitecture/index.md) records the longer-term memory-substrate direction: static read-only core/import slabs, private per-VM overlays, Root1-brokered mutable coordination/mailbox slabs, optional published communication slabs, and process-isolated micro-VM cores for near-zero-copy intern scaling. 🔗[G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design](../G110-EventfdEpollMicroVmIpcDesign/index.md) has defined the logical waitable/mailbox shape used by the first async intern backend. 🔗[G111](../G111-Root1WorkerPrimitiveFfiEdictInternMigration/index.md) now captures the migration path for replacing intern-specific VM opcodes with importable native primitives plus Edict module policy. Do not jump directly to a full allocator rewrite from G091; keep hardening broker-compatible async worker semantics first, then let G103–G110 harden the slab substrate in staged slices.
 
-## Validation — 2026-05-16
+## Validation — 2026-05-18
 - `cmake --build build --target edict_tests -j2` — passed.
-- `./build/edict/edict_tests --gtest_filter='InternWorkerTest.*'` — passed 8/8 including async start/sync, cancellation, backpressure, unknown-job coverage, shared-context assignment/removal refusal, and the first G111 module-backed FFI worker-primitive regression.
+- `./build/edict/edict_tests --gtest_filter='InternWorkerTest.*' --gtest_brief=1` — passed 11/11 including lifecycle retention/drop/abandon/cancellation semantics and first G099 contract validators.
+- `./build/edict/edict_tests --gtest_filter='InternWorkerTest.*:Root1PrimitiveModuleTest.*' --gtest_brief=1` — passed 12/12.
+- Focused Edict regression slice including `FreezeBuiltin.*`, `InternWorkerTest.*`, `Root1PrimitiveModuleTest.*`, `EdictVM.*`, `VMStackTest.*`, `SimpleAssignTest.*`, `RegressionMatrixTest.*`, and `PiSimulationTest.MiniKanrenLogicExample` passed 58/58.
+
+Earlier validation:
 - Raw CLI smoke with a multi-line task envelope and `intern_run! to_json! print` returned an `ok` envelope with result `{"observed":"alpha"}`.
-- Focused Edict regression slice including `FreezeBuiltin.*`, `InternWorkerTest.*`, `EdictVM.*`, `VMStackTest.*`, `SimpleAssignTest.*`, `RegressionMatrixTest.*`, and `PiSimulationTest.MiniKanrenLogicExample` passed 54/54 after adding the first G111 module-backed intern primitive coverage.
 - `cmake --build build --target cpp_agent_tests -j2` — passed.
 - Session persistence guard checks after adding `intern_run` as a volatile startup builtin passed: `EdictSessionCliTest.*` 2/2 and `SessionStateStoreTest.*` 14/14.
 

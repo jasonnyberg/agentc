@@ -328,7 +328,7 @@ TEST(InternWorkerTest, ModuleBackedInternWordsUseImportedWorkerPrimitives) {
     EXPECT_FALSE(namedValue(rawJobStatus, "state"));
     auto rawJob = namedValue(coordinatorRoot, "raw_job");
     ASSERT_TRUE(rawJob);
-    EXPECT_EQ(sizeText(namedValue(coordinatorRoot, "active_mid")), activeBefore + 1);
+    EXPECT_LE(sizeText(namedValue(coordinatorRoot, "active_mid")), activeBefore + 1);
     const std::string rawJobId = textValue(namedValue(rawJob, "job_id"));
     ASSERT_FALSE(rawJobId.empty());
 
@@ -362,7 +362,7 @@ TEST(InternWorkerTest, ModuleBackedInternWordsUseImportedWorkerPrimitives) {
     ASSERT_TRUE(cancelJob);
     const std::string cancelJobId = textValue(namedValue(cancelJob, "job_id"));
     ASSERT_FALSE(cancelJobId.empty());
-    EXPECT_TRUE(eventListContainsKind(namedValue(coordinatorRoot, "cancel_events"), "cancelled"));
+    const bool cancelAccepted = eventListContainsKind(namedValue(coordinatorRoot, "cancel_events"), "cancelled");
 
     CPtr<ListreeValue> cancelledStatus;
     for (int i = 0; i < 100; ++i) {
@@ -371,14 +371,19 @@ TEST(InternWorkerTest, ModuleBackedInternWordsUseImportedWorkerPrimitives) {
         ASSERT_FALSE(state & VM_ERROR) << vm.getError();
         cancelledStatus = namedValue(coordinatorRoot, "cancelled_status");
         ASSERT_TRUE(cancelledStatus);
-        if (textValue(namedValue(cancelledStatus, "state")) == "cancelled") {
+        const std::string stateText = textValue(namedValue(cancelledStatus, "state"));
+        if (stateText == "cancelled" || stateText == "complete") {
             break;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
     ASSERT_TRUE(cancelledStatus);
-    EXPECT_EQ(textValue(namedValue(cancelledStatus, "state")), "cancelled");
-    EXPECT_TRUE(eventListContainsKind(namedValue(cancelledStatus, "events"), "cancelled"));
+    if (cancelAccepted) {
+        EXPECT_EQ(textValue(namedValue(cancelledStatus, "state")), "cancelled");
+        EXPECT_TRUE(eventListContainsKind(namedValue(cancelledStatus, "events"), "cancelled"));
+    } else {
+        EXPECT_EQ(textValue(namedValue(cancelledStatus, "state")), "complete");
+    }
 
     state = vm.execute(compiler.compile("worker.edict_active_count! @drop_active_before"));
     ASSERT_FALSE(state & VM_ERROR) << vm.getError();
@@ -391,13 +396,14 @@ TEST(InternWorkerTest, ModuleBackedInternWordsUseImportedWorkerPrimitives) {
     ASSERT_FALSE(state & VM_ERROR) << vm.getError();
     auto dropJob = namedValue(coordinatorRoot, "drop_job");
     ASSERT_TRUE(dropJob);
-    EXPECT_EQ(sizeText(namedValue(coordinatorRoot, "drop_active_mid")), dropActiveBefore + 1);
+    EXPECT_LE(sizeText(namedValue(coordinatorRoot, "drop_active_mid")), dropActiveBefore + 1);
     const std::string dropJobId = textValue(namedValue(dropJob, "job_id"));
     ASSERT_FALSE(dropJobId.empty());
     vm.pushData(agentc::createStringValue(dropJobId));
     state = vm.execute(compiler.compile("worker.edict_drop! @drop_status worker.edict_active_count! @drop_active_after"));
     ASSERT_FALSE(state & VM_ERROR) << vm.getError();
-    EXPECT_EQ(textValue(namedValue(namedValue(coordinatorRoot, "drop_status"), "state")), "dropped");
+    const std::string dropState = textValue(namedValue(namedValue(coordinatorRoot, "drop_status"), "state"));
+    EXPECT_TRUE(dropState == "abandoned" || dropState == "dropped");
     EXPECT_EQ(sizeText(namedValue(coordinatorRoot, "drop_active_after")), dropActiveBefore);
     vm.pushData(agentc::createStringValue(dropJobId));
     state = vm.execute(compiler.compile("worker.edict_drain_events! @dropped_events drop_job.job_id dropped_events worker.edict_collect_status! @dropped_sync_facts dropped_sync_facts intern.sync_envelope! @dropped_sync"));
@@ -483,6 +489,110 @@ TEST(InternWorkerTest, InternStartAndSyncCollectsStructuredResultAsynchronously)
     EXPECT_GE(listCount(events), 1u);
 }
 
+TEST(InternWorkerTest, InternContractValidatorsCheckTaskAndStatusShape) {
+    auto coordinatorRoot = agentc::createNullValue();
+    EdictVM vm(coordinatorRoot);
+    EdictCompiler compiler;
+    loadModuleBackedIntern(vm, compiler);
+
+    auto validTask = agentc::createNullValue();
+    agentc::addNamedItem(validTask, "task_id", agentc::createStringValue("contract-demo"));
+    agentc::addNamedItem(validTask, "program", agentc::createStringValue("'ok @result.value"));
+    agentc::addNamedItem(validTask, "limits", agentc::fromJson(R"({"timeout_ms":"1000","max_result_bytes":"65536"})"));
+    agentc::addNamedItem(validTask, "expect", agentc::fromJson(R"({"success_field":"ok","result_shape":"object"})"));
+
+    vm.pushData(validTask);
+    int state = vm.execute(compiler.compile("intern.validate_task_contract! @contract_status"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    auto contractStatus = namedValue(coordinatorRoot, "contract_status");
+    ASSERT_TRUE(contractStatus);
+    EXPECT_EQ(textValue(namedValue(contractStatus, "state")), "contract_valid");
+    EXPECT_EQ(listStrings(namedValue(contractStatus, "ok")), std::vector<std::string>({"ok"}));
+    EXPECT_EQ(textValue(namedValue(contractStatus, "task_id")), "contract-demo");
+
+    auto invalidTask = agentc::createNullValue();
+    agentc::addNamedItem(invalidTask, "task_id", agentc::createStringValue("bad-contract"));
+    agentc::addNamedItem(invalidTask, "program", agentc::createStringValue(""));
+    agentc::addNamedItem(invalidTask, "expect", agentc::fromJson(R"({"success_field":"ok"})"));
+    vm.pushData(invalidTask);
+    state = vm.execute(compiler.compile("intern.validate_task_contract! @bad_contract_status"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    auto badStatus = namedValue(coordinatorRoot, "bad_contract_status");
+    ASSERT_TRUE(badStatus);
+    EXPECT_EQ(textValue(namedValue(badStatus, "state")), "contract_error");
+    EXPECT_EQ(textValue(namedValue(namedValue(badStatus, "error"), "code")), "missing_program");
+
+    auto envelope = agentc::createNullValue();
+    agentc::addNamedItem(envelope, "state", agentc::createStringValue("complete"));
+    agentc::addNamedItem(envelope, "task_id", agentc::createStringValue("contract-demo"));
+    agentc::addNamedItem(envelope, "publication", agentc::createNullValue());
+    vm.pushData(envelope);
+    state = vm.execute(compiler.compile("intern.validate_status_envelope! @envelope_status"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    auto envelopeStatus = namedValue(coordinatorRoot, "envelope_status");
+    ASSERT_TRUE(envelopeStatus);
+    EXPECT_EQ(textValue(namedValue(envelopeStatus, "state")), "envelope_valid");
+    EXPECT_EQ(textValue(namedValue(envelopeStatus, "envelope_state")), "complete");
+}
+
+TEST(InternWorkerTest, TerminalAsyncJobsAreRetainedUntilExplicitDrop) {
+    auto coordinatorRoot = agentc::createNullValue();
+    EdictVM vm(coordinatorRoot);
+    EdictCompiler compiler;
+    loadModuleBackedIntern(vm, compiler);
+
+    auto task = agentc::createNullValue();
+    agentc::addNamedItem(task, "task_id", agentc::createStringValue("retention-demo"));
+    agentc::addNamedItem(task, "program", agentc::createStringValue("'retained @result.value"));
+
+    vm.pushData(task);
+    int state = vm.execute(compiler.compile("intern_start! @job"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    const std::string jobId = textValue(namedValue(namedValue(coordinatorRoot, "job"), "job_id"));
+    ASSERT_FALSE(jobId.empty());
+
+    CPtr<ListreeValue> firstStatus;
+    for (int i = 0; i < 100; ++i) {
+        vm.pushData(agentc::createStringValue(jobId));
+        state = vm.execute(compiler.compile("intern_sync! @first_status"));
+        ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+        firstStatus = namedValue(coordinatorRoot, "first_status");
+        ASSERT_TRUE(firstStatus);
+        if (textValue(namedValue(firstStatus, "state")) == "complete") {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    ASSERT_TRUE(firstStatus);
+    EXPECT_EQ(textValue(namedValue(firstStatus, "state")), "complete");
+    EXPECT_EQ(textValue(namedValue(namedValue(firstStatus, "result"), "value")), "retained");
+
+    state = vm.execute(compiler.compile("worker.edict_active_count! @active_after_terminal"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    EXPECT_EQ(sizeText(namedValue(coordinatorRoot, "active_after_terminal")), 0u);
+
+    vm.pushData(agentc::createStringValue(jobId));
+    state = vm.execute(compiler.compile("intern_sync! @second_status"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    auto secondStatus = namedValue(coordinatorRoot, "second_status");
+    ASSERT_TRUE(secondStatus);
+    EXPECT_EQ(textValue(namedValue(secondStatus, "state")), "complete");
+    EXPECT_EQ(textValue(namedValue(namedValue(secondStatus, "result"), "value")), "retained");
+
+    vm.pushData(agentc::createStringValue(jobId));
+    state = vm.execute(compiler.compile("worker.edict_drop! @drop_status"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    EXPECT_EQ(textValue(namedValue(namedValue(coordinatorRoot, "drop_status"), "state")), "dropped");
+
+    vm.pushData(agentc::createStringValue(jobId));
+    state = vm.execute(compiler.compile("intern_sync! @after_drop_status"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    auto afterDropStatus = namedValue(coordinatorRoot, "after_drop_status");
+    ASSERT_TRUE(afterDropStatus);
+    EXPECT_EQ(textValue(namedValue(afterDropStatus, "state")), "error");
+    EXPECT_EQ(textValue(namedValue(namedValue(afterDropStatus, "error"), "code")), "unknown_job");
+}
+
 TEST(InternWorkerTest, InternStartReportsBackpressureWhenActiveLimitIsReached) {
     EdictVM vm;
     EdictCompiler compiler;
@@ -532,7 +642,18 @@ TEST(InternWorkerTest, InternCancelRequestsCancellationAndFinalSyncReportsCancel
     auto cancelStatus = namedValue(coordinatorRoot, "cancel_status");
     ASSERT_TRUE(cancelStatus);
     const std::string cancelState = textValue(namedValue(cancelStatus, "state"));
-    EXPECT_TRUE(cancelState == "cancel_requested" || cancelState == "cancelled");
+    EXPECT_TRUE(cancelState == "cancel_requested" || cancelState == "cancelled" || cancelState == "complete");
+
+    if (cancelState == "complete") {
+        // G091 lifecycle cleanup defines cancellation as a non-retroactive,
+        // cooperative request: if the detached worker reaches a terminal state
+        // before the request is observed, intern_cancel! returns the terminal
+        // result instead of suppressing it as cancelled.
+        EXPECT_FALSE(eventListContainsKind(namedValue(cancelStatus, "events"), "cancelled"));
+        EXPECT_EQ(listStrings(namedValue(cancelStatus, "ok")), std::vector<std::string>({"ok"}));
+        return;
+    }
+
     EXPECT_TRUE(eventListContainsKind(namedValue(cancelStatus, "events"), "cancelled"));
     if (cancelState == "cancel_requested") {
         EXPECT_EQ(listStrings(namedValue(cancelStatus, "ok")), std::vector<std::string>({"ok"}));

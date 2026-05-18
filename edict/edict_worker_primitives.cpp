@@ -17,6 +17,7 @@
 #include "edict_worker_runtime.h"
 #include "../core/root1_resource_broker.h"
 
+#include <algorithm>
 #include <atomic>
 #include <memory>
 #include <mutex>
@@ -390,17 +391,20 @@ CPtr<agentc::ListreeValue> buildBlockingRunStatus(const InternWorkerInput& input
 }
 
 CPtr<agentc::ListreeValue> buildDropEnvelope(const std::string& jobId,
-                                             bool dropped) {
+                                             const std::string& state,
+                                             bool ok,
+                                             const std::string& code = "",
+                                             const std::string& message = "") {
     auto envelope = agentc::createNullValue();
-    agentc::addNamedItem(envelope, "ok", statusList(dropped));
-    agentc::addNamedItem(envelope, "state", agentc::createStringValue(dropped ? "dropped" : "error"));
+    agentc::addNamedItem(envelope, "ok", statusList(ok));
+    agentc::addNamedItem(envelope, "state", agentc::createStringValue(state));
     agentc::addNamedItem(envelope, "job_id", agentc::createStringValue(jobId));
     agentc::addNamedItem(envelope, "worker", agentc::createStringValue("edict-thread-async"));
     agentc::addNamedItem(envelope, "publication", agentc::createNullValue());
-    if (dropped) {
+    if (ok) {
         agentc::addNamedItem(envelope, "error", agentc::createNullValue());
     } else {
-        agentc::addNamedItem(envelope, "error", errorObject("unknown_job", "unknown intern job id: " + jobId));
+        agentc::addNamedItem(envelope, "error", errorObject(code, message));
     }
     return envelope;
 }
@@ -427,6 +431,9 @@ struct AsyncInternJob {
     InternWorkerInput input;
     std::shared_ptr<InternJoinSlot> slot;
     std::atomic<bool> cancelRequested{false};
+    std::atomic<bool> abandoned{false};
+    bool terminalObserved = false;
+    uint64_t terminalSequence = 0;
 };
 
 CPtr<agentc::ListreeValue> buildWorkerStartStatus(const AsyncInternJob& job) {
@@ -541,7 +548,7 @@ class InternJobManager {
 public:
     size_t activeCount() const {
         std::lock_guard<std::mutex> lock(mutex_);
-        return jobs_.size();
+        return activeCountLocked();
     }
 
     CPtr<agentc::ListreeValue> startStatus(InternWorkerInput input) {
@@ -568,6 +575,9 @@ public:
 
         std::thread([this, job]() {
             runInternWorker(job->input, *job->slot);
+            if (job->abandoned.load()) {
+                return;
+            }
             const auto outcome = job->slot->load();
             auto descriptor = makeDescriptor(
                 outcome.ok
@@ -585,8 +595,9 @@ public:
                                                     size_t maxActiveJobs) {
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            if (jobs_.size() >= maxActiveJobs) {
-                return buildWorkerStartBackpressureStatus(input, jobs_.size(), maxActiveJobs);
+            const size_t activeJobs = activeCountLocked();
+            if (activeJobs >= maxActiveJobs) {
+                return buildWorkerStartBackpressureStatus(input, activeJobs, maxActiveJobs);
             }
         }
 
@@ -603,6 +614,15 @@ public:
                 return agentc::createListValue();
             }
             job = it->second;
+        }
+
+        if (job->slot->ready()) {
+            const auto outcome = job->slot->load();
+            return singletonDescriptorList(outcome.ok
+                                               ? agentc::root1::MailboxEventKind::Complete
+                                               : agentc::root1::MailboxEventKind::Error,
+                                           job->numericId,
+                                           outcome.ok ? "complete" : "error");
         }
 
         const bool firstRequest = !job->cancelRequested.exchange(true);
@@ -653,25 +673,84 @@ public:
         auto status = buildWorkerCollectStatus(*job, true, cancelRequested, &outcome, providedEvents);
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            jobs_.erase(job->jobId);
+            auto it = jobs_.find(job->jobId);
+            if (it != jobs_.end()) {
+                it->second->terminalObserved = true;
+                if (it->second->terminalSequence == 0) {
+                    it->second->terminalSequence = nextTerminalSequence_++;
+                }
+                sweepRetainedTerminalJobsLocked();
+            }
         }
         return status;
     }
 
     CPtr<agentc::ListreeValue> drop(const std::string& jobId) {
-        bool erased = false;
+        std::shared_ptr<AsyncInternJob> job;
+        bool ready = false;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            erased = jobs_.erase(jobId) > 0;
+            auto it = jobs_.find(jobId);
+            if (it == jobs_.end()) {
+                return buildDropEnvelope(jobId,
+                                         "error",
+                                         false,
+                                         "unknown_job",
+                                         "unknown intern job id: " + jobId);
+            }
+            job = it->second;
+            ready = job->slot->ready();
+            if (!ready) {
+                job->abandoned.store(true);
+            }
+            jobs_.erase(it);
         }
-        return buildDropEnvelope(jobId, erased);
+
+        if (ready) {
+            return buildDropEnvelope(jobId, "dropped", true);
+        }
+
+        return buildDropEnvelope(jobId, "abandoned", true);
     }
 
 private:
+    size_t activeCountLocked() const {
+        size_t active = 0;
+        for (const auto& entry : jobs_) {
+            const auto& job = entry.second;
+            if (job && !job->slot->ready() && !job->abandoned.load()) {
+                ++active;
+            }
+        }
+        return active;
+    }
+
+    void sweepRetainedTerminalJobsLocked() {
+        std::vector<std::shared_ptr<AsyncInternJob>> terminalJobs;
+        for (const auto& entry : jobs_) {
+            const auto& job = entry.second;
+            if (job && job->terminalObserved && job->slot->ready()) {
+                terminalJobs.push_back(job);
+            }
+        }
+        if (terminalJobs.size() <= maxRetainedTerminalJobs_) {
+            return;
+        }
+        std::sort(terminalJobs.begin(), terminalJobs.end(), [](const auto& lhs, const auto& rhs) {
+            return lhs->terminalSequence < rhs->terminalSequence;
+        });
+        const size_t toErase = terminalJobs.size() - maxRetainedTerminalJobs_;
+        for (size_t i = 0; i < toErase; ++i) {
+            jobs_.erase(terminalJobs[i]->jobId);
+        }
+    }
+
     mutable std::mutex mutex_;
     agentc::root1::Root1ResourceBroker broker_;
     uint64_t nextJobId_ = 1;
+    uint64_t nextTerminalSequence_ = 1;
     size_t defaultMaxActiveJobs_ = 64;
+    size_t maxRetainedTerminalJobs_ = 64;
     std::unordered_map<std::string, std::shared_ptr<AsyncInternJob>> jobs_;
 };
 
@@ -813,7 +892,7 @@ CPtr<agentc::ListreeValue> collectStatus(CPtr<agentc::ListreeValue> jobOrRequest
 CPtr<agentc::ListreeValue> drop(CPtr<agentc::ListreeValue> jobOrRequest) {
     const std::string jobId = jobIdFromValue(jobOrRequest);
     if (jobId.empty()) {
-        return buildDropEnvelope("", false);
+        return buildDropEnvelope("", "error", false, "unknown_job", "missing intern job id");
     }
     return internJobManager().drop(jobId);
 }
