@@ -41,6 +41,7 @@ ltv agentc_worker_edict_start_prepared_ltv(ltv prepared_task);
 ltv agentc_worker_edict_drain_events_ltv(ltv job_or_request);
 ltv agentc_worker_edict_request_cancel_ltv(ltv job_or_request);
 ltv agentc_worker_edict_collect_ltv(ltv job_or_request, ltv events);
+ltv agentc_worker_edict_collect_status_ltv(ltv job_or_request, ltv events);
 ltv agentc_worker_edict_drop_ltv(ltv job_or_request);
 ltv agentc_worker_edict_sync_ltv(ltv job_or_request);
 ltv agentc_worker_edict_cancel_ltv(ltv job_or_request);

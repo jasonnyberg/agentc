@@ -558,6 +558,44 @@ CPtr<agentc::ListreeValue> buildUnknownJobEnvelope(const std::string& jobId) {
     return envelope;
 }
 
+CPtr<agentc::ListreeValue> buildSafetyStatus(const InternWorkerInput& input) {
+    auto safety = agentc::createNullValue();
+    agentc::addNamedItem(safety, "context_read_only",
+                         agentc::createStringValue(input.contextSharedReadOnly && input.contextSharedReadOnly->isReadOnly() ? "true" : "false"));
+    agentc::addNamedItem(safety, "imports_read_only",
+                         agentc::createStringValue(input.importsSharedReadOnly && input.importsSharedReadOnly->isReadOnly() ? "true" : "false"));
+    agentc::addNamedItem(safety, "input_snapshot", agentc::createStringValue("json"));
+    agentc::addNamedItem(safety, "result_merge_thread", agentc::createStringValue("coordinator"));
+    return safety;
+}
+
+CPtr<agentc::ListreeValue> buildUnknownJobStatus(const std::string& jobId,
+                                                 CPtr<agentc::ListreeValue> events) {
+    InternWorkerInput input;
+    input.taskId = jobId;
+
+    auto status = agentc::createNullValue();
+    agentc::addNamedItem(status, "ok", statusList(true));
+    agentc::addNamedItem(status, "kind", agentc::createStringValue("worker_collect_status"));
+    agentc::addNamedItem(status, "found", statusList(false));
+    agentc::addNamedItem(status, "terminal", statusList(true));
+    agentc::addNamedItem(status, "cancel_requested", statusList(false));
+    agentc::addNamedItem(status, "cancelled", statusList(false));
+    agentc::addNamedItem(status, "worker_ok", statusList(false));
+    agentc::addNamedItem(status, "job_id", agentc::createStringValue(jobId));
+    agentc::addNamedItem(status, "task_id", agentc::createStringValue(jobId));
+    agentc::addNamedItem(status, "worker", agentc::createStringValue("edict-thread-async"));
+    agentc::addNamedItem(status, "waitable", agentc::createNullValue());
+    agentc::addNamedItem(status, "result", agentc::createNullValue());
+    agentc::addNamedItem(status, "safety", buildSafetyStatus(input));
+    agentc::addNamedItem(status, "error_code", agentc::createStringValue("unknown_job"));
+    agentc::addNamedItem(status, "error_message", agentc::createStringValue("unknown intern job id: " + jobId));
+    agentc::addNamedItem(status, "events", ensureEventList(events));
+    agentc::addNamedItem(status, "default_events", agentc::createListValue());
+    agentc::addNamedItem(status, "publication", agentc::createNullValue());
+    return status;
+}
+
 CPtr<agentc::ListreeValue> buildDropEnvelope(const std::string& jobId,
                                              bool dropped) {
     auto envelope = agentc::createNullValue();
@@ -597,6 +635,73 @@ struct AsyncInternJob {
     std::shared_ptr<InternJoinSlot> slot;
     std::atomic<bool> cancelRequested{false};
 };
+
+CPtr<agentc::ListreeValue> buildWorkerCollectStatus(const AsyncInternJob& job,
+                                                    bool ready,
+                                                    bool cancelRequested,
+                                                    const InternWorkerOutcome* outcome,
+                                                    CPtr<agentc::ListreeValue> events) {
+    auto status = agentc::createNullValue();
+    agentc::addNamedItem(status, "ok", statusList(true));
+    agentc::addNamedItem(status, "kind", agentc::createStringValue("worker_collect_status"));
+    agentc::addNamedItem(status, "found", statusList(true));
+    agentc::addNamedItem(status, "terminal", statusList(ready));
+    agentc::addNamedItem(status, "cancel_requested", statusList(cancelRequested && !ready));
+    agentc::addNamedItem(status, "cancelled", statusList(cancelRequested && ready));
+    agentc::addNamedItem(status, "worker_ok", statusList(ready && !cancelRequested && outcome && outcome->ok));
+    agentc::addNamedItem(status, "job_id", agentc::createStringValue(job.jobId));
+    agentc::addNamedItem(status, "task_id", agentc::createStringValue(job.input.taskId));
+    agentc::addNamedItem(status, "worker", agentc::createStringValue("edict-thread-async"));
+    CPtr<agentc::ListreeValue> visibleEvents = ensureEventList(events);
+    if (ready && cancelRequested) {
+        visibleEvents = singletonDescriptorList(agentc::root1::MailboxEventKind::Cancelled,
+                                                job.numericId,
+                                                "intern job cancellation requested");
+    }
+
+    agentc::addNamedItem(status, "waitable", waitableValue(job.jobId, job.participant));
+    agentc::addNamedItem(status, "publication", agentc::createNullValue());
+    agentc::addNamedItem(status, "events", visibleEvents);
+    agentc::addNamedItem(status, "safety", buildSafetyStatus(job.input));
+
+    if (!ready) {
+        agentc::addNamedItem(status, "result", agentc::createNullValue());
+        agentc::addNamedItem(status, "error_code", agentc::createStringValue(""));
+        agentc::addNamedItem(status, "error_message", agentc::createStringValue(""));
+        agentc::addNamedItem(status, "default_events", agentc::createListValue());
+        return status;
+    }
+
+    if (cancelRequested) {
+        agentc::addNamedItem(status, "result", agentc::createNullValue());
+        agentc::addNamedItem(status, "error_code", agentc::createStringValue("cancelled"));
+        agentc::addNamedItem(status, "error_message", agentc::createStringValue("intern job was cancelled before result collection"));
+        agentc::addNamedItem(status, "default_events", singletonDescriptorList(
+            agentc::root1::MailboxEventKind::Cancelled,
+            job.numericId,
+            "intern job cancellation requested"));
+        return status;
+    }
+
+    const bool workerOk = outcome && outcome->ok;
+    if (eventListEmpty(visibleEvents)) {
+        visibleEvents = singletonDescriptorList(
+            workerOk ? agentc::root1::MailboxEventKind::Complete : agentc::root1::MailboxEventKind::Error,
+            job.numericId,
+            workerOk ? "complete" : "error");
+        agentc::addNamedItem(status, "events", visibleEvents);
+    }
+    auto result = outcome ? agentc::fromJson(outcome->resultJson) : nullptr;
+    agentc::addNamedItem(status, "result", result ? result : agentc::createNullValue());
+    agentc::addNamedItem(status, "error_code", agentc::createStringValue(
+        workerOk ? "" : (outcome && !outcome->errorCode.empty() ? outcome->errorCode : "worker_failed")));
+    agentc::addNamedItem(status, "error_message", agentc::createStringValue(workerOk || !outcome ? "" : outcome->errorMessage));
+    agentc::addNamedItem(status, "default_events", singletonDescriptorList(
+        workerOk ? agentc::root1::MailboxEventKind::Complete : agentc::root1::MailboxEventKind::Error,
+        job.numericId,
+        workerOk ? "complete" : "error"));
+    return status;
+}
 
 class InternJobManager {
 public:
@@ -747,6 +852,33 @@ public:
             jobs_.erase(job->jobId);
         }
         return envelope;
+    }
+
+    CPtr<agentc::ListreeValue> collectStatus(const std::string& jobId,
+                                             CPtr<agentc::ListreeValue> providedEvents) {
+        std::shared_ptr<AsyncInternJob> job;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            auto it = jobs_.find(jobId);
+            if (it == jobs_.end()) {
+                return buildUnknownJobStatus(jobId, providedEvents);
+            }
+            job = it->second;
+        }
+
+        const bool ready = job->slot->ready();
+        const bool cancelRequested = job->cancelRequested.load();
+        if (!ready) {
+            return buildWorkerCollectStatus(*job, false, cancelRequested, nullptr, providedEvents);
+        }
+
+        const auto outcome = job->slot->load();
+        auto status = buildWorkerCollectStatus(*job, true, cancelRequested, &outcome, providedEvents);
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            jobs_.erase(job->jobId);
+        }
+        return status;
     }
 
     CPtr<agentc::ListreeValue> drop(const std::string& jobId) {
@@ -923,6 +1055,22 @@ CPtr<agentc::ListreeValue> collect(CPtr<agentc::ListreeValue> jobOrRequest,
     return cancel ? internJobManager().cancel(jobId) : internJobManager().collect(jobId, events);
 }
 
+CPtr<agentc::ListreeValue> collectStatus(CPtr<agentc::ListreeValue> jobOrRequest,
+                                         CPtr<agentc::ListreeValue> events) {
+    bool cancel = false;
+    if (jobOrRequest && !jobOrRequest->isListMode()) {
+        const std::string action = stringField(jobOrRequest, "action");
+        cancel = (action == "cancel" || stringField(jobOrRequest, "op") == "cancel");
+    }
+
+    const std::string jobId = jobIdFromValue(jobOrRequest);
+    if (jobId.empty()) {
+        return buildUnknownJobStatus("", events);
+    }
+    return cancel ? internJobManager().collectStatus(jobId, internJobManager().requestCancelEvents(jobId))
+                  : internJobManager().collectStatus(jobId, events);
+}
+
 CPtr<agentc::ListreeValue> drop(CPtr<agentc::ListreeValue> jobOrRequest) {
     const std::string jobId = jobIdFromValue(jobOrRequest);
     if (jobId.empty()) {
@@ -1034,6 +1182,11 @@ extern "C" ltv agentc_worker_edict_request_cancel_ltv(ltv job_or_request) {
 extern "C" ltv agentc_worker_edict_collect_ltv(ltv job_or_request, ltv events) {
     return release_ltv_value(agentc::edict::intern::collect(borrow_ltv_value(job_or_request),
                                                            borrow_ltv_value(events)));
+}
+
+extern "C" ltv agentc_worker_edict_collect_status_ltv(ltv job_or_request, ltv events) {
+    return release_ltv_value(agentc::edict::intern::collectStatus(borrow_ltv_value(job_or_request),
+                                                                 borrow_ltv_value(events)));
 }
 
 extern "C" ltv agentc_worker_edict_drop_ltv(ltv job_or_request) {

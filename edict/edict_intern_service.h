@@ -38,6 +38,8 @@ CPtr<agentc::ListreeValue> drainEvents(CPtr<agentc::ListreeValue> jobOrRequest);
 CPtr<agentc::ListreeValue> requestCancel(CPtr<agentc::ListreeValue> jobOrRequest);
 CPtr<agentc::ListreeValue> collect(CPtr<agentc::ListreeValue> jobOrRequest,
                                    CPtr<agentc::ListreeValue> events);
+CPtr<agentc::ListreeValue> collectStatus(CPtr<agentc::ListreeValue> jobOrRequest,
+                                         CPtr<agentc::ListreeValue> events);
 CPtr<agentc::ListreeValue> drop(CPtr<agentc::ListreeValue> jobOrRequest);
 CPtr<agentc::ListreeValue> sync(CPtr<agentc::ListreeValue> jobOrRequest);
 CPtr<agentc::ListreeValue> cancel(CPtr<agentc::ListreeValue> jobOrRequest);

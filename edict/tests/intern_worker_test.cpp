@@ -383,6 +383,20 @@ TEST(InternWorkerTest, ModuleBackedInternWordsUseImportedWorkerPrimitives) {
     ASSERT_FALSE(state & VM_ERROR) << vm.getError();
     EXPECT_EQ(textValue(namedValue(namedValue(namedValue(coordinatorRoot, "dropped_sync"), "error"), "code")), "unknown_job");
 
+    vm.pushData(agentc::createStringValue("missing-status-job"));
+    vm.pushData(agentc::createListValue());
+    state = vm.execute(compiler.compile("worker.edict_collect_status! @missing_status missing_status intern.sync_envelope! @missing_status_envelope"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    auto missingStatus = namedValue(coordinatorRoot, "missing_status");
+    ASSERT_TRUE(missingStatus);
+    EXPECT_EQ(textValue(namedValue(missingStatus, "kind")), "worker_collect_status");
+    EXPECT_TRUE(listStrings(namedValue(missingStatus, "found")).empty());
+    EXPECT_FALSE(namedValue(missingStatus, "state"));
+    auto missingStatusEnvelope = namedValue(coordinatorRoot, "missing_status_envelope");
+    ASSERT_TRUE(missingStatusEnvelope);
+    EXPECT_EQ(textValue(namedValue(missingStatusEnvelope, "state")), "error");
+    EXPECT_EQ(textValue(namedValue(namedValue(missingStatusEnvelope, "error"), "code")), "unknown_job");
+
     vm.pushData(agentc::createStringValue("missing-module-job"));
     state = vm.execute(compiler.compile("intern_cancel! @cancel_status"));
     ASSERT_FALSE(state & VM_ERROR) << vm.getError();
