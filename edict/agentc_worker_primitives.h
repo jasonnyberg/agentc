@@ -32,19 +32,15 @@ typedef unsigned int ltv;
 // participant, waitable, mailbox, and envelope-construction policy.
 ltv agentc_worker_edict_active_count_ltv(void);
 ltv agentc_worker_edict_prepare_task_ltv(ltv task);
-ltv agentc_worker_edict_check_capacity_ltv(ltv task_or_spec);
 ltv agentc_worker_edict_capacity_status_ltv(ltv task_or_spec);
-ltv agentc_worker_edict_run_ltv(ltv task);
-ltv agentc_worker_edict_run_prepared_ltv(ltv prepared_task);
-ltv agentc_worker_edict_start_ltv(ltv task);
-ltv agentc_worker_edict_start_prepared_ltv(ltv prepared_task);
+ltv agentc_worker_edict_run_status_ltv(ltv task);
+ltv agentc_worker_edict_run_status_prepared_ltv(ltv prepared_task);
+ltv agentc_worker_edict_start_status_ltv(ltv task);
+ltv agentc_worker_edict_start_status_prepared_ltv(ltv prepared_task);
 ltv agentc_worker_edict_drain_events_ltv(ltv job_or_request);
 ltv agentc_worker_edict_request_cancel_ltv(ltv job_or_request);
-ltv agentc_worker_edict_collect_ltv(ltv job_or_request, ltv events);
 ltv agentc_worker_edict_collect_status_ltv(ltv job_or_request, ltv events);
 ltv agentc_worker_edict_drop_ltv(ltv job_or_request);
-ltv agentc_worker_edict_sync_ltv(ltv job_or_request);
-ltv agentc_worker_edict_cancel_ltv(ltv job_or_request);
 
 #ifdef __cplusplus
 }

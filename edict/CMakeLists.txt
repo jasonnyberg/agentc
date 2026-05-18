@@ -20,7 +20,9 @@ set(LIB_SOURCES
     edict_vm_core.cpp
     edict_vm_ffi.cpp
     edict_vm_bootstrap.cpp
-    edict_vm_intern.cpp
+    edict_worker_runtime.cpp
+    edict_worker_primitives.cpp
+    edict_worker_primitives_ffi.cpp
     edict_root1_primitives.cpp
     edict_repl.cpp
     block_accumulator.cpp
