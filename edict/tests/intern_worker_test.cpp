@@ -119,12 +119,29 @@ std::string moduleBackedInternPrelude() {
            readTextFile(internModule) + "\n";
 }
 
+void loadModuleBackedIntern(EdictVM& vm, EdictCompiler& compiler) {
+    const int state = vm.execute(compiler.compile(moduleBackedInternPrelude()));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+}
+
 } // namespace
+
+TEST(InternWorkerTest, InternWordsAreModuleBackedNotBootstrapBuiltins) {
+    auto root = agentc::createNullValue();
+    EdictVM vm(root);
+    (void)vm;
+
+    EXPECT_FALSE(root->find("intern_run"));
+    EXPECT_FALSE(root->find("intern_start"));
+    EXPECT_FALSE(root->find("intern_sync"));
+    EXPECT_FALSE(root->find("intern_cancel"));
+}
 
 TEST(InternWorkerTest, InternRunDispatchesWorkerAndCollectsStructuredResult) {
     auto coordinatorRoot = agentc::createNullValue();
     EdictVM vm(coordinatorRoot);
     EdictCompiler compiler;
+    loadModuleBackedIntern(vm, compiler);
 
     auto task = agentc::createNullValue();
     agentc::addNamedItem(task, "task_id", agentc::createStringValue("demo-intern"));
@@ -189,9 +206,9 @@ TEST(InternWorkerTest, ModuleBackedInternWordsUseImportedWorkerPrimitives) {
     auto coordinatorRoot = agentc::createNullValue();
     EdictVM vm(coordinatorRoot);
     EdictCompiler compiler;
+    loadModuleBackedIntern(vm, compiler);
 
-    int state = vm.execute(compiler.compile(moduleBackedInternPrelude()));
-    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    int state = VM_NORMAL;
 
     auto runTask = agentc::createNullValue();
     agentc::addNamedItem(runTask, "task_id", agentc::createStringValue("ffi-run-demo"));
@@ -410,6 +427,7 @@ TEST(InternWorkerTest, InternStartAndSyncCollectsStructuredResultAsynchronously)
     auto coordinatorRoot = agentc::createNullValue();
     EdictVM vm(coordinatorRoot);
     EdictCompiler compiler;
+    loadModuleBackedIntern(vm, compiler);
 
     auto task = agentc::createNullValue();
     agentc::addNamedItem(task, "task_id", agentc::createStringValue("async-demo"));
@@ -464,6 +482,7 @@ TEST(InternWorkerTest, InternStartAndSyncCollectsStructuredResultAsynchronously)
 TEST(InternWorkerTest, InternStartReportsBackpressureWhenActiveLimitIsReached) {
     EdictVM vm;
     EdictCompiler compiler;
+    loadModuleBackedIntern(vm, compiler);
 
     auto task = agentc::createNullValue();
     agentc::addNamedItem(task, "task_id", agentc::createStringValue("backpressure-demo"));
@@ -488,6 +507,7 @@ TEST(InternWorkerTest, InternCancelRequestsCancellationAndFinalSyncReportsCancel
     auto coordinatorRoot = agentc::createNullValue();
     EdictVM vm(coordinatorRoot);
     EdictCompiler compiler;
+    loadModuleBackedIntern(vm, compiler);
 
     auto task = agentc::createNullValue();
     agentc::addNamedItem(task, "task_id", agentc::createStringValue("cancel-demo"));
@@ -537,6 +557,7 @@ TEST(InternWorkerTest, InternCancelRequestsCancellationAndFinalSyncReportsCancel
 TEST(InternWorkerTest, InternSyncReportsUnknownJobAsStructuredError) {
     EdictVM vm;
     EdictCompiler compiler;
+    loadModuleBackedIntern(vm, compiler);
 
     vm.pushData(agentc::createStringValue("missing-job"));
     const int state = vm.execute(compiler.compile("intern_sync!"));
@@ -555,6 +576,7 @@ TEST(InternWorkerTest, InternSyncReportsUnknownJobAsStructuredError) {
 TEST(InternWorkerTest, InternCancelReportsUnknownJobAsStructuredError) {
     EdictVM vm;
     EdictCompiler compiler;
+    loadModuleBackedIntern(vm, compiler);
 
     vm.pushData(agentc::createStringValue("missing-job"));
     const int state = vm.execute(compiler.compile("intern_cancel!"));
@@ -573,6 +595,7 @@ TEST(InternWorkerTest, InternCancelReportsUnknownJobAsStructuredError) {
 TEST(InternWorkerTest, InternRunReportsMissingProgramAsStructuredError) {
     EdictVM vm;
     EdictCompiler compiler;
+    loadModuleBackedIntern(vm, compiler);
 
     auto task = agentc::createNullValue();
     agentc::addNamedItem(task, "task_id", agentc::createStringValue("bad-intern"));

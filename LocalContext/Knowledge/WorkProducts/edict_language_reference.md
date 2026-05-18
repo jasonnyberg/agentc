@@ -1145,8 +1145,10 @@ worker thunk in a fresh VM. The supported cross-thread data model is intentional
 
 ### Deterministic and async intern worker MVP
 
-`intern_run!` is the synchronous coordinator-owned intern-worker dispatch primitive. It accepts a task
-envelope and returns a structured result envelope:
+`intern_run!` is the synchronous coordinator-owned intern-worker dispatch word. It is now module-backed
+through `worker.edict` / `intern.edict` over imported `agentc_worker_primitives.h` functions rather than
+a VM opcode. Load those modules before using the public intern surface. It accepts a task envelope and
+returns a structured result envelope:
 
 ```edict
 worker_task intern_run! @worker_result
@@ -1206,7 +1208,8 @@ Async-specific fields:
 
 Cancellation/backpressure policy:
 
-- `intern_cancel!` is a plain bootstrap Edict word, not a dedicated VM opcode; it pushes the control marker `'cancel` and delegates to `intern_sync!`.
+- `intern_cancel!` is a plain module-backed Edict word, not a dedicated VM opcode; it composes `worker.edict_request_cancel!`, `worker.edict_collect_status!`, and `intern.sync_envelope!`.
+- `intern_sync!` is also module-backed: it composes event drain, collect-status facts, and Edict-owned public envelope shaping for `running`, `cancel_requested`, final `complete`/`error`, final `cancelled`, and unknown-job states.
 - `intern_cancel!` is cooperative at this stage: it marks the job cancelled, emits a `cancelled` descriptor, and causes final `intern_sync!` to return `state: "cancelled"` with an empty `ok` list and no result merge. It does not currently preemptively kill the worker thread.
 - `intern_start!` can return `state: "backpressure"` with `error.code = "backpressure"` and a `backpressure` event if `max_active_jobs` is exceeded.
 
@@ -1334,9 +1337,6 @@ reset   -- clear VM_ERROR flag and error message; resume from error state
 | `VMOP_FUN_EVAL` | `)` | Evaluate function on VMRES_FUNC |
 | `VMOP_SPLICE` | `^` or `^name` | Splice current frame into named node |
 | `VMOP_SPECULATE` | `speculate [code]` | Run code in isolated snapshot |
-| `VMOP_INTERN_RUN` | `intern_run!` | Run bounded worker task envelope in fresh worker VM |
-| `VMOP_INTERN_START` | `intern_start!` | Launch bounded worker task asynchronously and return a broker-compatible job handle |
-| `VMOP_INTERN_SYNC` | `intern_sync!` | Poll/drain async intern job status, final result, or control marker on the coordinator thread |
 | `VMOP_REWRITE_DEFINE` | `rewrite_define!` | Register a rewrite rule |
 | `VMOP_REWRITE_LIST` | `rewrite_list!` | List all rules |
 | `VMOP_REWRITE_REMOVE` | `rewrite_remove!` | Remove rule by index |

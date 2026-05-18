@@ -1089,26 +1089,6 @@ CPtr<agentc::ListreeValue> cancel(CPtr<agentc::ListreeValue> jobOrRequest) {
 
 } // namespace intern
 
-void EdictVM::op_INTERN_RUN() {
-    pushData(intern::run(popData(), getAllowUnsafeFfiCalls()));
-}
-
-void EdictVM::op_INTERN_START() {
-    pushData(intern::start(popData(), getAllowUnsafeFfiCalls()));
-}
-
-void EdictVM::op_INTERN_SYNC() {
-    auto value = popData();
-
-    std::string marker;
-    if (value && !value->isListMode() && valueToString(value, marker) && marker == "cancel") {
-        pushData(intern::cancel(popData()));
-        return;
-    }
-
-    pushData(intern::sync(value));
-}
-
 } // namespace agentc::edict
 
 namespace {

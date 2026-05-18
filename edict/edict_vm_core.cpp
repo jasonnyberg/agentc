@@ -2037,9 +2037,6 @@ int EdictVM::runCodeLoop(size_t stopCodeDepth, bool markCompleteOnDrain) {
         &&op_FREEZE,
         &&op_TO_JSON,
         &&op_FROM_JSON,
-        &&op_INTERN_RUN,
-        &&op_INTERN_START,
-        &&op_INTERN_SYNC,
     };
     // Verify dispatch table has exactly one entry per opcode. If this fires,
     // an opcode was added to VMOpcode without a corresponding dispatch entry.
@@ -2219,9 +2216,6 @@ op_CURSOR_SET: op_CURSOR_SET(); goto op_epilogue;
 op_FREEZE: op_FREEZE(); goto op_epilogue;
 op_TO_JSON: op_TO_JSON(); goto op_epilogue;
 op_FROM_JSON: op_FROM_JSON(); goto op_epilogue;
-op_INTERN_RUN: op_INTERN_RUN(); goto op_epilogue;
-op_INTERN_START: op_INTERN_START(); goto op_epilogue;
-op_INTERN_SYNC: op_INTERN_SYNC(); goto op_epilogue;
 op_INVALID: setError("Op " + std::to_string(op)); goto op_epilogue;
 op_epilogue:
         if (allow_rewrite_epilogue && !(state & (VM_ERROR | VM_YIELD | VM_SCANNING))) applyRewriteLoop();

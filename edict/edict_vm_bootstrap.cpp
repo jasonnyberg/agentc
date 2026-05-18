@@ -227,9 +227,6 @@ void EdictVM::loadCoreBuiltins() {
     addBuiltinThunk(dictVal, "freeze", VMOP_FREEZE);
     addBuiltinThunk(dictVal, "to_json", VMOP_TO_JSON);
     addBuiltinThunk(dictVal, "from_json", VMOP_FROM_JSON);
-    addBuiltinThunk(dictVal, "intern_run", VMOP_INTERN_RUN);
-    addBuiltinThunk(dictVal, "intern_start", VMOP_INTERN_START);
-    addBuiltinThunk(dictVal, "intern_sync", VMOP_INTERN_SYNC);
 }
 
 void EdictVM::installBootstrapImportCapsule() {
@@ -255,9 +252,6 @@ void EdictVM::installBootstrapImportCapsule() {
     addBuiltinThunk(capsule, "freeze", VMOP_FREEZE);
     addBuiltinThunk(capsule, "to_json", VMOP_TO_JSON);
     addBuiltinThunk(capsule, "from_json", VMOP_FROM_JSON);
-    addBuiltinThunk(capsule, "intern_run", VMOP_INTERN_RUN);
-    addBuiltinThunk(capsule, "intern_start", VMOP_INTERN_START);
-    addBuiltinThunk(capsule, "intern_sync", VMOP_INTERN_SYNC);
     agentc::addNamedItem(dictVal, "__bootstrap_import", capsule);
 }
 
@@ -277,7 +271,6 @@ void EdictVM::runStartupBootstrapPrelude() {
     static BytecodeBuffer cachedBootstrap;
     std::call_once(bootstrapCompiled, []() {
         cachedBootstrap = EdictCompiler().compile(
-            "['cancel intern_sync!] @intern_cancel "
             "__bootstrap_import.curate_parser! @parser "
             "__bootstrap_import.curate_resolver! @resolver "
             "__bootstrap_import.curate_cartographer! @cartographer");

@@ -317,7 +317,7 @@ Good intern tasks are bounded and checkable:
 | Compression | Summarize a large diff into semantic changes. |
 | Context proxy | Hold a large context and answer factual questions about it. |
 
-The landed substrate includes deterministic `intern_run!` plus the first async job surface:
+The landed substrate includes module-backed deterministic `intern_run!` plus the first async job surface. In bare Edict, load `worker.edict` / `intern.edict` over the worker primitive import before using these words:
 
 ```edict
 -- task envelope shape: task_id, program, input, context, optional imports
@@ -333,7 +333,7 @@ job.job_id intern_cancel! @cancel_status
 and returns a structured envelope with `ok`, `task_id`, `state`, `result`, `error`, and
 `safety` fields. `intern_start!` uses the same boundary but returns a broker-shaped waitable;
 `intern_sync!` drains running/final status on the coordinator thread; `intern_cancel!` is a plain
-Edict word over `intern_sync!` that requests cooperative cancellation. Worker results are copied
+module-backed Edict word that requests cooperative cancellation. Worker results are copied
 back through JSON only on the coordinator
 thread; the coordinator decides what to merge. Async tasks can also use `max_active_jobs` for
 first-pass backpressure.

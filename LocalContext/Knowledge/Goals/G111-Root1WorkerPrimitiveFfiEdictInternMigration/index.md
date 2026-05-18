@@ -41,23 +41,15 @@ It is acceptable, and desirable, to expose low-level primitive words such as `ro
 
 ## Current State
 
-- `VMOP_INTERN_CANCEL` has already been removed.
-- `intern_cancel!` is a plain bootstrap Edict word over `intern_sync!`:
-
-  ```edict
-  ['cancel intern_sync!] @intern_cancel
-  ```
-
-- The remaining intern-specific opcodes are:
-  - `VMOP_INTERN_RUN`
-  - `VMOP_INTERN_START`
-  - `VMOP_INTERN_SYNC`
-- Their implementation currently lives in `edict/edict_vm_intern.cpp` and mixes multiple layers:
-  - intern task parsing and envelope shaping;
-  - worker VM lifecycle;
+- `VMOP_INTERN_CANCEL`, `VMOP_INTERN_RUN`, `VMOP_INTERN_START`, and `VMOP_INTERN_SYNC` have been removed from the VM opcode enum, dispatch table, method declarations, method definitions, and bootstrap builtin/capsule registration.
+- Raw VM startup no longer installs `intern_run`, `intern_start`, `intern_sync`, or `intern_cancel` as bootstrap builtins. The public intern words now live in `cpp-agent/edict/modules/intern.edict` and are loaded over imported worker primitives.
+- `edict/edict_vm_intern.cpp` still contains the transitional native worker primitive implementation exported through `agentc_worker_edict_*_ltv` functions:
+  - intern task parsing/preparation and safety metadata;
+  - worker VM lifecycle and coordinator-thread result materialization;
   - process-local async job table;
   - G110 `Root1ResourceBroker` descriptor publication/drain;
-  - cancellation/backpressure policy.
+  - native cancellation/backpressure mechanics and hard caps.
+- `intern.edict` now owns public composition for run/start/sync/cancel and public async sync/cancel envelopes. Remaining native/transitional pieces are start/run envelope shape, native hard caps, broader lifecycle cleanup, and eventually splitting the worker primitive implementation out of `edict_vm_intern.cpp`.
 
 G111 separates those layers so only the irreducible native primitives remain in C/C++ libraries, and intern policy moves into Edict modules.
 
@@ -217,11 +209,11 @@ Schematic target, not final syntax:
 
 ### Phase 5 — Port tests/docs and retire VM opcodes
 
-- [ ] Port `InternWorkerTest.*` and CLI smoke tests to the imported-module implementation.
-- [ ] Keep temporary opcode-backed compatibility tests only until the module path is stable.
-- [ ] Remove `VMOP_INTERN_RUN`, `VMOP_INTERN_START`, and `VMOP_INTERN_SYNC` from `edict/edict_types.h`, VM dispatch, bootstrap builtins, and volatile startup cleanup.
-- [ ] Remove or repurpose `edict/edict_vm_intern.cpp` so intern behavior no longer ships as VM dispatch.
-- [ ] Update README, 🔗[K032 — Edict Intern Worker Surface](../../Facts/J3_AgentC/K032_Edict_Intern_Worker_Surface.md), and 🔗[Edict Language Reference](../../WorkProducts/edict_language_reference.md).
+- [x] Port `InternWorkerTest.*` to the imported-module implementation; direct public intern tests now load `worker.edict` / `intern.edict` over imported primitives. CLI smoke tests remain a possible follow-up if the raw launcher should preload intern modules.
+- [x] Remove temporary opcode-backed compatibility tests and add coverage proving raw VM startup no longer installs `intern_run`, `intern_start`, `intern_sync`, or `intern_cancel` as bootstrap builtins.
+- [x] Remove `VMOP_INTERN_RUN`, `VMOP_INTERN_START`, and `VMOP_INTERN_SYNC` from `edict/edict_types.h`, VM dispatch, VM method declarations/definitions, and bootstrap builtin/capsule registration. `main.cpp` deliberately still strips legacy persisted `intern_*` names during session restore so stale opcode thunks from older sessions cannot shadow module-backed words.
+- [x] Repurpose `edict/edict_vm_intern.cpp` as the transitional importable worker-primitive implementation; intern behavior no longer ships as VM dispatch.
+- [x] Update README, 🔗[K032 — Edict Intern Worker Surface](../../Facts/J3_AgentC/K032_Edict_Intern_Worker_Surface.md), and 🔗[Edict Language Reference](../../WorkProducts/edict_language_reference.md).
 
 ### Phase 6 — Follow-on generalization
 
@@ -234,7 +226,7 @@ Schematic target, not final syntax:
 First migration slice landed:
 
 - Added `edict/edict_intern_service.h` and moved direct opcode method bodies behind `agentc::edict::intern::{run,start,sync,cancel}` service functions.
-- Kept `VMOP_INTERN_RUN`, `VMOP_INTERN_START`, and `VMOP_INTERN_SYNC` as temporary compatibility shims that delegate to the service boundary.
+- Initially kept `VMOP_INTERN_RUN`, `VMOP_INTERN_START`, and `VMOP_INTERN_SYNC` as temporary compatibility shims that delegated to the service boundary; the latest slice has removed those shims from VM enum/dispatch/bootstrap.
 - Added `edict/agentc_worker_primitives.h` plus C ABI LTV exports from `libedict.so`:
   - `agentc_worker_edict_active_count_ltv`
   - `agentc_worker_edict_prepare_task_ltv`
@@ -256,7 +248,7 @@ First migration slice landed:
 
 The latest G111 slice added `agentc_worker_edict_collect_status_ltv` and `worker.edict_collect_status!` so native collection can return lower-level job facts instead of a public envelope. `intern.edict` now builds the public async sync/cancel envelopes for `running`, `cancel_requested`, `complete`, `error`, `cancelled`, and unknown-job states through `intern.sync_envelope`, while still using native primitives for the worker table, thread/fresh-VM execution, coordinator-thread result materialization, logical waitables, and descriptor event drain/request mechanics.
 
-This remains transitional: the public words can now be module-backed through FFI, async sync/cancel public envelopes are Edict-shaped, active-count is exposed, task preparation and start-time capacity/backpressure branching are in `intern.edict`, the public backpressure envelope is an Edict helper, explicit drop cleanup exists, and first generic `root1.edict` participant/poll/mailbox wrappers exist. Start/run envelopes, the native hard worker cap, raw lifecycle cleanup policy, and the compatibility VM opcodes still remain before shim deletion.
+This remains transitional: the public words can now be module-backed through FFI, async sync/cancel public envelopes are Edict-shaped, active-count is exposed, task preparation and start-time capacity/backpressure branching are in `intern.edict`, the public backpressure envelope is an Edict helper, explicit drop cleanup exists, and first generic `root1.edict` participant/poll/mailbox wrappers exist. The compatibility VM opcodes have now been deleted. Start/run envelopes, the native hard worker cap, raw lifecycle cleanup policy, and splitting primitive implementation out of `edict_vm_intern.cpp` remain before G111 is fully complete.
 
 Validation:
 
@@ -270,11 +262,12 @@ Validation:
 - After adding prepare-task, capacity-check, run-prepared, and start-prepared primitives, repeated validation passed: `cmake --build build --target edict_tests -j2`, `InternWorkerTest.*` 8/8, focused Edict slice 54/54, `cmake --build build --target reflect_tests cpp_agent_tests -j2`, `reflect_tests` 43/43, and `cpp_agent_tests` 49/49.
 - After adding `worker.edict_capacity_status!`, Edict-owned `intern.backpressure_envelope`, `agentc_root1_primitives.h`, `cpp-agent/edict/modules/root1.edict`, and `Root1PrimitiveModuleTest.ModuleBackedParticipantMailboxPrimitives`, validation passed: `cmake --build build --target edict_tests -j2`, `InternWorkerTest.*:Root1PrimitiveModuleTest.*` 9/9, focused Edict slice with `Root1PrimitiveModuleTest.*` 55/55, `cmake --build build --target reflect_tests cpp_agent_tests -j2`, `reflect_tests` 43/43, and `cpp_agent_tests` 49/49.
 - After adding `worker.edict_collect_status!` and moving async sync/cancel public envelope construction into `intern.edict`, validation passed: `cmake --build build --target edict_tests -j2`, `InternWorkerTest.ModuleBackedInternWordsUseImportedWorkerPrimitives`, `InternWorkerTest.*:Root1PrimitiveModuleTest.*` 9/9, focused Edict slice with `Root1PrimitiveModuleTest.*` 55/55, `cmake --build build --target reflect_tests cpp_agent_tests -j2`, `reflect_tests` 43/43, and `cpp_agent_tests` 49/49.
+- After deleting `VMOP_INTERN_RUN`, `VMOP_INTERN_START`, and `VMOP_INTERN_SYNC`, validation passed: `cmake --build build --target edict_tests -j2`, `InternWorkerTest.*:Root1PrimitiveModuleTest.*` 10/10, focused Edict slice with `Root1PrimitiveModuleTest.*` 56/56, `cmake --build build --target reflect_tests cpp_agent_tests -j2`, `reflect_tests` 43/43, and `cpp_agent_tests` 49/49.
 
 ## Acceptance Criteria
 
 - [x] Public `intern_run!`, `intern_start!`, `intern_sync!`, and `intern_cancel!` can be loaded as plain Edict words from module code over imported worker primitives.
-- [ ] No intern-specific VM opcodes remain in the core VM enum or dispatch loop.
+- [x] No intern-specific VM opcodes remain in the core VM enum or dispatch loop.
 - [ ] Native implementation is limited to generic Root1/worker primitives that Edict cannot implement directly.
 - [x] Low-level primitive words are importable and testable independently of direct VM opcode invocation.
 - [ ] Intern task validation, envelope shaping, cancellation, and backpressure policy are implemented in Edict.

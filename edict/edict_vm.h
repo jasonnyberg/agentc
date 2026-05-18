@@ -264,9 +264,6 @@ private:
     void op_FREEZE();
     void op_TO_JSON();
     void op_FROM_JSON();
-    void op_INTERN_RUN();
-    void op_INTERN_START();
-    void op_INTERN_SYNC();
 
     // Cursor navigation ops (registered via registerCursorOperations)
     void op_CURSOR_DOWN();  // Move cursor to first child; push bool result
