@@ -1,12 +1,12 @@
 # Dashboard
 
 **Project**: AgentC / J3  
-**Last Updated**: 2026-05-17
+**Last Updated**: 2026-05-18
 
 ## Current Focus
 AgentC/J3 is an advanced research prototype/internal-alpha moving toward an Edict-resident agent loop: Edict should own provider/session/control-plane semantics while C++ remains the native transport, persistence, credential, and lifecycle substrate.
 
-Completed implementation/documentation slices are retired from the open-dashboard view; the incomplete backlog is listed below in priority order. Work continues under the active parent track 🔗[G078 — Edict-Resident Agent Loop Consolidation](./Knowledge/Goals/G078-EdictResidentAgentLoopConsolidation/index.md): module-backed Edict now has deterministic `intern_run!`, broker-compatible async `intern_start!` / `intern_sync!` / `intern_cancel!`, cooperative cancellation/backpressure envelopes, the first 🔗[G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design](./Knowledge/Goals/G110-EventfdEpollMicroVmIpcDesign/index.md) substrate, and completed 🔗[G109 — Listree ReadOnly Mutation Surface Hardening](./Knowledge/Goals/G109-ListreeReadOnlyMutationSurfaceHardening/index.md) for public VM/Cursor shared-context safety. G111 has completed the migration from intern VM opcodes to imported worker primitives plus plain Edict public words. G091 lifecycle cleanup now has its first retained-terminal/drop/abandoned/non-retroactive-cancel slice, and G099 has its first Edict-level task/status contract validators. Next implementation priority remains deeper G091 worker arena/abandoned-resource cleanup plus G099 contract enforcement; 🔗[G110](./Knowledge/Goals/G110-EventfdEpollMicroVmIpcDesign/index.md) remains active for abandoned-resource recovery and future `await!` semantics.
+Completed implementation/documentation slices are retired from the open-dashboard view; the incomplete backlog is listed below in priority order. Work continues under the active parent track 🔗[G078 — Edict-Resident Agent Loop Consolidation](./Knowledge/Goals/G078-EdictResidentAgentLoopConsolidation/index.md): module-backed Edict now has deterministic `intern_run!`, broker-compatible async `intern_start!` / `intern_sync!` / `intern_cancel!`, cooperative cancellation/backpressure envelopes, the first 🔗[G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design](./Knowledge/Goals/G110-EventfdEpollMicroVmIpcDesign/index.md) substrate, and completed 🔗[G109 — Listree ReadOnly Mutation Surface Hardening](./Knowledge/Goals/G109-ListreeReadOnlyMutationSurfaceHardening/index.md) for public VM/Cursor shared-context safety. G111 has completed the migration from intern VM opcodes to imported worker primitives plus plain Edict public words. G091 lifecycle cleanup now has its first retained-terminal/drop/abandoned/non-retroactive-cancel slice, G099 has its first Edict-level task/status contract validators, and G110 has its first known-resource abandoned-owner recovery plus non-parking `root1.await!` helper. Next implementation priority is deeper G110 lease/stale-owner recovery and continuation-parking `await!`, with G091 worker-visible cancellation and G099 dispatch-enforced contracts behind it.
 
 ## Incomplete Goals — Priority Order
 
@@ -51,11 +51,19 @@ None.
 
 ## Handoff Note
 
-**Current State**: The foundational persistence/client-host work has been retired to the archive. The live project is now centered on G078: making Edict the authoritative control plane for the agent loop. The codebase has a working curated launcher, Edict-side provider objects, provider REPL, local/Codex/Google-Gemma provider paths, provider-owned reset/inspect context management, module-backed deterministic `intern_run!`, broker-compatible async `intern_start!` / `intern_sync!` / `intern_cancel!`, cooperative cancellation/backpressure envelopes, hardened public ReadOnly assignment/removal guards for shared worker context, first file/shell tool surface, first real-time ghost-queue stream surface, strict lookup modes, corrected prefix-chain semantics, and corrected tail-history semantics.
+**Project**: AgentC/J3 is an internal-alpha persistent cognition runtime moving toward Edict as the authoritative agent control plane over a C++ persistence/transport/concurrency substrate.
 
-**Next Action**: Continue 🔗[G110](./Knowledge/Goals/G110-EventfdEpollMicroVmIpcDesign/index.md) from the first abandoned-owner and non-parking await slices into broader lease/stale-owner recovery and continuation-parking `await!` semantics. Continue 🔗[G091](./Knowledge/Goals/G091-InternWorkerConcurrencyMvp/index.md) deeper private arena cleanup, abandoned-worker/resource accounting, and worker-visible cancellation checkpoints. Continue 🔗[G099](./Knowledge/Goals/G099-InternTaskQualityContracts/index.md) by integrating task/status validators with dispatch and adding malformed/low-confidence result validation.
+**Current State**: G111 is complete; G091 has first retained-terminal/drop/abandoned/non-retroactive-cancel lifecycle semantics, G099 has first opt-in Edict task/status validators, and G110 now has known-resource abandoned-owner recovery plus non-parking module-backed `root1.await!`.
 
-**Key Constraints**: Preserve stable provider-object in-place mutation; avoid expensive Codex `gpt-5.5`; keep Codex default reasoning low; use explicit scalar success/failure sentinels for `& |` control flow; keep Listree mutations on the VM/main thread for any future streaming architecture.
+**Next Action**: Continue 🔗[G110](./Knowledge/Goals/G110-EventfdEpollMicroVmIpcDesign/index.md) by designing and implementing the Root1 lease/stale-owner table shape that can detect abandoned owners without being handed a specific `ResourceKey`/owner tuple; start in `core/root1_resource_broker.{h,cpp}` and extend `tests/root1_resource_broker_tests.cpp`.
+
+**Key Context**:
+- Current G110 `root1.await!` is a poll/drain helper only; it returns ready/timeout envelopes and does not park or resume VM continuations.
+- Current G110 abandoned recovery is explicit: `recoverAbandonedResource(key, state, owner, reason)` validates the owner and either grants to a queued waiter with `OwnerDied` + `OwnershipGranted` descriptors or clears the resource to unowned.
+- Current G091 running `worker.edict_drop!` means handle abandonment, not thread preemption; abandoned detached workers unwind naturally and suppress orphan completion publication.
+- Current G099 validators are opt-in helpers in `cpp-agent/edict/modules/intern.edict`; they are not yet enforced by `intern_run!` / `intern_start!`.
+
+**Do NOT**: Do not add new intern-specific VM opcodes, do not expose raw fds as durable Edict state, do not implement continuation-parking `await!` before the lease/stale-owner resource model is clear, and do not pass stateful provider/runtime handles into intern worker context/imports.
 
 ## Active Agents
 None.
@@ -144,5 +152,7 @@ See 🔗[Timeline.md](./Timeline.md) for project history.
 - [x] Deleted intern VM opcode enum/dispatch/bootstrap shims and ported public intern tests to module imports
 - [x] Added run-status/start-status facts, moved run/start public envelopes into `intern.edict`, removed raw envelope worker words/check-capacity from the imported surface, renamed worker primitive implementation, and split worker runtime / thin C ABI wrappers
 - [x] Completed G111 and removed it from the incomplete-priority backlog
-- [x] Updated Dashboard
-- [x] Updated Timeline
+- [x] Advanced G091 lifecycle cleanup with retained terminal statuses, explicit drop/abandon semantics, active-count cleanup, and non-retroactive cancellation
+- [x] Started G099 first contract-validation slice with `intern.validate_task_contract!` and `intern.validate_status_envelope!`
+- [x] Advanced G110 with known-resource abandoned-owner recovery and non-parking module-backed `root1.await!`
+- [x] Updated Dashboard, Goal files, Fact/Timeline state, and fresh Handoff Note

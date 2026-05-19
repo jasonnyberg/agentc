@@ -253,10 +253,18 @@ Validation:
 - Earlier: `./build/tests/reflect_tests` — passed 43/43.
 - Earlier: `cmake --build build --target cpp_agent_tests -j2` — passed.
 
+## Progress Notes
+
+### 2026-05-18
+- Did: Added `Root1ResourceBroker::recoverAbandonedResource(...)` for known-resource abandoned-owner recovery, with tests for queued-waiter grant and no-waiter unowned recovery; added `agentc_root1_await_ltv` plus module-backed `root1.await!` that polls a logical waitable and drains descriptors into ready/timeout envelopes.
+- Decided: First `root1.await!` is intentionally non-parking; it proves the logical waitable descriptor surface without introducing VM continuation scheduling yet.
+- Remaining: Broader lease/stale-owner scanning, process-worker owner-death recovery policy, and true continuation-parking `await!` semantics.
+- Next: Design the Root1 lease/stale-owner table shape that can detect abandoned owners without being handed a specific `ResourceKey`/owner tuple.
+
 ## Integration With Existing Goals
 
 - 🔗[G091](../G091-InternWorkerConcurrencyMvp/index.md): the first async intern backend now uses an Edict-local `InternJobManager` with G110 broker-compatible waitables/descriptors, cooperative cancellation, and active-job backpressure; future process workers can move this onto mapped coordination slabs without changing the high-level envelope shape.
-- 🔗[G111](../G111-Root1WorkerPrimitiveFfiEdictInternMigration/index.md): the next migration exposes Root1/waitable/mailbox and fresh-worker-VM capabilities as importable native primitives, then rebuilds `intern_run!`, `intern_start!`, and `intern_sync!` as Edict words so G110 becomes reusable substrate rather than intern-specific VM dispatch.
+- 🔗[G111](../G111-Root1WorkerPrimitiveFfiEdictInternMigration/index.md): completed migration exposes Root1/waitable/mailbox and fresh-worker-VM capabilities as importable native primitives and rebuilds intern words as Edict module code, so G110 is reusable substrate rather than intern-specific VM dispatch.
 - 🔗[G109](../G109-ListreeReadOnlyMutationSurfaceHardening/index.md): logical read-only safety remains necessary for shared context/imports; the broker handles mutable coordination resources, not arbitrary frozen-tree mutation.
 - 🔗[G099](../G099-InternTaskQualityContracts/index.md): task/result contracts should include event kinds, progress, cancellation, timeout, backpressure, waitable ids, and ownership/error states if the broker path is adopted.
 - 🔗[G105](../G105-ReadOnlyStaticSlabOwnershipModel/index.md): broker-managed mutable coordination slabs must be separate from read-only static/import/result slabs.

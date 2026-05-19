@@ -100,6 +100,14 @@ Safety hardening discovered after the first slice is now addressed for public VM
 
 Related architecture concept: 🔗[Layered mmap Micro-VM Architecture](../../Concepts/LayeredMmapMicroVmArchitecture/index.md) records the longer-term memory-substrate direction: static read-only core/import slabs, private per-VM overlays, Root1-brokered mutable coordination/mailbox slabs, optional published communication slabs, and process-isolated micro-VM cores for near-zero-copy intern scaling. 🔗[G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design](../G110-EventfdEpollMicroVmIpcDesign/index.md) has defined the logical waitable/mailbox shape used by the first async intern backend. 🔗[G111](../G111-Root1WorkerPrimitiveFfiEdictInternMigration/index.md) now captures the migration path for replacing intern-specific VM opcodes with importable native primitives plus Edict module policy. Do not jump directly to a full allocator rewrite from G091; keep hardening broker-compatible async worker semantics first, then let G103–G110 harden the slab substrate in staged slices.
 
+## Progress Notes
+
+### 2026-05-18
+- Did: Landed first lifecycle/drop semantics on the completed G111 module-backed worker surface: terminal async statuses are retained for repeated sync until explicit drop or bounded sweep, active counts exclude terminal/abandoned jobs, running drops return `abandoned`, terminal drops return `dropped`, abandoned workers suppress orphan completion publication, and cancellation is non-retroactive after terminal completion.
+- Decided: Running `drop` is handle abandonment rather than thread preemption; current detached workers must unwind naturally until a later worker-visible cancellation/checkpoint mechanism exists.
+- Remaining: Deeper private arena/slab cleanup for the later scheduler, abandoned-worker/resource accounting beyond handle abandonment, and worker-visible cancellation checkpoints.
+- Next: Add a worker-visible cancellation checkpoint primitive or protocol so long-running Edict workers can voluntarily stop before finishing the full program.
+
 ## Validation — 2026-05-18
 - `cmake --build build --target edict_tests -j2` — passed.
 - `./build/edict/edict_tests --gtest_filter='InternWorkerTest.*' --gtest_brief=1` — passed 11/11 including lifecycle retention/drop/abandon/cancellation semantics and first G099 contract validators.

@@ -79,6 +79,14 @@ First contract-validation slice landed in `intern.edict`:
 
 This is intentionally a first reusable helper layer rather than mandatory dispatch enforcement. A later G099 slice should decide where `intern_start!` / `intern_run!` enforce contracts by default versus where callers opt into contract validation.
 
+## Progress Notes
+
+### 2026-05-18
+- Did: Added first Edict-level contract validators in `intern.edict` and regression coverage in `InternWorkerTest.InternContractValidatorsCheckTaskAndStatusShape`.
+- Decided: Keep the first validators opt-in/helper-level rather than enforcing them in `intern_run!` / `intern_start!` immediately, so the public module-backed worker surface remains compatible while contract shape is refined.
+- Remaining: Dispatch integration, safe task-class examples, result validation beyond public envelope shape, and low-confidence/malformed-result rejection.
+- Next: Decide where `intern_start!` should call `intern.validate_task_contract!` by default and add tests for rejected over-broad or malformed task contracts.
+
 ## Acceptance Criteria
 - [x] Intern tasks have explicit, machine-checkable success criteria in the first helper layer (`expect.success_field`).
 - [ ] At least gather/classify/filter task contracts are represented.
