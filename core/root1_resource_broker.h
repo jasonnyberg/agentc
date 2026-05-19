@@ -243,6 +243,15 @@ public:
                                   ResourceState& state,
                                   ParticipantId abandonedOwner,
                                   std::string reason = {});
+    bool registerLease(const ResourceKey& key,
+                       ResourceState& state,
+                       ParticipantId owner,
+                       uint64_t expiresAtTick);
+    bool renewLease(const ResourceKey& key,
+                    ParticipantId owner,
+                    uint64_t expiresAtTick);
+    std::vector<ResourceKey> recoverExpiredLeases(uint64_t nowTick,
+                                                  std::string reason = {});
 
     bool sendMailboxMessage(ParticipantId participant, std::string payload, uint64_t sequence = 0);
     bool sendMailboxDescriptor(ParticipantId participant, const MailboxDescriptor& descriptor);
@@ -262,6 +271,12 @@ private:
         bool pidDeathReported = false;
     };
 
+    struct LeaseRecord {
+        ResourceState* state = nullptr;
+        ParticipantId owner = 0;
+        uint64_t expiresAtTick = 0;
+    };
+
     bool isValidParticipantLocked(ParticipantId participant) const;
     bool notifyParticipantLocked(ParticipantId participant) const;
     void pushEventLocked(ParticipantId participant, BrokerEvent event);
@@ -275,6 +290,7 @@ private:
     GrantToken nextGrantToken_ = 1;
     std::unordered_map<ParticipantId, ParticipantRecord> participants_;
     std::unordered_map<ResourceKey, std::deque<ParticipantId>, ResourceKeyHash> waiters_;
+    std::unordered_map<ResourceKey, LeaseRecord, ResourceKeyHash> leases_;
 };
 
 } // namespace agentc::root1

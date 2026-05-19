@@ -338,6 +338,80 @@ TEST(Root1ResourceBrokerTest, RecoversAbandonedOwnedResourceToUnownedWhenNoWaite
 #endif
 }
 
+TEST(Root1ResourceBrokerTest, RecoversExpiredLeaseToQueuedWaiter) {
+#if !defined(__linux__)
+    GTEST_SKIP() << "Root1ResourceBroker prototype requires Linux eventfd/epoll";
+#else
+    Root1ResourceBroker broker;
+    auto owner = broker.registerParticipant();
+    auto waiter = broker.registerParticipant();
+
+    ResourceState state;
+    ResourceKey key{11, 8, 7, 6, 5, 4};
+
+    ASSERT_TRUE(broker.tryAcquire(state, owner));
+    ASSERT_TRUE(broker.registerLease(key, state, owner, 10));
+    ASSERT_EQ(broker.acquireOrQueue(key, state, waiter), AcquireStatus::Queued);
+
+    auto recovered = broker.recoverExpiredLeases(10, "lease expired");
+    ASSERT_EQ(recovered.size(), 1u);
+    EXPECT_EQ(recovered.front(), key);
+    EXPECT_EQ(state.owner(), waiter);
+
+    auto ready = broker.pollReadyParticipants(1000);
+    ASSERT_TRUE(containsParticipant(ready, waiter));
+    auto descriptors = broker.drainMailboxDescriptors(waiter);
+    ASSERT_EQ(descriptors.size(), 2u);
+    EXPECT_EQ(descriptors[0].eventKind, MailboxEventKind::OwnerDied);
+    EXPECT_EQ(agentc::root1::inlinePayload(descriptors[0]), "lease expired");
+    EXPECT_EQ(descriptors[1].eventKind, MailboxEventKind::OwnershipGranted);
+#endif
+}
+
+TEST(Root1ResourceBrokerTest, RenewedLeasePreventsPrematureRecovery) {
+#if !defined(__linux__)
+    GTEST_SKIP() << "Root1ResourceBroker prototype requires Linux eventfd/epoll";
+#else
+    Root1ResourceBroker broker;
+    auto owner = broker.registerParticipant();
+
+    ResourceState state;
+    ResourceKey key{12, 8, 7, 6, 5, 4};
+
+    ASSERT_TRUE(broker.tryAcquire(state, owner));
+    ASSERT_TRUE(broker.registerLease(key, state, owner, 10));
+    ASSERT_TRUE(broker.renewLease(key, owner, 100));
+
+    EXPECT_TRUE(broker.recoverExpiredLeases(50, "lease expired").empty());
+    EXPECT_EQ(state.owner(), owner);
+
+    auto recovered = broker.recoverExpiredLeases(100, "lease expired");
+    ASSERT_EQ(recovered.size(), 1u);
+    EXPECT_EQ(recovered.front(), key);
+    EXPECT_FALSE(state.isOwned());
+    EXPECT_FALSE(state.isContended());
+#endif
+}
+
+TEST(Root1ResourceBrokerTest, RejectsLeaseForMismatchedOwner) {
+#if !defined(__linux__)
+    GTEST_SKIP() << "Root1ResourceBroker prototype requires Linux eventfd/epoll";
+#else
+    Root1ResourceBroker broker;
+    auto owner = broker.registerParticipant();
+    auto other = broker.registerParticipant();
+
+    ResourceState state;
+    ResourceKey key{13, 8, 7, 6, 5, 4};
+
+    ASSERT_TRUE(broker.tryAcquire(state, owner));
+    EXPECT_FALSE(broker.registerLease(key, state, other, 10));
+    EXPECT_FALSE(broker.renewLease(key, other, 20));
+    EXPECT_TRUE(broker.recoverExpiredLeases(10, "lease expired").empty());
+    EXPECT_EQ(state.owner(), owner);
+#endif
+}
+
 TEST(Root1ResourceBrokerTest, DeliversLegacyMailboxMessagesThroughEpoll) {
 #if !defined(__linux__)
     GTEST_SKIP() << "Root1ResourceBroker prototype requires Linux eventfd/epoll";

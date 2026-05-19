@@ -734,6 +734,83 @@ bool Root1ResourceBroker::recoverAbandonedResource(const ResourceKey& key,
     return true;
 }
 
+bool Root1ResourceBroker::registerLease(const ResourceKey& key,
+                                        ResourceState& state,
+                                        ParticipantId owner,
+                                        uint64_t expiresAtTick) {
+    if (owner == 0) {
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!isValidParticipantLocked(owner)) {
+        return false;
+    }
+    if ((state.word_.load(std::memory_order_acquire) & ResourceState::kOwnerMask) != owner) {
+        return false;
+    }
+
+    LeaseRecord record;
+    record.state = &state;
+    record.owner = owner;
+    record.expiresAtTick = expiresAtTick;
+    leases_[key] = record;
+    return true;
+}
+
+bool Root1ResourceBroker::renewLease(const ResourceKey& key,
+                                     ParticipantId owner,
+                                     uint64_t expiresAtTick) {
+    if (owner == 0) {
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = leases_.find(key);
+    if (it == leases_.end() || !it->second.state || it->second.owner != owner) {
+        return false;
+    }
+    if ((it->second.state->word_.load(std::memory_order_acquire) & ResourceState::kOwnerMask) != owner) {
+        return false;
+    }
+
+    it->second.expiresAtTick = expiresAtTick;
+    return true;
+}
+
+std::vector<ResourceKey> Root1ResourceBroker::recoverExpiredLeases(uint64_t nowTick,
+                                                                   std::string reason) {
+    struct ExpiredLease {
+        ResourceKey key;
+        ResourceState* state = nullptr;
+        ParticipantId owner = 0;
+    };
+
+    std::vector<ExpiredLease> expired;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        for (auto it = leases_.begin(); it != leases_.end();) {
+            if (it->second.expiresAtTick <= nowTick) {
+                expired.push_back({it->first, it->second.state, it->second.owner});
+                it = leases_.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+
+    std::vector<ResourceKey> recovered;
+    for (const auto& lease : expired) {
+        if (lease.state && recoverAbandonedResource(lease.key,
+                                                    *lease.state,
+                                                    lease.owner,
+                                                    reason.empty() ? "resource lease expired" : reason)) {
+            recovered.push_back(lease.key);
+        }
+    }
+    return recovered;
+}
+
 bool Root1ResourceBroker::sendMailboxMessage(ParticipantId participant, std::string payload, uint64_t sequence) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!isValidParticipantLocked(participant)) {
@@ -912,6 +989,7 @@ void Root1ResourceBroker::closeAllFds() {
     }
     participants_.clear();
     waiters_.clear();
+    leases_.clear();
     if (epollFd_ >= 0) {
         close(epollFd_);
         epollFd_ = -1;
