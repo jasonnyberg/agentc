@@ -208,7 +208,8 @@ On resume, Root1 recreates eventfds, rebuilds the epoll set, rescans mailbox/res
 - [x] Connect leases to participant heartbeats and pidfd owner-death events: `heartbeatParticipant(...)` renews all valid leases for an owner, `recoverParticipantLeases(...)` recovers all leases for a participant, and pidfd death polling now recovers leases owned by the dead participant.
 - [x] Expose the first logical Root1 resource/lease controls through importable primitives and `root1.edict`: `root1.resource_create!`, `root1.resource_acquire!`, `root1.resource_release!`, `root1.lease_register!`, `root1.heartbeat!`, and `root1.recover_expired!` operate on logical resource/participant handles without exposing raw fds.
 - [x] Add the first VM scheduler hook needed by continuation-parking `await!`: `EdictVM::resume()` continues the current code frame after `yield!` instead of requiring a fresh `execute(...)` call.
-- [ ] Define the Root1 await parking table that associates logical waitables with yielded/resumable VM continuations and resumes them on descriptor readiness.
+- [x] Add first Root1 await parking table prototype: `Root1AwaitScheduler` maps logical participant waitables to yielded `EdictVM` instances, polls Root1 descriptors, pushes descriptor events onto the VM data stack, and resumes the yielded code frame through `EdictVM::resume()`.
+- [ ] Define durable/generic continuation handles and timeout/cancellation semantics for production `await!`; the first scheduler prototype stores raw in-process `EdictVM*` for tests only.
 
 ## Acceptance Criteria
 
@@ -216,7 +217,7 @@ On resume, Root1 recreates eventfds, rebuilds the epoll set, rescans mailbox/res
 - [x] The design has a concrete `ResourceKey`, resource state, participant, and grant-token model.
 - [x] The design clearly separates persistent slab metadata from process-local/kernel fd state.
 - [x] The design explains fast-path atomic acquire/release and slow-path Root1 parking/wakeup, including lost-wake prevention.
-- [ ] The design covers mailbox IPC, async intern jobs, future `await!`, cancellation/backpressure, and owner-death recovery. Mailbox IPC, first async intern jobs, cancellation/backpressure descriptors, pidfd owner-death descriptors with lease recovery, first abandoned-resource recovery helper, first lease/stale-owner recovery table, participant heartbeat renewal, first logical Root1 resource/lease primitive wrappers, first non-parking Edict `root1.await!`, and first VM resume-after-yield hook are prototyped; the Root1 parking table and descriptor-driven continuation resume semantics remain.
+- [ ] The design covers mailbox IPC, async intern jobs, future `await!`, cancellation/backpressure, and owner-death recovery. Mailbox IPC, first async intern jobs, cancellation/backpressure descriptors, pidfd owner-death descriptors with lease recovery, first abandoned-resource recovery helper, first lease/stale-owner recovery table, participant heartbeat renewal, first logical Root1 resource/lease primitive wrappers, first non-parking Edict `root1.await!`, first VM resume-after-yield hook, and first in-process Root1 await scheduler table are prototyped; durable/generic continuation handles and timeout/cancellation semantics remain.
 - [x] A minimal Linux prototype demonstrates eventfd wakeup, epoll dispatch, contended resource grant, bounded mailbox ring behavior, and mailbox descriptor drain.
 
 ## First Prototype Slices — 2026-05-16
@@ -251,6 +252,8 @@ Prototype limits:
 
 Validation:
 
+- 2026-05-18 Root1 await scheduler table slice: `cmake --build build --target edict_tests -j2` — passed.
+- 2026-05-18 Root1 await scheduler table slice: `./build/edict/edict_tests --gtest_filter='Root1AwaitSchedulerTest.*:Root1PrimitiveModuleTest.*:EdictVM.YieldedExecutionCanResumeCurrentCodeFrame' --gtest_brief=1` — passed 3/3.
 - 2026-05-18 VM resume hook slice: `cmake --build build --target edict_tests -j2` — passed.
 - 2026-05-18 VM resume hook slice: `./build/edict/edict_tests --gtest_filter='EdictVM.YieldedExecutionCanResumeCurrentCodeFrame:Root1PrimitiveModuleTest.*' --gtest_brief=1` — passed 2/2.
 - 2026-05-18 Root1 primitive lease wrapper slice: `cmake --build build --target edict_tests -j2` — passed.
@@ -274,10 +277,10 @@ Validation:
 ## Progress Notes
 
 ### 2026-05-18
-- Did: Added `Root1ResourceBroker::recoverAbandonedResource(...)` for known-resource abandoned-owner recovery, with tests for queued-waiter grant and no-waiter unowned recovery; added `agentc_root1_await_ltv` plus module-backed `root1.await!` that polls a logical waitable and drains descriptors into ready/timeout envelopes; added first lease/stale-owner table API (`registerLease`, `renewLease`, `recoverExpiredLeases`) and tests for expired lease recovery to a waiter, renewed lease non-recovery, mismatched-owner rejection, participant heartbeat renewal, explicit participant lease recovery, and pidfd owner-death lease recovery; exposed first logical resource/lease wrappers in `agentc_root1_primitives.h` and `root1.edict`, with module coverage for resource create/acquire/queued waiter/lease register/heartbeat/recover-expired/await-grant; added `EdictVM::resume()` and a regression proving a yielded code frame resumes to completion.
-- Decided: First `root1.await!` is intentionally non-parking; first lease recovery uses deterministic logical expiry ticks rather than wall-clock timers so resource recovery semantics can be tested independently from scheduler/timer policy; pidfd death should trigger lease recovery for resources owned by that participant; lease controls are worth exposing now as logical resource handles, not raw `ResourceState` pointers/fds; VM-level continuation parking should build on existing `yield!`/code-frame state plus a public `resume()` scheduler hook rather than adding Root1-specific VM opcodes.
-- Remaining: Process-worker heartbeat cadence, timer integration, durable lease reconstruction after remap/resume, Root1 parking table design, and descriptor-driven continuation resume semantics.
-- Next: Implement a small Root1 await scheduler object/table that maps logical waitables to yielded `EdictVM` instances or continuation handles, then resumes them when `root1.await!`/broker polling drains a matching descriptor.
+- Did: Added `Root1ResourceBroker::recoverAbandonedResource(...)` for known-resource abandoned-owner recovery, with tests for queued-waiter grant and no-waiter unowned recovery; added `agentc_root1_await_ltv` plus module-backed `root1.await!` that polls a logical waitable and drains descriptors into ready/timeout envelopes; added first lease/stale-owner table API (`registerLease`, `renewLease`, `recoverExpiredLeases`) and tests for expired lease recovery to a waiter, renewed lease non-recovery, mismatched-owner rejection, participant heartbeat renewal, explicit participant lease recovery, and pidfd owner-death lease recovery; exposed first logical resource/lease wrappers in `agentc_root1_primitives.h` and `root1.edict`, with module coverage for resource create/acquire/queued waiter/lease register/heartbeat/recover-expired/await-grant; added `EdictVM::resume()` and a regression proving a yielded code frame resumes to completion; added `Root1AwaitScheduler` as the first in-process parking table that maps participants to yielded VMs, pushes descriptor lists into resumed VMs, and resumes them on broker readiness.
+- Decided: First `root1.await!` is intentionally non-parking; first lease recovery uses deterministic logical expiry ticks rather than wall-clock timers so resource recovery semantics can be tested independently from scheduler/timer policy; pidfd death should trigger lease recovery for resources owned by that participant; lease controls are worth exposing now as logical resource handles, not raw `ResourceState` pointers/fds; VM-level continuation parking should build on existing `yield!`/code-frame state plus a public `resume()` scheduler hook rather than adding Root1-specific VM opcodes; the first await scheduler can use raw in-process `EdictVM*` only as a test prototype.
+- Remaining: Process-worker heartbeat cadence, timer integration, durable lease reconstruction after remap/resume, durable/generic continuation handles, timeout/cancellation semantics, and public `await!` syntax that parks rather than just polling.
+- Next: Replace the test-only raw `EdictVM*` parking record with a logical continuation handle/status surface that can report parked/resumed/timeout/cancelled states without exposing VM pointers.
 
 ## Integration With Existing Goals
 
