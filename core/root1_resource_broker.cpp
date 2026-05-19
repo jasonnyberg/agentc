@@ -680,58 +680,8 @@ bool Root1ResourceBroker::recoverAbandonedResource(const ResourceKey& key,
                                                    ResourceState& state,
                                                    ParticipantId abandonedOwner,
                                                    std::string reason) {
-    if (abandonedOwner == 0) {
-        return false;
-    }
-
     std::lock_guard<std::mutex> lock(mutex_);
-    if ((state.word_.load(std::memory_order_acquire) & ResourceState::kOwnerMask) != abandonedOwner) {
-        return false;
-    }
-
-    auto waiterIt = waiters_.find(key);
-    while (waiterIt != waiters_.end() && !waiterIt->second.empty()) {
-        ParticipantId next = waiterIt->second.front();
-        waiterIt->second.pop_front();
-        if (!isValidParticipantLocked(next)) {
-            continue;
-        }
-
-        const bool hasMoreWaiters = !waiterIt->second.empty();
-        const uint64_t nextState = (hasMoreWaiters ? ResourceState::kContendedBit : 0) | next;
-        state.word_.store(nextState, std::memory_order_release);
-
-        MailboxDescriptor ownerDied;
-        ownerDied.eventKind = MailboxEventKind::OwnerDied;
-        ownerDied.resource = key;
-        ownerDied.correlationId = abandonedOwner;
-        ownerDied.sequence = nextGrantToken_;
-        setInlinePayload(ownerDied, reason.empty() ? "resource owner abandoned" : reason);
-        pushDescriptorLocked(next, ownerDied);
-
-        BrokerEvent event;
-        event.kind = BrokerEventKind::OwnershipGranted;
-        event.resource = key;
-        event.grantToken = nextGrantToken_++;
-        event.sequence = event.grantToken;
-
-        MailboxDescriptor grant;
-        grant.eventKind = MailboxEventKind::OwnershipGranted;
-        grant.payloadKind = MailboxPayloadKind::None;
-        grant.resource = key;
-        grant.grantToken = event.grantToken;
-        grant.sequence = event.sequence;
-        pushDescriptorLocked(next, grant);
-        pushEventLocked(next, std::move(event));
-        return true;
-    }
-
-    if (waiterIt != waiters_.end() && waiterIt->second.empty()) {
-        waiters_.erase(waiterIt);
-    }
-
-    state.word_.store(0, std::memory_order_release);
-    return true;
+    return recoverAbandonedResourceLocked(key, state, abandonedOwner, reason);
 }
 
 bool Root1ResourceBroker::registerLease(const ResourceKey& key,
@@ -778,6 +728,24 @@ bool Root1ResourceBroker::renewLease(const ResourceKey& key,
     return true;
 }
 
+size_t Root1ResourceBroker::heartbeatParticipant(ParticipantId owner, uint64_t expiresAtTick) {
+    if (owner == 0) {
+        return 0;
+    }
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    size_t renewed = 0;
+    for (auto& entry : leases_) {
+        auto& lease = entry.second;
+        if (lease.owner == owner && lease.state &&
+            (lease.state->word_.load(std::memory_order_acquire) & ResourceState::kOwnerMask) == owner) {
+            lease.expiresAtTick = expiresAtTick;
+            ++renewed;
+        }
+    }
+    return renewed;
+}
+
 std::vector<ResourceKey> Root1ResourceBroker::recoverExpiredLeases(uint64_t nowTick,
                                                                    std::string reason) {
     struct ExpiredLease {
@@ -809,6 +777,12 @@ std::vector<ResourceKey> Root1ResourceBroker::recoverExpiredLeases(uint64_t nowT
         }
     }
     return recovered;
+}
+
+std::vector<ResourceKey> Root1ResourceBroker::recoverParticipantLeases(ParticipantId owner,
+                                                                       std::string reason) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return recoverParticipantLeasesLocked(owner, reason.empty() ? "participant owner abandoned" : reason);
 }
 
 bool Root1ResourceBroker::sendMailboxMessage(ParticipantId participant, std::string payload, uint64_t sequence) {
@@ -893,6 +867,7 @@ std::vector<ParticipantId> Root1ResourceBroker::pollReadyParticipants(int timeou
                 descriptor.correlationId = participant;
                 setInlinePayload(descriptor, "participant process exited");
                 pushDescriptorLocked(participant, descriptor);
+                recoverParticipantLeasesLocked(participant, "participant process exited");
             }
         } else {
             drainEventFd(it->second.eventFd);
@@ -972,6 +947,88 @@ bool Root1ResourceBroker::pushDescriptorLocked(ParticipantId participant, const 
 bool Root1ResourceBroker::tryAcquireUnlocked(ResourceState& state, ParticipantId participant) const {
     uint64_t expected = 0;
     return state.word_.compare_exchange_strong(expected, participant, std::memory_order_acq_rel, std::memory_order_acquire);
+}
+
+bool Root1ResourceBroker::recoverAbandonedResourceLocked(const ResourceKey& key,
+                                                         ResourceState& state,
+                                                         ParticipantId abandonedOwner,
+                                                         const std::string& reason) {
+    if (abandonedOwner == 0) {
+        return false;
+    }
+    if ((state.word_.load(std::memory_order_acquire) & ResourceState::kOwnerMask) != abandonedOwner) {
+        return false;
+    }
+
+    auto waiterIt = waiters_.find(key);
+    while (waiterIt != waiters_.end() && !waiterIt->second.empty()) {
+        ParticipantId next = waiterIt->second.front();
+        waiterIt->second.pop_front();
+        if (!isValidParticipantLocked(next)) {
+            continue;
+        }
+
+        const bool hasMoreWaiters = !waiterIt->second.empty();
+        const uint64_t nextState = (hasMoreWaiters ? ResourceState::kContendedBit : 0) | next;
+        state.word_.store(nextState, std::memory_order_release);
+
+        MailboxDescriptor ownerDied;
+        ownerDied.eventKind = MailboxEventKind::OwnerDied;
+        ownerDied.resource = key;
+        ownerDied.correlationId = abandonedOwner;
+        ownerDied.sequence = nextGrantToken_;
+        setInlinePayload(ownerDied, reason.empty() ? "resource owner abandoned" : reason);
+        pushDescriptorLocked(next, ownerDied);
+
+        BrokerEvent event;
+        event.kind = BrokerEventKind::OwnershipGranted;
+        event.resource = key;
+        event.grantToken = nextGrantToken_++;
+        event.sequence = event.grantToken;
+
+        MailboxDescriptor grant;
+        grant.eventKind = MailboxEventKind::OwnershipGranted;
+        grant.payloadKind = MailboxPayloadKind::None;
+        grant.resource = key;
+        grant.grantToken = event.grantToken;
+        grant.sequence = event.sequence;
+        pushDescriptorLocked(next, grant);
+        pushEventLocked(next, std::move(event));
+        leases_.erase(key);
+        return true;
+    }
+
+    if (waiterIt != waiters_.end() && waiterIt->second.empty()) {
+        waiters_.erase(waiterIt);
+    }
+
+    state.word_.store(0, std::memory_order_release);
+    leases_.erase(key);
+    return true;
+}
+
+std::vector<ResourceKey> Root1ResourceBroker::recoverParticipantLeasesLocked(ParticipantId owner,
+                                                                             const std::string& reason) {
+    std::vector<ResourceKey> ownedKeys;
+    for (const auto& entry : leases_) {
+        if (entry.second.owner == owner) {
+            ownedKeys.push_back(entry.first);
+        }
+    }
+
+    std::vector<ResourceKey> recovered;
+    for (const auto& key : ownedKeys) {
+        auto it = leases_.find(key);
+        if (it == leases_.end() || !it->second.state) {
+            continue;
+        }
+        ResourceState* state = it->second.state;
+        const ParticipantId leaseOwner = it->second.owner;
+        if (recoverAbandonedResourceLocked(key, *state, leaseOwner, reason)) {
+            recovered.push_back(key);
+        }
+    }
+    return recovered;
 }
 
 void Root1ResourceBroker::closeAllFds() {

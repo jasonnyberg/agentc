@@ -250,8 +250,11 @@ public:
     bool renewLease(const ResourceKey& key,
                     ParticipantId owner,
                     uint64_t expiresAtTick);
+    size_t heartbeatParticipant(ParticipantId owner, uint64_t expiresAtTick);
     std::vector<ResourceKey> recoverExpiredLeases(uint64_t nowTick,
                                                   std::string reason = {});
+    std::vector<ResourceKey> recoverParticipantLeases(ParticipantId owner,
+                                                      std::string reason = {});
 
     bool sendMailboxMessage(ParticipantId participant, std::string payload, uint64_t sequence = 0);
     bool sendMailboxDescriptor(ParticipantId participant, const MailboxDescriptor& descriptor);
@@ -282,6 +285,12 @@ private:
     void pushEventLocked(ParticipantId participant, BrokerEvent event);
     bool pushDescriptorLocked(ParticipantId participant, const MailboxDescriptor& descriptor);
     bool tryAcquireUnlocked(ResourceState& state, ParticipantId participant) const;
+    bool recoverAbandonedResourceLocked(const ResourceKey& key,
+                                        ResourceState& state,
+                                        ParticipantId abandonedOwner,
+                                        const std::string& reason);
+    std::vector<ResourceKey> recoverParticipantLeasesLocked(ParticipantId owner,
+                                                            const std::string& reason);
     void closeAllFds();
 
     mutable std::mutex mutex_;

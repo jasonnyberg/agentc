@@ -393,6 +393,60 @@ TEST(Root1ResourceBrokerTest, RenewedLeasePreventsPrematureRecovery) {
 #endif
 }
 
+TEST(Root1ResourceBrokerTest, ParticipantHeartbeatRenewsOwnedLeases) {
+#if !defined(__linux__)
+    GTEST_SKIP() << "Root1ResourceBroker prototype requires Linux eventfd/epoll";
+#else
+    Root1ResourceBroker broker;
+    auto owner = broker.registerParticipant();
+
+    ResourceState first;
+    ResourceState second;
+    ResourceKey firstKey{14, 8, 7, 6, 5, 4};
+    ResourceKey secondKey{15, 8, 7, 6, 5, 4};
+
+    ASSERT_TRUE(broker.tryAcquire(first, owner));
+    ASSERT_TRUE(broker.tryAcquire(second, owner));
+    ASSERT_TRUE(broker.registerLease(firstKey, first, owner, 10));
+    ASSERT_TRUE(broker.registerLease(secondKey, second, owner, 10));
+
+    EXPECT_EQ(broker.heartbeatParticipant(owner, 100), 2u);
+    EXPECT_TRUE(broker.recoverExpiredLeases(50, "lease expired").empty());
+    EXPECT_EQ(first.owner(), owner);
+    EXPECT_EQ(second.owner(), owner);
+#endif
+}
+
+TEST(Root1ResourceBrokerTest, RecoversAllLeasesForOwnerParticipant) {
+#if !defined(__linux__)
+    GTEST_SKIP() << "Root1ResourceBroker prototype requires Linux eventfd/epoll";
+#else
+    Root1ResourceBroker broker;
+    auto owner = broker.registerParticipant();
+    auto waiter = broker.registerParticipant();
+
+    ResourceState state;
+    ResourceKey key{16, 8, 7, 6, 5, 4};
+
+    ASSERT_TRUE(broker.tryAcquire(state, owner));
+    ASSERT_TRUE(broker.registerLease(key, state, owner, 100));
+    ASSERT_EQ(broker.acquireOrQueue(key, state, waiter), AcquireStatus::Queued);
+
+    auto recovered = broker.recoverParticipantLeases(owner, "owner heartbeat lost");
+    ASSERT_EQ(recovered.size(), 1u);
+    EXPECT_EQ(recovered.front(), key);
+    EXPECT_EQ(state.owner(), waiter);
+
+    auto ready = broker.pollReadyParticipants(1000);
+    ASSERT_TRUE(containsParticipant(ready, waiter));
+    auto descriptors = broker.drainMailboxDescriptors(waiter);
+    ASSERT_EQ(descriptors.size(), 2u);
+    EXPECT_EQ(descriptors[0].eventKind, MailboxEventKind::OwnerDied);
+    EXPECT_EQ(agentc::root1::inlinePayload(descriptors[0]), "owner heartbeat lost");
+    EXPECT_EQ(descriptors[1].eventKind, MailboxEventKind::OwnershipGranted);
+#endif
+}
+
 TEST(Root1ResourceBrokerTest, RejectsLeaseForMismatchedOwner) {
 #if !defined(__linux__)
     GTEST_SKIP() << "Root1ResourceBroker prototype requires Linux eventfd/epoll";
@@ -489,6 +543,49 @@ TEST(Root1ResourceBrokerTest, DeliversCancellationAndBackpressureDescriptors) {
     EXPECT_EQ(descriptors[1].eventKind, MailboxEventKind::Backpressure);
     EXPECT_EQ(descriptors[1].correlationId, 1002u);
     EXPECT_EQ(agentc::root1::inlinePayload(descriptors[1]), "mailbox full");
+#endif
+}
+
+TEST(Root1ResourceBrokerTest, PidfdOwnerDeathRecoversOwnedLeasesWhenAvailable) {
+#if !defined(__linux__)
+    GTEST_SKIP() << "Root1ResourceBroker prototype requires Linux pidfd/eventfd/epoll";
+#else
+    pid_t child = fork();
+    ASSERT_GE(child, 0);
+    if (child == 0) {
+        _exit(0);
+    }
+
+    Root1ResourceBroker broker;
+    auto owner = broker.registerParticipant();
+    auto waiter = broker.registerParticipant();
+    if (!broker.attachParticipantPid(owner, child)) {
+        int status = 0;
+        waitpid(child, &status, 0);
+        GTEST_SKIP() << "pidfd_open is not available in this kernel/container";
+    }
+
+    ResourceState state;
+    ResourceKey key{17, 8, 7, 6, 5, 4};
+    ASSERT_TRUE(broker.tryAcquire(state, owner));
+    ASSERT_TRUE(broker.registerLease(key, state, owner, 100));
+    ASSERT_EQ(broker.acquireOrQueue(key, state, waiter), AcquireStatus::Queued);
+
+    auto ready = broker.pollReadyParticipants(3000);
+    int status = 0;
+    waitpid(child, &status, 0);
+
+    ASSERT_TRUE(containsParticipant(ready, owner));
+    EXPECT_EQ(state.owner(), waiter);
+
+    ready = broker.pollReadyParticipants(1000);
+    ASSERT_TRUE(containsParticipant(ready, waiter));
+    auto descriptors = broker.drainMailboxDescriptors(waiter);
+    ASSERT_EQ(descriptors.size(), 2u);
+    EXPECT_EQ(descriptors[0].eventKind, MailboxEventKind::OwnerDied);
+    EXPECT_EQ(descriptors[0].correlationId, owner);
+    EXPECT_EQ(agentc::root1::inlinePayload(descriptors[0]), "participant process exited");
+    EXPECT_EQ(descriptors[1].eventKind, MailboxEventKind::OwnershipGranted);
 #endif
 }
 

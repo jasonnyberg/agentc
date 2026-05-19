@@ -205,6 +205,7 @@ On resume, Root1 recreates eventfds, rebuilds the epoll set, rescans mailbox/res
 - [x] Add first non-parking generic `root1.await!` over logical Root1 waitables: poll the participant waitable, drain mailbox descriptors, and return a structured ready/timeout envelope. Continuation parking remains a later VM scheduler slice.
 - [x] Add first abandoned-resource recovery helper: `Root1ResourceBroker::recoverAbandonedResource(...)` verifies the abandoned owner, clears unowned resources, or broker-grants ownership to the next queued valid waiter while publishing `OwnerDied` plus `OwnershipGranted` descriptors.
 - [x] Add first lease/stale-owner table slice: `registerLease(...)`, `renewLease(...)`, and `recoverExpiredLeases(...)` track logical owner expiry ticks for known resources, avoid premature recovery after renewal, and recover expired owners through the abandoned-resource path.
+- [x] Connect leases to participant heartbeats and pidfd owner-death events: `heartbeatParticipant(...)` renews all valid leases for an owner, `recoverParticipantLeases(...)` recovers all leases for a participant, and pidfd death polling now recovers leases owned by the dead participant.
 - [ ] Define how future Edict `await!` parks/resumes VM continuations through Root1 waitables.
 
 ## Acceptance Criteria
@@ -213,7 +214,7 @@ On resume, Root1 recreates eventfds, rebuilds the epoll set, rescans mailbox/res
 - [x] The design has a concrete `ResourceKey`, resource state, participant, and grant-token model.
 - [x] The design clearly separates persistent slab metadata from process-local/kernel fd state.
 - [x] The design explains fast-path atomic acquire/release and slow-path Root1 parking/wakeup, including lost-wake prevention.
-- [ ] The design covers mailbox IPC, async intern jobs, future `await!`, cancellation/backpressure, and owner-death recovery. Mailbox IPC, first async intern jobs, cancellation/backpressure descriptors, first pidfd owner-death descriptors, first abandoned-resource recovery helper, first lease/stale-owner recovery table, and first non-parking Edict `root1.await!` are prototyped; continuation-parking `await!` semantics remain.
+- [ ] The design covers mailbox IPC, async intern jobs, future `await!`, cancellation/backpressure, and owner-death recovery. Mailbox IPC, first async intern jobs, cancellation/backpressure descriptors, pidfd owner-death descriptors with lease recovery, first abandoned-resource recovery helper, first lease/stale-owner recovery table, participant heartbeat renewal, and first non-parking Edict `root1.await!` are prototyped; continuation-parking `await!` semantics remain.
 - [x] A minimal Linux prototype demonstrates eventfd wakeup, epoll dispatch, contended resource grant, bounded mailbox ring behavior, and mailbox descriptor drain.
 
 ## First Prototype Slices — 2026-05-16
@@ -241,13 +242,17 @@ Prototype capabilities:
 Prototype limits:
 
 - Broker wait queues remain process-local sidecar maps; only participant mailbox rings and resource state slots have a first mapped layout.
-- First lease/stale-owner recovery exists for registered known resources using logical expiry ticks, but process-worker heartbeat policy, wall-clock/timer integration, durable lease reconstruction, and publication/slab-directory lease semantics remain future work.
+- First lease/stale-owner recovery exists for registered known resources using logical expiry ticks, participant-wide heartbeat renewal, and pidfd-death-triggered participant lease recovery, but process-worker heartbeat cadence, wall-clock/timer integration, durable lease reconstruction, and publication/slab-directory lease semantics remain future work.
 - G091 now consumes cancellation/backpressure descriptor states for cooperative `intern_cancel!` and `max_active_jobs` backpressure; broader scheduler-level policy for process workers and continuation-parking `await!` remains.
 - Generic module-backed `root1.await!` now exists as a non-parking helper over imported Root1 primitives; it polls a logical waitable and drains descriptors into a ready/timeout envelope. VM continuation parking/resume semantics remain future work.
 - The mailbox ring is SPSC-style and broker-serialized in the current prototype; MPSC/per-producer lanes are still future work.
 
 Validation:
 
+- 2026-05-18 heartbeat/pidfd lease slice: `cmake --build build --target reflect_tests -j2` — passed.
+- 2026-05-18 heartbeat/pidfd lease slice: `./build/tests/reflect_tests --gtest_filter='Root1ResourceBrokerTest.*' --gtest_brief=1` — passed 18/18.
+- 2026-05-18 heartbeat/pidfd lease slice: `cmake --build build --target edict_tests -j2` — passed.
+- 2026-05-18 heartbeat/pidfd lease slice: `./build/edict/edict_tests --gtest_filter='Root1PrimitiveModuleTest.*' --gtest_brief=1` — passed 1/1.
 - 2026-05-18 lease slice: `cmake --build build --target reflect_tests -j2` — passed.
 - 2026-05-18 lease slice: `./build/tests/reflect_tests --gtest_filter='Root1ResourceBrokerTest.*' --gtest_brief=1` — passed 15/15.
 - 2026-05-18 lease slice: `cmake --build build --target edict_tests -j2` — passed.
@@ -261,10 +266,10 @@ Validation:
 ## Progress Notes
 
 ### 2026-05-18
-- Did: Added `Root1ResourceBroker::recoverAbandonedResource(...)` for known-resource abandoned-owner recovery, with tests for queued-waiter grant and no-waiter unowned recovery; added `agentc_root1_await_ltv` plus module-backed `root1.await!` that polls a logical waitable and drains descriptors into ready/timeout envelopes; added first lease/stale-owner table API (`registerLease`, `renewLease`, `recoverExpiredLeases`) and tests for expired lease recovery to a waiter, renewed lease non-recovery, and mismatched-owner rejection.
-- Decided: First `root1.await!` is intentionally non-parking; first lease recovery uses deterministic logical expiry ticks rather than wall-clock timers so resource recovery semantics can be tested independently from scheduler/timer policy.
-- Remaining: Process-worker heartbeat policy, timer integration, durable lease reconstruction after remap/resume, and true continuation-parking `await!` semantics.
-- Next: Define how participant heartbeats and pidfd owner-death events update Root1 leases, then connect expired/pid-dead lease recovery to process-worker ownership policy.
+- Did: Added `Root1ResourceBroker::recoverAbandonedResource(...)` for known-resource abandoned-owner recovery, with tests for queued-waiter grant and no-waiter unowned recovery; added `agentc_root1_await_ltv` plus module-backed `root1.await!` that polls a logical waitable and drains descriptors into ready/timeout envelopes; added first lease/stale-owner table API (`registerLease`, `renewLease`, `recoverExpiredLeases`) and tests for expired lease recovery to a waiter, renewed lease non-recovery, mismatched-owner rejection, participant heartbeat renewal, explicit participant lease recovery, and pidfd owner-death lease recovery.
+- Decided: First `root1.await!` is intentionally non-parking; first lease recovery uses deterministic logical expiry ticks rather than wall-clock timers so resource recovery semantics can be tested independently from scheduler/timer policy; pidfd death should trigger lease recovery for resources owned by that participant.
+- Remaining: Process-worker heartbeat cadence, timer integration, durable lease reconstruction after remap/resume, exposing lease controls through Root1 primitives if needed, and true continuation-parking `await!` semantics.
+- Next: Decide whether lease registration/heartbeat/recovery should be exposed through `agentc_root1_primitives.h` / `root1.edict` now, or remain C++ substrate until process-worker ownership needs it.
 
 ## Integration With Existing Goals
 
