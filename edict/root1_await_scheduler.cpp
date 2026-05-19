@@ -16,6 +16,7 @@
 #include "root1_await_scheduler.h"
 #include "edict_vm.h"
 
+#include <algorithm>
 #include <string>
 
 namespace agentc::edict {
@@ -62,19 +63,76 @@ CPtr<agentc::ListreeValue> descriptorsToList(const std::vector<agentc::root1::Ma
 
 } // namespace
 
-size_t Root1AwaitScheduler::park(agentc::root1::ParticipantId participant, EdictVM& vm) {
+Root1ContinuationHandle Root1AwaitScheduler::park(agentc::root1::ParticipantId participant,
+                                                  ResumeCallback resume) {
     if (participant == 0) {
         return 0;
     }
-    const size_t id = nextId_++;
-    parked_[participant].push_back(ParkedContinuation{id, participant, &vm});
-    return id;
+    const auto handle = nextId_++;
+    continuations_.emplace(handle, ParkedContinuation{
+        handle,
+        participant,
+        Root1ContinuationState::Parked,
+        0,
+        0,
+        nullptr,
+        std::move(resume),
+    });
+    byParticipant_[participant].push_back(handle);
+    return handle;
+}
+
+Root1ContinuationHandle Root1AwaitScheduler::parkVm(agentc::root1::ParticipantId participant,
+                                                    EdictVM& vm) {
+    return park(participant, [&vm](CPtr<agentc::ListreeValue> eventsValue) {
+        vm.pushData(eventsValue);
+        return vm.resume();
+    });
+}
+
+Root1ContinuationStatus Root1AwaitScheduler::status(Root1ContinuationHandle handle) const {
+    auto it = continuations_.find(handle);
+    if (it == continuations_.end()) {
+        return Root1ContinuationStatus{};
+    }
+    const auto& continuation = it->second;
+    return Root1ContinuationStatus{
+        continuation.handle,
+        continuation.participant,
+        continuation.state,
+        continuation.eventsDelivered,
+        continuation.resumeState,
+    };
+}
+
+CPtr<agentc::ListreeValue> Root1AwaitScheduler::events(Root1ContinuationHandle handle) const {
+    auto it = continuations_.find(handle);
+    if (it == continuations_.end()) {
+        return nullptr;
+    }
+    return it->second.lastEvents;
+}
+
+bool Root1AwaitScheduler::cancel(Root1ContinuationHandle handle) {
+    return markTerminal(handle, Root1ContinuationState::Cancelled);
+}
+
+bool Root1AwaitScheduler::drop(Root1ContinuationHandle handle) {
+    auto it = continuations_.find(handle);
+    if (it == continuations_.end()) {
+        return false;
+    }
+    removeFromParticipantIndex(handle, it->second.participant);
+    continuations_.erase(it);
+    return true;
 }
 
 size_t Root1AwaitScheduler::parkedCount() const {
     size_t count = 0;
-    for (const auto& entry : parked_) {
-        count += entry.second.size();
+    for (const auto& entry : continuations_) {
+        if (entry.second.state == Root1ContinuationState::Parked) {
+            ++count;
+        }
     }
     return count;
 }
@@ -84,9 +142,24 @@ Root1AwaitPollResult Root1AwaitScheduler::pollAndResume(agentc::root1::Root1Reso
     Root1AwaitPollResult result;
     result.readyParticipants = broker.pollReadyParticipants(timeoutMs);
 
+    if (result.readyParticipants.empty() && timeoutMs > 0) {
+        std::vector<Root1ContinuationHandle> timedOut;
+        for (const auto& entry : continuations_) {
+            if (entry.second.state == Root1ContinuationState::Parked) {
+                timedOut.push_back(entry.first);
+            }
+        }
+        for (const auto handle : timedOut) {
+            if (markTerminal(handle, Root1ContinuationState::Timeout)) {
+                ++result.timedOutContinuations;
+            }
+        }
+        return result;
+    }
+
     for (const auto participant : result.readyParticipants) {
-        auto it = parked_.find(participant);
-        if (it == parked_.end() || it->second.empty()) {
+        auto it = byParticipant_.find(participant);
+        if (it == byParticipant_.end() || it->second.empty()) {
             continue;
         }
 
@@ -95,19 +168,67 @@ Root1AwaitPollResult Root1AwaitScheduler::pollAndResume(agentc::root1::Root1Reso
             continue;
         }
 
-        auto continuations = std::move(it->second);
-        parked_.erase(it);
-        for (auto& continuation : continuations) {
-            if (!continuation.vm) {
+        auto handles = std::move(it->second);
+        byParticipant_.erase(it);
+        for (const auto handle : handles) {
+            auto continuationIt = continuations_.find(handle);
+            if (continuationIt == continuations_.end() ||
+                continuationIt->second.state != Root1ContinuationState::Parked) {
                 continue;
             }
-            continuation.vm->pushData(descriptorsToList(descriptors));
-            continuation.vm->resume();
-            ++result.resumedContinuations;
+
+            auto& continuation = continuationIt->second;
+            continuation.lastEvents = descriptorsToList(descriptors);
+            continuation.eventsDelivered = eventCount(continuation.lastEvents);
+            if (continuation.resume) {
+                continuation.resumeState = continuation.resume(continuation.lastEvents);
+                continuation.state = Root1ContinuationState::Resumed;
+                ++result.resumedContinuations;
+            } else {
+                continuation.state = Root1ContinuationState::Ready;
+                ++result.readyContinuations;
+            }
         }
     }
 
     return result;
+}
+
+void Root1AwaitScheduler::removeFromParticipantIndex(Root1ContinuationHandle handle,
+                                                     agentc::root1::ParticipantId participant) {
+    auto it = byParticipant_.find(participant);
+    if (it == byParticipant_.end()) {
+        return;
+    }
+    auto& handles = it->second;
+    handles.erase(std::remove(handles.begin(), handles.end(), handle), handles.end());
+    if (handles.empty()) {
+        byParticipant_.erase(it);
+    }
+}
+
+bool Root1AwaitScheduler::markTerminal(Root1ContinuationHandle handle,
+                                       Root1ContinuationState state) {
+    auto it = continuations_.find(handle);
+    if (it == continuations_.end() || it->second.state != Root1ContinuationState::Parked) {
+        return false;
+    }
+    removeFromParticipantIndex(handle, it->second.participant);
+    it->second.state = state;
+    return true;
+}
+
+size_t Root1AwaitScheduler::eventCount(const CPtr<agentc::ListreeValue>& eventsValue) const {
+    if (!eventsValue || !eventsValue->isListMode()) {
+        return 0;
+    }
+    size_t count = 0;
+    eventsValue->forEachList([&](CPtr<agentc::ListreeValueRef>& ref) {
+        if (ref && ref->getValue()) {
+            ++count;
+        }
+    });
+    return count;
 }
 
 } // namespace agentc::edict

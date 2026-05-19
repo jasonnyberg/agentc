@@ -26,6 +26,7 @@ using agentc::ListreeValue;
 using agentc::edict::EdictCompiler;
 using agentc::edict::EdictVM;
 using agentc::edict::Root1AwaitScheduler;
+using agentc::edict::Root1ContinuationState;
 
 namespace {
 
@@ -93,7 +94,8 @@ TEST(Root1AwaitSchedulerTest, ResumesYieldedVmWhenWaitableReceivesDescriptor) {
     ASSERT_TRUE(state & agentc::edict::VM_YIELD);
 
     Root1AwaitScheduler scheduler;
-    ASSERT_GT(scheduler.park(participant, vm), 0u);
+    auto handle = scheduler.parkVm(participant, vm);
+    ASSERT_GT(handle, 0u);
     EXPECT_EQ(scheduler.parkedCount(), 1u);
 
     agentc::root1::MailboxDescriptor descriptor;
@@ -106,6 +108,10 @@ TEST(Root1AwaitSchedulerTest, ResumesYieldedVmWhenWaitableReceivesDescriptor) {
     auto result = scheduler.pollAndResume(broker, 1000);
     EXPECT_EQ(result.resumedContinuations, 1u);
     EXPECT_EQ(scheduler.parkedCount(), 0u);
+    auto continuationStatus = scheduler.status(handle);
+    EXPECT_EQ(continuationStatus.state, Root1ContinuationState::Resumed);
+    EXPECT_EQ(continuationStatus.participant, participant);
+    EXPECT_EQ(continuationStatus.eventsDelivered, 1u);
 
     auto events = namedValue(root, "events");
     ASSERT_TRUE(events);
@@ -117,5 +123,57 @@ TEST(Root1AwaitSchedulerTest, ResumesYieldedVmWhenWaitableReceivesDescriptor) {
     EXPECT_EQ(textValue(namedValue(event, "correlation_id")), "1234");
     EXPECT_EQ(textValue(namedValue(event, "payload")), "ready");
     EXPECT_EQ(listCount(vm.getStackTop()), 1u);
+#endif
+}
+
+TEST(Root1AwaitSchedulerTest, LogicalHandlesReportReadyTimeoutAndCancellation) {
+#if !defined(__linux__)
+    GTEST_SKIP() << "Root1 await scheduler prototype requires Linux eventfd/epoll";
+#else
+    agentc::root1::Root1ResourceBroker broker;
+    auto readyParticipant = broker.registerParticipant();
+    auto timeoutParticipant = broker.registerParticipant();
+    auto cancelledParticipant = broker.registerParticipant();
+    ASSERT_GT(readyParticipant, 0u);
+    ASSERT_GT(timeoutParticipant, 0u);
+    ASSERT_GT(cancelledParticipant, 0u);
+
+    Root1AwaitScheduler scheduler;
+    auto readyHandle = scheduler.park(readyParticipant);
+    auto timeoutHandle = scheduler.park(timeoutParticipant);
+    auto cancelledHandle = scheduler.park(cancelledParticipant);
+    ASSERT_GT(readyHandle, 0u);
+    ASSERT_GT(timeoutHandle, 0u);
+    ASSERT_GT(cancelledHandle, 0u);
+    EXPECT_EQ(scheduler.parkedCount(), 3u);
+
+    EXPECT_TRUE(scheduler.cancel(cancelledHandle));
+    EXPECT_EQ(scheduler.status(cancelledHandle).state, Root1ContinuationState::Cancelled);
+    EXPECT_EQ(scheduler.parkedCount(), 2u);
+
+    agentc::root1::MailboxDescriptor descriptor;
+    descriptor.eventKind = agentc::root1::MailboxEventKind::Complete;
+    descriptor.sequence = 88;
+    ASSERT_TRUE(agentc::root1::setInlinePayload(descriptor, "done"));
+    ASSERT_TRUE(broker.sendMailboxDescriptor(readyParticipant, descriptor));
+
+    auto readyResult = scheduler.pollAndResume(broker, 1000);
+    EXPECT_EQ(readyResult.readyContinuations, 1u);
+    EXPECT_EQ(readyResult.resumedContinuations, 0u);
+    auto readyStatus = scheduler.status(readyHandle);
+    EXPECT_EQ(readyStatus.state, Root1ContinuationState::Ready);
+    EXPECT_EQ(readyStatus.eventsDelivered, 1u);
+    auto readyEvents = scheduler.events(readyHandle);
+    ASSERT_EQ(listCount(readyEvents), 1u);
+    auto readyEvent = listValueAt(readyEvents, 0);
+    ASSERT_TRUE(readyEvent);
+    EXPECT_EQ(textValue(namedValue(readyEvent, "kind")), "complete");
+    EXPECT_EQ(textValue(namedValue(readyEvent, "payload")), "done");
+    EXPECT_EQ(scheduler.parkedCount(), 1u);
+
+    auto timeoutResult = scheduler.pollAndResume(broker, 1);
+    EXPECT_EQ(timeoutResult.timedOutContinuations, 1u);
+    EXPECT_EQ(scheduler.status(timeoutHandle).state, Root1ContinuationState::Timeout);
+    EXPECT_EQ(scheduler.parkedCount(), 0u);
 #endif
 }
