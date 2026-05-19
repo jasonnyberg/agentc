@@ -17,7 +17,9 @@
 
 #include "../listree/listree.h"
 
+#include <atomic>
 #include <cstddef>
+#include <memory>
 #include <mutex>
 #include <string>
 
@@ -30,6 +32,7 @@ struct InternWorkerInput {
     CPtr<agentc::ListreeValue> contextSharedReadOnly;
     CPtr<agentc::ListreeValue> importsSharedReadOnly;
     bool allowUnsafeFfiCalls = false;
+    std::shared_ptr<std::atomic<bool>> cancelRequested;
     bool hasMaxActiveJobs = false;
     size_t maxActiveJobs = 0;
 };

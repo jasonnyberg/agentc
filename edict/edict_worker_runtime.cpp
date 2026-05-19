@@ -67,6 +67,16 @@ void runInternWorker(InternWorkerInput input, InternJoinSlot& slot) {
         EdictCompiler compiler;
         const auto bytecode = compiler.compile(input.program);
         outcome.vmState = worker.execute(bytecode);
+        while ((outcome.vmState & VM_YIELD) && !(outcome.vmState & VM_ERROR)) {
+            if (input.cancelRequested && input.cancelRequested->load()) {
+                outcome.ok = false;
+                outcome.errorCode = "cancelled";
+                outcome.errorMessage = "intern worker observed cancellation checkpoint";
+                slot.store(std::move(outcome));
+                return;
+            }
+            outcome.vmState = worker.resume();
+        }
         if (outcome.vmState & VM_ERROR) {
             outcome.ok = false;
             outcome.errorCode = "worker_vm_error";

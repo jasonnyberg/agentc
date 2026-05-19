@@ -32,6 +32,7 @@ The intern model is the clearest application-level payoff for AgentC's substrate
 - [x] Add `intern_start!` / `intern_sync!` while keeping `intern_run!` as blocking convenience over the same worker helper.
 - [x] Add broker-compatible async cancellation/backpressure policy and regression coverage.
 - [x] Harden first lifecycle/drop semantics for the current thread-worker backend: active counts now exclude terminal retained jobs, final async statuses are retained for repeated sync until explicit drop or bounded retention sweep, running drops explicitly abandon the handle without killing the detached worker, and cancellation is non-retroactive once a worker is terminal.
+- [x] Add first worker-visible cooperative cancellation checkpoint protocol: async worker programs that execute `yield!` are resumed by the worker runtime only after checking the job cancellation token, allowing long-running cooperative workers to terminate before executing later program steps.
 - [ ] Harden explicit private slab/arena cleanup for the later multi-worker scheduler; the current thread-worker slice still uses normal `CPtr`/VM lifetime cleanup and JSON result copying.
 
 ## Acceptance Criteria
@@ -59,7 +60,7 @@ First async slice details:
 - `intern_start!` supports task `max_active_jobs`; when the active-job count is at the limit it returns `state: "backpressure"`, `error.code: "backpressure"`, and a `Backpressure` descriptor without launching a worker.
 - `intern_run!` remains blocking convenience over the same deterministic worker helper.
 
-G111 is complete, so remaining G091 hardening is now lifecycle/resource policy over the module-backed worker surface: deeper private arena/slab cleanup for the later scheduler, clearer abandoned detached-worker accounting, and eventual worker-visible cancellation checkpoints. First lifecycle cleanup landed on 2026-05-18: terminal async jobs are retained for repeated `intern_sync!` until `worker.edict_drop!` or bounded terminal-retention sweep, `worker.edict_active_count!` counts only non-terminal/non-abandoned jobs, dropping a running job returns `state: "abandoned"` and suppresses later mailbox publication, dropping a terminal retained job returns `state: "dropped"`, and cancellation is non-retroactive after terminal completion. Then promote 🔗[G099 — Intern Task Quality Contracts](../G099-InternTaskQualityContracts/index.md) with the now-concrete event/backpressure/cancel fields.
+G111 is complete, so remaining G091 hardening is now lifecycle/resource policy over the module-backed worker surface: deeper private arena/slab cleanup for the later scheduler and clearer abandoned detached-worker accounting. First lifecycle cleanup landed on 2026-05-18: terminal async jobs are retained for repeated `intern_sync!` until `worker.edict_drop!` or bounded terminal-retention sweep, `worker.edict_active_count!` counts only non-terminal/non-abandoned jobs, dropping a running job returns `state: "abandoned"` and suppresses later mailbox publication, dropping a terminal retained job returns `state: "dropped"`, and cancellation is non-retroactive after terminal completion. First worker-visible cooperative cancellation checkpointing landed on 2026-05-19: async worker programs that reach `yield!` hand control to the worker runtime, which checks the job cancellation token before resuming the code frame. Then promote 🔗[G099 — Intern Task Quality Contracts](../G099-InternTaskQualityContracts/index.md) with the now-concrete event/backpressure/cancel fields.
 
 ## Implemented Path — Async Intern Jobs
 The G091 async slice is shaped by 🔗[G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design](../G110-EventfdEpollMicroVmIpcDesign/index.md). The earlier ghost-queue mechanics remain a useful implementation reference and fallback, but the implemented abstraction is a broker-compatible waitable job/mailbox:
@@ -102,11 +103,22 @@ Related architecture concept: 🔗[Layered mmap Micro-VM Architecture](../../Con
 
 ## Progress Notes
 
+### 2026-05-19
+- Did: Added the first worker-visible cooperative cancellation checkpoint protocol. Async worker jobs now carry a shared cancellation token into `runInternWorker`; when worker code executes `yield!`, the worker runtime checks the token before calling `EdictVM::resume()`. If cancellation has been requested, the worker stores a cancelled outcome immediately and does not execute later program steps.
+- Decided: `yield!` is the first cancellation checkpoint boundary because it already records/resumes VM frame state and avoids new intern-specific VM opcodes. This keeps cancellation cooperative and explicit in worker programs.
+- Remaining: Deeper private arena/slab cleanup for the later scheduler and abandoned-worker/resource accounting beyond handle abandonment.
+- Next: Move to G099 dispatch integration: decide where `intern_start!` should enforce `intern.validate_task_contract!` and add malformed/over-broad task rejection tests.
+
 ### 2026-05-18
 - Did: Landed first lifecycle/drop semantics on the completed G111 module-backed worker surface: terminal async statuses are retained for repeated sync until explicit drop or bounded sweep, active counts exclude terminal/abandoned jobs, running drops return `abandoned`, terminal drops return `dropped`, abandoned workers suppress orphan completion publication, and cancellation is non-retroactive after terminal completion.
 - Decided: Running `drop` is handle abandonment rather than thread preemption; current detached workers must unwind naturally until a later worker-visible cancellation/checkpoint mechanism exists.
 - Remaining: Deeper private arena/slab cleanup for the later scheduler, abandoned-worker/resource accounting beyond handle abandonment, and worker-visible cancellation checkpoints.
 - Next: Add a worker-visible cancellation checkpoint primitive or protocol so long-running Edict workers can voluntarily stop before finishing the full program.
+
+## Validation — 2026-05-19
+- `cmake --build build --target edict_tests -j2` — passed.
+- `./build/edict/edict_tests --gtest_filter='InternWorkerTest.*:Root1AwaitSchedulerTest.*:Root1PrimitiveModuleTest.*:EdictVM.YieldedExecutionCanResumeCurrentCodeFrame' --gtest_brief=1` — passed 16/16.
+- Earlier focused checkpoint slice: `./build/edict/edict_tests --gtest_filter='InternWorkerTest.WorkerYieldCheckpointsObserveAsyncCancellation:InternWorkerTest.InternCancelRequestsCancellationAndFinalSyncReportsCancelled' --gtest_brief=1` — passed 2/2.
 
 ## Validation — 2026-05-18
 - `cmake --build build --target edict_tests -j2` — passed.

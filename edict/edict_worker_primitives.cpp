@@ -430,7 +430,7 @@ struct AsyncInternJob {
     agentc::root1::ParticipantId participant = 0;
     InternWorkerInput input;
     std::shared_ptr<InternJoinSlot> slot;
-    std::atomic<bool> cancelRequested{false};
+    std::shared_ptr<std::atomic<bool>> cancelRequested;
     std::atomic<bool> abandoned{false};
     bool terminalObserved = false;
     uint64_t terminalSequence = 0;
@@ -567,6 +567,8 @@ public:
         job->participant = broker_.registerParticipant();
         job->input = std::move(input);
         job->slot = std::make_shared<InternJoinSlot>();
+        job->cancelRequested = std::make_shared<std::atomic<bool>>(false);
+        job->input.cancelRequested = job->cancelRequested;
 
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -625,7 +627,7 @@ public:
                                            outcome.ok ? "complete" : "error");
         }
 
-        const bool firstRequest = !job->cancelRequested.exchange(true);
+        const bool firstRequest = job->cancelRequested && !job->cancelRequested->exchange(true);
         if (firstRequest) {
             broker_.sendCancellation(job->participant,
                                      job->numericId,
@@ -664,7 +666,7 @@ public:
         }
 
         const bool ready = job->slot->ready();
-        const bool cancelRequested = job->cancelRequested.load();
+        const bool cancelRequested = job->cancelRequested && job->cancelRequested->load();
         if (!ready) {
             return buildWorkerCollectStatus(*job, false, cancelRequested, nullptr, providedEvents);
         }

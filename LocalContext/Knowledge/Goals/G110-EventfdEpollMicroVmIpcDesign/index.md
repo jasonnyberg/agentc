@@ -210,7 +210,60 @@ On resume, Root1 recreates eventfds, rebuilds the epoll set, rescans mailbox/res
 - [x] Add the first VM scheduler hook needed by continuation-parking `await!`: `EdictVM::resume()` continues the current code frame after `yield!` instead of requiring a fresh `execute(...)` call.
 - [x] Add first Root1 await parking table prototype: `Root1AwaitScheduler` maps logical participant waitables to continuation handles, polls Root1 descriptors, pushes descriptor events through an optional resume callback, and can resume a yielded code frame through `EdictVM::resume()`.
 - [x] Replace the test-only raw `EdictVM*` parking record with a logical continuation handle/status surface: handles report `parked`, `ready`, `resumed`, `timeout`, and `cancelled`, and descriptor events can be retrieved by handle without exposing VM pointers.
+- [x] Define the public parking `await!` contract boundary over the handle/status surface: resumed code receives a structured envelope, timeout/cancel are terminal envelopes, terminal handles are retained until explicit drop, and durable/session-safe continuation reconstruction is deferred to G096/G104.
 - [ ] Define durable/session-safe continuation handles and production `await!` syntax; the first scheduler prototype remains process-local and uses callback adapters for VM resumption.
+
+## Public Parking `await!` Contract Boundary — 2026-05-19
+
+This contract records the intended production shape without implementing durable parked continuations yet.
+
+First production `await!` should be expressed as a scheduler operation over a logical waitable/participant and should park the current VM continuation only after a scheduler boundary exists. The scheduler returns a logical continuation handle for observation/drop, while resumed Edict code receives a normal data envelope on the stack.
+
+Ready/resumed envelope shape:
+
+```json
+{
+  "state": "resumed",
+  "continuation": "123",
+  "waitable": { "kind": "root1-participant", "participant": "7" },
+  "events": [],
+  "error": null
+}
+```
+
+Timeout envelope shape:
+
+```json
+{
+  "state": "timeout",
+  "continuation": "123",
+  "waitable": { "kind": "root1-participant", "participant": "7" },
+  "events": [],
+  "error": { "code": "timeout", "message": "await timed out" }
+}
+```
+
+Cancellation envelope shape:
+
+```json
+{
+  "state": "cancelled",
+  "continuation": "123",
+  "waitable": { "kind": "root1-participant", "participant": "7" },
+  "events": [],
+  "error": { "code": "cancelled", "message": "await was cancelled" }
+}
+```
+
+Contract decisions:
+
+- The value delivered to resumed Edict code is always an envelope, not raw descriptors.
+- `ready` handles without a VM callback and `resumed` handles with a VM callback share the same descriptor-event payload semantics.
+- Timeout/cancellation are terminal states and should remove the handle from waitable indexes so later descriptor readiness cannot resume it.
+- Terminal continuation records may be retained for status/event inspection until explicit drop, matching the G091 retained-terminal job policy.
+- Cancellation racing with readiness is resolved by whichever transition removes the handle from the parked index first; later transitions observe the terminal state and are no-ops.
+- Current `Root1AwaitScheduler` handles are process-local scheduler ids, not durable continuation identities. Durable/session-safe reconstruction requires stable code-object identity, activation-frame serialization, instruction-pointer persistence, resource-stack restore semantics, and Root1 waitable/lease reconciliation, so it belongs with G104/G096 rather than this first G110 slice.
+- Public Edict syntax for true parking `await!` remains deferred; existing `root1.await!` stays non-parking poll/drain until this scheduler contract is wired through a real VM scheduler boundary.
 
 ## Acceptance Criteria
 
@@ -218,7 +271,7 @@ On resume, Root1 recreates eventfds, rebuilds the epoll set, rescans mailbox/res
 - [x] The design has a concrete `ResourceKey`, resource state, participant, and grant-token model.
 - [x] The design clearly separates persistent slab metadata from process-local/kernel fd state.
 - [x] The design explains fast-path atomic acquire/release and slow-path Root1 parking/wakeup, including lost-wake prevention.
-- [ ] The design covers mailbox IPC, async intern jobs, future `await!`, cancellation/backpressure, and owner-death recovery. Mailbox IPC, first async intern jobs, cancellation/backpressure descriptors, pidfd owner-death descriptors with lease recovery, first abandoned-resource recovery helper, first lease/stale-owner recovery table, participant heartbeat renewal, first logical Root1 resource/lease primitive wrappers, first non-parking Edict `root1.await!`, first VM resume-after-yield hook, first in-process Root1 await scheduler table, and logical continuation handle/status surface are prototyped; durable/session-safe continuation reconstruction and public parking `await!` syntax remain.
+- [ ] The design covers mailbox IPC, async intern jobs, future `await!`, cancellation/backpressure, and owner-death recovery. Mailbox IPC, first async intern jobs, cancellation/backpressure descriptors, pidfd owner-death descriptors with lease recovery, first abandoned-resource recovery helper, first lease/stale-owner recovery table, participant heartbeat renewal, first logical Root1 resource/lease primitive wrappers, first non-parking Edict `root1.await!`, first VM resume-after-yield hook, first in-process Root1 await scheduler table, logical continuation handle/status surface, and public parking `await!` envelope/terminal-handle contract are prototyped; durable/session-safe continuation reconstruction and public parking `await!` syntax implementation remain.
 - [x] A minimal Linux prototype demonstrates eventfd wakeup, epoll dispatch, contended resource grant, bounded mailbox ring behavior, and mailbox descriptor drain.
 
 ## First Prototype Slices — 2026-05-16
@@ -278,6 +331,12 @@ Validation:
 - Earlier: `cmake --build build --target cpp_agent_tests -j2` — passed.
 
 ## Progress Notes
+
+### 2026-05-19
+- Did: Recorded the public parking `await!` contract boundary over the continuation handle/status surface: resumed code receives a structured envelope, timeout/cancel are terminal envelopes, terminal handles are retained until explicit drop, readiness/cancellation races are one-way terminal transitions, and true durable/session-safe continuation identity is deferred to G104/G096.
+- Decided: Existing `root1.await!` remains non-parking poll/drain; the in-process `Root1AwaitScheduler` is proof substrate, not yet production Edict syntax.
+- Remaining: Durable/session-safe continuation reconstruction, public parking `await!` syntax implementation, scheduler integration beyond the C++ prototype, timer integration, and lease reconstruction after remap/resume.
+- Next: Pivot immediate implementation to G091 worker-visible cancellation checkpoints, using the existing `yield!`/`resume()` boundary rather than extending Root1 parking prematurely.
 
 ### 2026-05-18
 - Did: Added `Root1ResourceBroker::recoverAbandonedResource(...)` for known-resource abandoned-owner recovery, with tests for queued-waiter grant and no-waiter unowned recovery; added `agentc_root1_await_ltv` plus module-backed `root1.await!` that polls a logical waitable and drains descriptors into ready/timeout envelopes; added first lease/stale-owner table API (`registerLease`, `renewLease`, `recoverExpiredLeases`) and tests for expired lease recovery to a waiter, renewed lease non-recovery, mismatched-owner rejection, participant heartbeat renewal, explicit participant lease recovery, and pidfd owner-death lease recovery; exposed first logical resource/lease wrappers in `agentc_root1_primitives.h` and `root1.edict`, with module coverage for resource create/acquire/queued waiter/lease register/heartbeat/recover-expired/await-grant; added `EdictVM::resume()` and a regression proving a yielded code frame resumes to completion; added `Root1AwaitScheduler` as the first in-process parking table; replaced the raw `EdictVM*` parking record with logical continuation handles/status, optional resume callbacks, descriptor-event retrieval by handle, cancellation, timeout, and explicit drop.

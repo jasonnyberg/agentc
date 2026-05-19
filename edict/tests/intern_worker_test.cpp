@@ -683,6 +683,51 @@ TEST(InternWorkerTest, InternCancelRequestsCancellationAndFinalSyncReportsCancel
     EXPECT_TRUE(eventListContainsKind(namedValue(status, "events"), "cancelled"));
 }
 
+TEST(InternWorkerTest, WorkerYieldCheckpointsObserveAsyncCancellation) {
+    auto coordinatorRoot = agentc::createNullValue();
+    EdictVM vm(coordinatorRoot);
+    EdictCompiler compiler;
+    loadModuleBackedIntern(vm, compiler);
+
+    std::string checkpointProgram;
+    for (int i = 0; i < 5000; ++i) {
+        checkpointProgram += "yield! ";
+    }
+    checkpointProgram += "'should-not-merge @result.value";
+
+    auto task = agentc::createNullValue();
+    agentc::addNamedItem(task, "task_id", agentc::createStringValue("checkpoint-cancel-demo"));
+    agentc::addNamedItem(task, "program", agentc::createStringValue(checkpointProgram));
+
+    vm.pushData(task);
+    int state = vm.execute(compiler.compile("intern_start! @job"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    const std::string jobId = textValue(namedValue(namedValue(coordinatorRoot, "job"), "job_id"));
+    ASSERT_FALSE(jobId.empty());
+
+    vm.pushData(agentc::createStringValue(jobId));
+    state = vm.execute(compiler.compile("intern_cancel! @cancel_status"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+
+    CPtr<ListreeValue> status = namedValue(coordinatorRoot, "cancel_status");
+    ASSERT_TRUE(status);
+    for (int i = 0; textValue(namedValue(status, "state")) != "cancelled" && i < 100; ++i) {
+        vm.pushData(agentc::createStringValue(jobId));
+        state = vm.execute(compiler.compile("intern_sync! @checkpoint_status"));
+        ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+        status = namedValue(coordinatorRoot, "checkpoint_status");
+        ASSERT_TRUE(status);
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+
+    ASSERT_TRUE(status);
+    EXPECT_EQ(textValue(namedValue(status, "state")), "cancelled");
+    EXPECT_TRUE(listStrings(namedValue(status, "ok")).empty());
+    EXPECT_TRUE(eventListContainsKind(namedValue(status, "events"), "cancelled"));
+    EXPECT_EQ(textValue(namedValue(namedValue(status, "error"), "code")), "cancelled");
+    EXPECT_FALSE(namedValue(namedValue(status, "result"), "value"));
+}
+
 TEST(InternWorkerTest, InternSyncReportsUnknownJobAsStructuredError) {
     EdictVM vm;
     EdictCompiler compiler;
