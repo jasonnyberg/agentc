@@ -8,10 +8,16 @@
 # eventfds/epoll registrations remain process-local native state.
 
 {} @root1
+[root1ffi.agentc_root1_resource_create_ltv!] @root1.resource_create
 [root1ffi.agentc_root1_participant_register_ltv!] @root1.participant_register
 [root1ffi.agentc_root1_poll_ltv!] @root1.poll
 [root1ffi.agentc_root1_mailbox_send_ltv!] @root1.mailbox_send
 [root1ffi.agentc_root1_mailbox_drain_ltv!] @root1.mailbox_drain
+[root1ffi.agentc_root1_resource_acquire_ltv!] @root1.resource_acquire
+[root1ffi.agentc_root1_resource_release_ltv!] @root1.resource_release
+[root1ffi.agentc_root1_lease_register_ltv!] @root1.lease_register
+[root1ffi.agentc_root1_heartbeat_ltv!] @root1.heartbeat
+[root1ffi.agentc_root1_recover_expired_ltv!] @root1.recover_expired
 [root1ffi.agentc_root1_await_ltv!] @root1.await
 [root1ffi.agentc_root1_send_cancellation_ltv!] @root1.send_cancellation
 [root1ffi.agentc_root1_send_backpressure_ltv!] @root1.send_backpressure

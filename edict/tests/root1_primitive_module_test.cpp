@@ -204,4 +204,34 @@ TEST(Root1PrimitiveModuleTest, ModuleBackedParticipantMailboxPrimitives) {
     EXPECT_EQ(textValue(namedValue(cancelled, "payload")), "stop");
     EXPECT_EQ(textValue(namedValue(backpressure, "correlation_id")), "2002");
     EXPECT_EQ(textValue(namedValue(backpressure, "payload")), "busy");
+
+    state = vm.execute(compiler.compile(
+        "root1.participant_register! @owner "
+        "root1.participant_register! @waiter "
+        "{} root1.resource_create! @resource_status "
+        "owner resource_status.resource root1.resource_acquire! @owner_acquire "
+        "owner resource_status.resource {\"expires_at_tick\":\"10\"} root1.lease_register! @lease_status "
+        "owner {\"expires_at_tick\":\"100\"} root1.heartbeat! @heartbeat_status "
+        "{\"now_tick\":\"50\",\"reason\":\"not yet\"} root1.recover_expired! @recover_early "
+        "waiter resource_status.resource root1.resource_acquire! @waiter_acquire "
+        "{\"now_tick\":\"100\",\"reason\":\"lease expired\"} root1.recover_expired! @recover_late "
+        "waiter.waitable root1.await! @waiter_ready"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+
+    EXPECT_EQ(textValue(namedValue(namedValue(root, "resource_status"), "state")), "created");
+    EXPECT_EQ(textValue(namedValue(namedValue(root, "owner_acquire"), "state")), "acquired");
+    EXPECT_EQ(textValue(namedValue(namedValue(root, "lease_status"), "state")), "leased");
+    EXPECT_EQ(textValue(namedValue(namedValue(root, "heartbeat_status"), "state")), "heartbeat");
+    EXPECT_EQ(textValue(namedValue(namedValue(root, "heartbeat_status"), "renewed")), "1");
+    EXPECT_EQ(listCount(namedValue(namedValue(root, "recover_early"), "recovered")), 0u);
+    EXPECT_EQ(textValue(namedValue(namedValue(root, "waiter_acquire"), "state")), "queued");
+    EXPECT_EQ(listCount(namedValue(namedValue(root, "recover_late"), "recovered")), 1u);
+    auto waiterReady = namedValue(root, "waiter_ready");
+    ASSERT_TRUE(waiterReady);
+    EXPECT_EQ(textValue(namedValue(waiterReady, "state")), "ready");
+    auto waiterEvents = namedValue(waiterReady, "events");
+    ASSERT_TRUE(waiterEvents);
+    ASSERT_EQ(listCount(waiterEvents), 2u);
+    EXPECT_TRUE(listFindKind(waiterEvents, "owner_died"));
+    EXPECT_TRUE(listFindKind(waiterEvents, "ownership_granted"));
 }

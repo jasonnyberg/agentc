@@ -24,10 +24,16 @@ extern "C" {
 // participant/waitable/descriptor values, never durable raw fds.
 typedef unsigned int ltv;
 
+ltv agentc_root1_resource_create_ltv(ltv request);
 ltv agentc_root1_participant_register_ltv(void);
 ltv agentc_root1_poll_ltv(ltv request);
 ltv agentc_root1_mailbox_send_ltv(ltv participant_or_waitable, ltv descriptor);
 ltv agentc_root1_mailbox_drain_ltv(ltv participant_or_waitable);
+ltv agentc_root1_resource_acquire_ltv(ltv participant_or_request, ltv resource_or_request);
+ltv agentc_root1_resource_release_ltv(ltv participant_or_request, ltv resource_or_request);
+ltv agentc_root1_lease_register_ltv(ltv participant_or_request, ltv resource_or_request, ltv request);
+ltv agentc_root1_heartbeat_ltv(ltv participant_or_request, ltv request);
+ltv agentc_root1_recover_expired_ltv(ltv request);
 ltv agentc_root1_await_ltv(ltv waitable_or_request);
 ltv agentc_root1_send_cancellation_ltv(ltv participant_or_waitable, ltv request);
 ltv agentc_root1_send_backpressure_ltv(ltv participant_or_waitable, ltv request);

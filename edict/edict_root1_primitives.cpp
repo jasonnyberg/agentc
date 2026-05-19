@@ -18,9 +18,11 @@
 #include "../core/root1_resource_broker.h"
 
 #include <cstdint>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace agentc::edict::root1 {
@@ -113,6 +115,21 @@ agentc::root1::Root1ResourceBroker& broker() {
     // logical participant ids, waitables, and mailbox descriptor values.
     static auto* instance = new agentc::root1::Root1ResourceBroker();
     return *instance;
+}
+
+struct ResourceEntry {
+    agentc::root1::ResourceKey key;
+    std::unique_ptr<agentc::root1::ResourceState> state;
+};
+
+std::unordered_map<uint64_t, ResourceEntry>& resourceTable() {
+    static auto* table = new std::unordered_map<uint64_t, ResourceEntry>();
+    return *table;
+}
+
+uint64_t nextResourceId() {
+    static uint64_t next = 1;
+    return next++;
 }
 
 std::string descriptorEventName(agentc::root1::MailboxEventKind kind) {
@@ -232,6 +249,48 @@ CPtr<agentc::ListreeValue> waitableValue(agentc::root1::ParticipantId participan
     return waitable;
 }
 
+uint64_t resourceIdFromValue(CPtr<agentc::ListreeValue> value) {
+    std::string text;
+    if (valueToString(value, text)) {
+        uint64_t parsed = 0;
+        if (parseU64(text, parsed)) {
+            return parsed;
+        }
+    }
+
+    uint64_t parsed = 0;
+    if (u64Field(value, "resource_id", parsed)) {
+        return parsed;
+    }
+    auto resource = namedValue(value, "resource");
+    if (u64Field(resource, "resource_id", parsed)) {
+        return parsed;
+    }
+    return 0;
+}
+
+CPtr<agentc::ListreeValue> resourceValue(uint64_t resourceId, const agentc::root1::ResourceKey& key) {
+    auto resource = agentc::createNullValue();
+    agentc::addNamedItem(resource, "resource_id", agentc::createStringValue(std::to_string(resourceId)));
+    agentc::addNamedItem(resource, "layer_id", agentc::createStringValue(std::to_string(key.layerId)));
+    agentc::addNamedItem(resource, "slab_id", agentc::createStringValue(std::to_string(key.slabId)));
+    agentc::addNamedItem(resource, "offset", agentc::createStringValue(std::to_string(key.offset)));
+    agentc::addNamedItem(resource, "allocator_kind", agentc::createStringValue(std::to_string(key.allocatorKind)));
+    agentc::addNamedItem(resource, "field_id", agentc::createStringValue(std::to_string(key.fieldId)));
+    agentc::addNamedItem(resource, "generation", agentc::createStringValue(std::to_string(key.generation)));
+    return resource;
+}
+
+ResourceEntry* resourceEntryFromValue(CPtr<agentc::ListreeValue> value) {
+    const uint64_t id = resourceIdFromValue(value);
+    if (id == 0) {
+        return nullptr;
+    }
+    auto& table = resourceTable();
+    auto it = table.find(id);
+    return it == table.end() ? nullptr : &it->second;
+}
+
 uint64_t timeoutFromRequest(CPtr<agentc::ListreeValue> request) {
     std::string text;
     uint64_t parsed = 0;
@@ -262,6 +321,31 @@ std::string reasonFromRequest(CPtr<agentc::ListreeValue> request) {
         reason = stringField(request, "payload");
     }
     return reason;
+}
+
+CPtr<agentc::ListreeValue> createResource(CPtr<agentc::ListreeValue> request) {
+    try {
+        const uint64_t id = nextResourceId();
+        agentc::root1::ResourceKey key;
+        uint64_t parsed = 0;
+        key.layerId = u64Field(request, "layer_id", parsed) ? static_cast<uint32_t>(parsed) : 1;
+        key.slabId = u64Field(request, "slab_id", parsed) ? static_cast<uint32_t>(parsed) : 1;
+        key.offset = u64Field(request, "offset", parsed) ? static_cast<uint32_t>(parsed) : static_cast<uint32_t>(id);
+        key.allocatorKind = u64Field(request, "allocator_kind", parsed) ? static_cast<uint16_t>(parsed) : 0;
+        key.fieldId = u64Field(request, "field_id", parsed) ? static_cast<uint16_t>(parsed) : 0;
+        key.generation = u64Field(request, "generation", parsed) ? parsed : id;
+
+        ResourceEntry entry;
+        entry.key = key;
+        entry.state = std::make_unique<agentc::root1::ResourceState>();
+        resourceTable()[id] = std::move(entry);
+
+        auto value = envelope("created", true);
+        agentc::addNamedItem(value, "resource", resourceValue(id, key));
+        return value;
+    } catch (const std::exception& e) {
+        return envelope("error", false, "resource_create_failed", e.what());
+    }
 }
 
 CPtr<agentc::ListreeValue> registerParticipant() {
@@ -324,6 +408,118 @@ CPtr<agentc::ListreeValue> drainMailbox(CPtr<agentc::ListreeValue> participantOr
         return descriptorsToList(broker().drainMailboxDescriptors(participant));
     } catch (...) {
         return agentc::createListValue();
+    }
+}
+
+CPtr<agentc::ListreeValue> acquireResource(CPtr<agentc::ListreeValue> participantOrRequest,
+                                            CPtr<agentc::ListreeValue> resourceOrRequest) {
+    try {
+        const auto participant = participantFromValue(participantOrRequest);
+        auto* entry = resourceEntryFromValue(resourceOrRequest);
+        if (participant == 0 || !entry || !entry->state) {
+            return envelope("error", false, "invalid_acquire", "Root1 acquire requires a participant and resource handle");
+        }
+        const auto status = broker().acquireOrQueue(entry->key, *entry->state, participant);
+        auto value = envelope(status == agentc::root1::AcquireStatus::InvalidParticipant ? "error" :
+                                  (status == agentc::root1::AcquireStatus::Acquired ? "acquired" : "queued"),
+                              status != agentc::root1::AcquireStatus::InvalidParticipant,
+                              "invalid_participant",
+                              "Root1 acquire received an invalid participant");
+        agentc::addNamedItem(value, "participant_id", agentc::createStringValue(std::to_string(participant)));
+        agentc::addNamedItem(value, "resource", resourceValue(resourceIdFromValue(resourceOrRequest), entry->key));
+        return value;
+    } catch (const std::exception& e) {
+        return envelope("error", false, "root1_acquire_failed", e.what());
+    }
+}
+
+CPtr<agentc::ListreeValue> releaseResource(CPtr<agentc::ListreeValue> participantOrRequest,
+                                           CPtr<agentc::ListreeValue> resourceOrRequest) {
+    try {
+        const auto participant = participantFromValue(participantOrRequest);
+        auto* entry = resourceEntryFromValue(resourceOrRequest);
+        if (participant == 0 || !entry || !entry->state) {
+            return envelope("error", false, "invalid_release", "Root1 release requires a participant and resource handle");
+        }
+        if (!broker().release(entry->key, *entry->state, participant)) {
+            return envelope("error", false, "release_failed", "Root1 release failed");
+        }
+        auto value = envelope("released", true);
+        agentc::addNamedItem(value, "participant_id", agentc::createStringValue(std::to_string(participant)));
+        agentc::addNamedItem(value, "resource", resourceValue(resourceIdFromValue(resourceOrRequest), entry->key));
+        return value;
+    } catch (const std::exception& e) {
+        return envelope("error", false, "root1_release_failed", e.what());
+    }
+}
+
+CPtr<agentc::ListreeValue> registerLease(CPtr<agentc::ListreeValue> participantOrRequest,
+                                         CPtr<agentc::ListreeValue> resourceOrRequest,
+                                         CPtr<agentc::ListreeValue> request) {
+    try {
+        const auto participant = participantFromValue(participantOrRequest);
+        auto* entry = resourceEntryFromValue(resourceOrRequest);
+        uint64_t expiresAtTick = 0;
+        if (request && request->isListMode()) {
+            std::string text;
+            valueToString(request, text);
+            parseU64(text, expiresAtTick);
+        } else {
+            u64Field(request, "expires_at_tick", expiresAtTick) || u64Field(request, "expires", expiresAtTick);
+        }
+        if (participant == 0 || !entry || !entry->state || expiresAtTick == 0) {
+            return envelope("error", false, "invalid_lease", "Root1 lease registration requires participant, resource, and expires_at_tick");
+        }
+        if (!broker().registerLease(entry->key, *entry->state, participant, expiresAtTick)) {
+            return envelope("error", false, "lease_register_failed", "Root1 lease registration failed");
+        }
+        auto value = envelope("leased", true);
+        agentc::addNamedItem(value, "participant_id", agentc::createStringValue(std::to_string(participant)));
+        agentc::addNamedItem(value, "resource", resourceValue(resourceIdFromValue(resourceOrRequest), entry->key));
+        agentc::addNamedItem(value, "expires_at_tick", agentc::createStringValue(std::to_string(expiresAtTick)));
+        return value;
+    } catch (const std::exception& e) {
+        return envelope("error", false, "root1_lease_register_failed", e.what());
+    }
+}
+
+CPtr<agentc::ListreeValue> heartbeat(CPtr<agentc::ListreeValue> participantOrRequest,
+                                     CPtr<agentc::ListreeValue> request) {
+    try {
+        const auto participant = participantFromValue(participantOrRequest);
+        uint64_t expiresAtTick = 0;
+        u64Field(request, "expires_at_tick", expiresAtTick) || u64Field(request, "expires", expiresAtTick);
+        if (participant == 0 || expiresAtTick == 0) {
+            return envelope("error", false, "invalid_heartbeat", "Root1 heartbeat requires participant and expires_at_tick");
+        }
+        const size_t renewed = broker().heartbeatParticipant(participant, expiresAtTick);
+        auto value = envelope("heartbeat", true);
+        agentc::addNamedItem(value, "participant_id", agentc::createStringValue(std::to_string(participant)));
+        agentc::addNamedItem(value, "renewed", agentc::createStringValue(std::to_string(renewed)));
+        agentc::addNamedItem(value, "expires_at_tick", agentc::createStringValue(std::to_string(expiresAtTick)));
+        return value;
+    } catch (const std::exception& e) {
+        return envelope("error", false, "root1_heartbeat_failed", e.what());
+    }
+}
+
+CPtr<agentc::ListreeValue> recoverExpired(CPtr<agentc::ListreeValue> request) {
+    try {
+        uint64_t nowTick = 0;
+        u64Field(request, "now_tick", nowTick) || u64Field(request, "now", nowTick);
+        if (nowTick == 0) {
+            return envelope("error", false, "invalid_recovery", "Root1 recovery requires now_tick");
+        }
+        const auto recoveredKeys = broker().recoverExpiredLeases(nowTick, reasonFromRequest(request));
+        auto recovered = agentc::createListValue();
+        for (const auto& key : recoveredKeys) {
+            agentc::addListItem(recovered, resourceValue(0, key));
+        }
+        auto value = envelope("recovered", true);
+        agentc::addNamedItem(value, "recovered", recovered);
+        return value;
+    } catch (const std::exception& e) {
+        return envelope("error", false, "root1_recover_failed", e.what());
     }
 }
 
@@ -414,6 +610,10 @@ ltv release_ltv_value(CPtr<agentc::ListreeValue> value) {
 
 } // namespace
 
+extern "C" ltv agentc_root1_resource_create_ltv(ltv request) {
+    return release_ltv_value(agentc::edict::root1::createResource(borrow_ltv_value(request)));
+}
+
 extern "C" ltv agentc_root1_participant_register_ltv(void) {
     return release_ltv_value(agentc::edict::root1::registerParticipant());
 }
@@ -429,6 +629,31 @@ extern "C" ltv agentc_root1_mailbox_send_ltv(ltv participant_or_waitable, ltv de
 
 extern "C" ltv agentc_root1_mailbox_drain_ltv(ltv participant_or_waitable) {
     return release_ltv_value(agentc::edict::root1::drainMailbox(borrow_ltv_value(participant_or_waitable)));
+}
+
+extern "C" ltv agentc_root1_resource_acquire_ltv(ltv participant_or_request, ltv resource_or_request) {
+    return release_ltv_value(agentc::edict::root1::acquireResource(borrow_ltv_value(participant_or_request),
+                                                                  borrow_ltv_value(resource_or_request)));
+}
+
+extern "C" ltv agentc_root1_resource_release_ltv(ltv participant_or_request, ltv resource_or_request) {
+    return release_ltv_value(agentc::edict::root1::releaseResource(borrow_ltv_value(participant_or_request),
+                                                                  borrow_ltv_value(resource_or_request)));
+}
+
+extern "C" ltv agentc_root1_lease_register_ltv(ltv participant_or_request, ltv resource_or_request, ltv request) {
+    return release_ltv_value(agentc::edict::root1::registerLease(borrow_ltv_value(participant_or_request),
+                                                                borrow_ltv_value(resource_or_request),
+                                                                borrow_ltv_value(request)));
+}
+
+extern "C" ltv agentc_root1_heartbeat_ltv(ltv participant_or_request, ltv request) {
+    return release_ltv_value(agentc::edict::root1::heartbeat(borrow_ltv_value(participant_or_request),
+                                                            borrow_ltv_value(request)));
+}
+
+extern "C" ltv agentc_root1_recover_expired_ltv(ltv request) {
+    return release_ltv_value(agentc::edict::root1::recoverExpired(borrow_ltv_value(request)));
 }
 
 extern "C" ltv agentc_root1_await_ltv(ltv waitable_or_request) {
