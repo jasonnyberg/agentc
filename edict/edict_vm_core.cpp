@@ -2244,6 +2244,18 @@ int EdictVM::execute(const BytecodeBuffer& code) {
     return runCodeLoop(0, true);
 }
 
+int EdictVM::resume() {
+    if (state & VM_ERROR) {
+        return state;
+    }
+    state &= ~(VM_YIELD | VM_COMPLETE | VM_SCANNING);
+    error_message.clear();
+    tail_eval = false;
+    scan_mode = ScanMode::None;
+    scan_depth = 0;
+    return runCodeLoop(0, true);
+}
+
 int EdictVM::executeNested(const BytecodeBuffer& code) {
     state &= ~(VM_ERROR | VM_YIELD | VM_COMPLETE | VM_SCANNING);
     error_message.clear();

@@ -74,6 +74,7 @@ public:
     
     // Execute bytecode
     int execute(const BytecodeBuffer& code);
+    int resume();
     
     // Error handling
     void setError(const std::string& message) { 

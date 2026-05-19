@@ -57,6 +57,21 @@ TEST(EdictVM, AutoDerefAssignment) {
     EXPECT_EQ(valueToString(top), "hello");
 }
 
+TEST(EdictVM, YieldedExecutionCanResumeCurrentCodeFrame) {
+    EdictVM vm;
+    int res = runCode(vm, "'before yield! 'after");
+    ASSERT_TRUE(res & VM_YIELD);
+    EXPECT_FALSE(res & VM_COMPLETE);
+
+    auto yieldedPhase = vm.getStackTop();
+    EXPECT_EQ(valueToString(yieldedPhase), "before");
+
+    res = vm.resume();
+    EXPECT_FALSE(res & VM_YIELD);
+    EXPECT_TRUE(res & VM_COMPLETE);
+    EXPECT_EQ(valueToString(vm.getStackTop()), "after");
+}
+
 TEST(EdictVM, UndefinedSymbolFallsBack) {
     EdictVM vm;
     int res = runCode(vm, "not_defined");
