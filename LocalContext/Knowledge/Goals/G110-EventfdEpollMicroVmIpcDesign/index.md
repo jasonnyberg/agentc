@@ -3,7 +3,7 @@
 **Status**: ACTIVE
 **Priority**: IMMEDIATE DESIGN / FIRST PROTOTYPE TRACK
 **Created**: 2026-05-16
-**Updated**: 2026-05-16
+**Updated**: 2026-05-18
 **Parent**: 🔗[G078 — Edict-Resident Agent Loop Consolidation](../G078-EdictResidentAgentLoopConsolidation/index.md)
 **Immediate Consumer**: 🔗[G091 — Intern Worker Concurrency MVP](../G091-InternWorkerConcurrencyMvp/index.md)
 **Related Concept**: 🔗[Layered mmap Micro-VM Architecture](../../Concepts/LayeredMmapMicroVmArchitecture/index.md)
@@ -202,6 +202,8 @@ On resume, Root1 recreates eventfds, rebuilds the epoll set, rescans mailbox/res
 - [x] Add a descriptor-drain test for participant mailbox events through eventfd/epoll.
 - [x] Extend the prototype to a bounded mmap-compatible mailbox ring.
 - [x] Decide whether G091 async interns adopt the broker immediately or land a minimal broker-compatible in-process backend first: implemented Edict-local `InternJobManager` backed by G110 broker descriptors and waitable-shaped envelopes.
+- [x] Add first non-parking generic `root1.await!` over logical Root1 waitables: poll the participant waitable, drain mailbox descriptors, and return a structured ready/timeout envelope. Continuation parking remains a later VM scheduler slice.
+- [x] Add first abandoned-resource recovery helper: `Root1ResourceBroker::recoverAbandonedResource(...)` verifies the abandoned owner, clears unowned resources, or broker-grants ownership to the next queued valid waiter while publishing `OwnerDied` plus `OwnershipGranted` descriptors.
 - [ ] Define how future Edict `await!` parks/resumes VM continuations through Root1 waitables.
 
 ## Acceptance Criteria
@@ -210,7 +212,7 @@ On resume, Root1 recreates eventfds, rebuilds the epoll set, rescans mailbox/res
 - [x] The design has a concrete `ResourceKey`, resource state, participant, and grant-token model.
 - [x] The design clearly separates persistent slab metadata from process-local/kernel fd state.
 - [x] The design explains fast-path atomic acquire/release and slow-path Root1 parking/wakeup, including lost-wake prevention.
-- [ ] The design covers mailbox IPC, async intern jobs, future `await!`, cancellation/backpressure, and owner-death recovery. Mailbox IPC, first async intern jobs, cancellation/backpressure descriptors, and first pidfd owner-death descriptors are prototyped; future `await!` and abandoned-resource recovery policy remain.
+- [ ] The design covers mailbox IPC, async intern jobs, future `await!`, cancellation/backpressure, and owner-death recovery. Mailbox IPC, first async intern jobs, cancellation/backpressure descriptors, first pidfd owner-death descriptors, first abandoned-resource recovery helper, and first non-parking Edict `root1.await!` are prototyped; continuation-parking `await!` semantics remain.
 - [x] A minimal Linux prototype demonstrates eventfd wakeup, epoll dispatch, contended resource grant, bounded mailbox ring behavior, and mailbox descriptor drain.
 
 ## First Prototype Slices — 2026-05-16
@@ -238,18 +240,18 @@ Prototype capabilities:
 Prototype limits:
 
 - Broker wait queues remain process-local sidecar maps; only participant mailbox rings and resource state slots have a first mapped layout.
-- First pidfd owner-death reporting exists, but abandoned-resource recovery/release policy is not implemented yet.
-- G091 now consumes cancellation/backpressure descriptor states for cooperative `intern_cancel!` and `max_active_jobs` backpressure; broader scheduler-level policy for process workers and future `await!` remains.
-- No generic Edict opcode/module surface yet; 🔗[G111 — Root1/Worker Primitive FFI and Edict Intern Surface Migration](../G111-Root1WorkerPrimitiveFfiEdictInternMigration/index.md) now tracks exposing Root1/worker primitives as importable libraries and rebuilding intern words in Edict rather than adding more VM dispatch.
+- First abandoned-resource recovery exists for a known `ResourceKey`/`ResourceState`/owner tuple, but broader lease scanning, stale-owner detection, and process-worker policy remain future work.
+- G091 now consumes cancellation/backpressure descriptor states for cooperative `intern_cancel!` and `max_active_jobs` backpressure; broader scheduler-level policy for process workers and continuation-parking `await!` remains.
+- Generic module-backed `root1.await!` now exists as a non-parking helper over imported Root1 primitives; it polls a logical waitable and drains descriptors into a ready/timeout envelope. VM continuation parking/resume semantics remain future work.
 - The mailbox ring is SPSC-style and broker-serialized in the current prototype; MPSC/per-producer lanes are still future work.
 
 Validation:
 
-- `cmake --build build --target reflect_tests -j2` — passed.
-- `./build/tests/reflect_tests --gtest_filter='Root1ResourceBrokerTest.*'` — passed 10/10.
-- `./build/tests/reflect_tests` — passed 43/43.
-- `cmake --build build --target edict_tests -j2` — passed.
-- `cmake --build build --target cpp_agent_tests -j2` — passed.
+- 2026-05-18: `cmake --build build --target reflect_tests edict_tests -j2` — passed.
+- 2026-05-18: `./build/tests/reflect_tests --gtest_filter='Root1ResourceBrokerTest.*' --gtest_brief=1` — passed 12/12.
+- 2026-05-18: `./build/edict/edict_tests --gtest_filter='Root1PrimitiveModuleTest.*' --gtest_brief=1` — passed 1/1.
+- Earlier: `./build/tests/reflect_tests` — passed 43/43.
+- Earlier: `cmake --build build --target cpp_agent_tests -j2` — passed.
 
 ## Integration With Existing Goals
 

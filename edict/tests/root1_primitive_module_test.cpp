@@ -142,6 +142,7 @@ TEST(Root1PrimitiveModuleTest, ModuleBackedParticipantMailboxPrimitives) {
         "participant.waitable @waitable "
         "{\"kind\":\"progress\",\"sequence\":\"77\",\"correlation_id\":\"1234\",\"payload\":\"descriptor-progress\"} @descriptor "
         "waitable descriptor root1.mailbox_send! @sent "
+        "waitable root1.await! @awaited "
         "[1000] root1.poll! @ready "
         "waitable root1.mailbox_drain! @events"));
     ASSERT_FALSE(state & VM_ERROR) << vm.getError();
@@ -160,12 +161,17 @@ TEST(Root1PrimitiveModuleTest, ModuleBackedParticipantMailboxPrimitives) {
     EXPECT_EQ(textValue(namedValue(sent, "state")), "sent");
     EXPECT_EQ(textValue(namedValue(sent, "participant_id")), participantId);
 
+    auto awaited = namedValue(root, "awaited");
+    ASSERT_TRUE(awaited);
+    EXPECT_EQ(textValue(namedValue(awaited, "state")), "ready");
+    EXPECT_EQ(textValue(namedValue(awaited, "participant_id")), participantId);
+
     auto ready = namedValue(root, "ready");
     ASSERT_TRUE(ready);
     auto readyParticipants = listStrings(namedValue(ready, "participants"));
-    EXPECT_NE(std::find(readyParticipants.begin(), readyParticipants.end(), participantId), readyParticipants.end());
+    EXPECT_TRUE(readyParticipants.empty());
 
-    auto events = namedValue(root, "events");
+    auto events = namedValue(awaited, "events");
     ASSERT_TRUE(events);
     ASSERT_EQ(listCount(events), 1u);
     auto descriptor = listValueAt(events, 0);

@@ -12,5 +12,6 @@
 [root1ffi.agentc_root1_poll_ltv!] @root1.poll
 [root1ffi.agentc_root1_mailbox_send_ltv!] @root1.mailbox_send
 [root1ffi.agentc_root1_mailbox_drain_ltv!] @root1.mailbox_drain
+[root1ffi.agentc_root1_await_ltv!] @root1.await
 [root1ffi.agentc_root1_send_cancellation_ltv!] @root1.send_cancellation
 [root1ffi.agentc_root1_send_backpressure_ltv!] @root1.send_backpressure

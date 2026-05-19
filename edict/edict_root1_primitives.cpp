@@ -327,6 +327,24 @@ CPtr<agentc::ListreeValue> drainMailbox(CPtr<agentc::ListreeValue> participantOr
     }
 }
 
+CPtr<agentc::ListreeValue> await(CPtr<agentc::ListreeValue> waitableOrRequest) {
+    try {
+        const auto participant = participantFromValue(waitableOrRequest);
+        if (participant == 0) {
+            return envelope("error", false, "invalid_waitable", "Root1 await requires a participant id or waitable");
+        }
+        broker().pollReadyParticipants(static_cast<int>(timeoutFromRequest(waitableOrRequest)));
+        auto descriptors = broker().drainMailboxDescriptors(participant);
+        auto value = envelope(descriptors.empty() ? "timeout" : "ready", true);
+        agentc::addNamedItem(value, "participant_id", agentc::createStringValue(std::to_string(participant)));
+        agentc::addNamedItem(value, "waitable", waitableValue(participant));
+        agentc::addNamedItem(value, "events", descriptorsToList(descriptors));
+        return value;
+    } catch (const std::exception& e) {
+        return envelope("error", false, "root1_await_failed", e.what());
+    }
+}
+
 CPtr<agentc::ListreeValue> sendCancellation(CPtr<agentc::ListreeValue> participantOrWaitable,
                                             CPtr<agentc::ListreeValue> request) {
     try {
@@ -411,6 +429,10 @@ extern "C" ltv agentc_root1_mailbox_send_ltv(ltv participant_or_waitable, ltv de
 
 extern "C" ltv agentc_root1_mailbox_drain_ltv(ltv participant_or_waitable) {
     return release_ltv_value(agentc::edict::root1::drainMailbox(borrow_ltv_value(participant_or_waitable)));
+}
+
+extern "C" ltv agentc_root1_await_ltv(ltv waitable_or_request) {
+    return release_ltv_value(agentc::edict::root1::await(borrow_ltv_value(waitable_or_request)));
 }
 
 extern "C" ltv agentc_root1_send_cancellation_ltv(ltv participant_or_waitable, ltv request) {

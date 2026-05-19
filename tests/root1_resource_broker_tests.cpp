@@ -290,6 +290,54 @@ TEST(Root1ResourceBrokerTest, GrantsContendedResourceThroughParticipantEventfd) 
 #endif
 }
 
+TEST(Root1ResourceBrokerTest, RecoversAbandonedOwnedResourceToQueuedWaiter) {
+#if !defined(__linux__)
+    GTEST_SKIP() << "Root1ResourceBroker prototype requires Linux eventfd/epoll";
+#else
+    Root1ResourceBroker broker;
+    auto owner = broker.registerParticipant();
+    auto waiter = broker.registerParticipant();
+
+    ResourceState state;
+    ResourceKey key{9, 8, 7, 6, 5, 4};
+
+    ASSERT_TRUE(broker.tryAcquire(state, owner));
+    ASSERT_EQ(broker.acquireOrQueue(key, state, waiter), AcquireStatus::Queued);
+    ASSERT_TRUE(state.isContended());
+
+    ASSERT_TRUE(broker.recoverAbandonedResource(key, state, owner, "owner lease expired"));
+    EXPECT_EQ(state.owner(), waiter);
+
+    auto ready = broker.pollReadyParticipants(1000);
+    ASSERT_TRUE(containsParticipant(ready, waiter));
+
+    auto descriptors = broker.drainMailboxDescriptors(waiter);
+    ASSERT_EQ(descriptors.size(), 2u);
+    EXPECT_EQ(descriptors[0].eventKind, MailboxEventKind::OwnerDied);
+    EXPECT_EQ(descriptors[0].correlationId, owner);
+    EXPECT_EQ(agentc::root1::inlinePayload(descriptors[0]), "owner lease expired");
+    EXPECT_EQ(descriptors[1].eventKind, MailboxEventKind::OwnershipGranted);
+    EXPECT_EQ(descriptors[1].resource, key);
+#endif
+}
+
+TEST(Root1ResourceBrokerTest, RecoversAbandonedOwnedResourceToUnownedWhenNoWaiterExists) {
+#if !defined(__linux__)
+    GTEST_SKIP() << "Root1ResourceBroker prototype requires Linux eventfd/epoll";
+#else
+    Root1ResourceBroker broker;
+    auto owner = broker.registerParticipant();
+
+    ResourceState state;
+    ResourceKey key{10, 8, 7, 6, 5, 4};
+
+    ASSERT_TRUE(broker.tryAcquire(state, owner));
+    ASSERT_TRUE(broker.recoverAbandonedResource(key, state, owner, "owner lease expired"));
+    EXPECT_FALSE(state.isOwned());
+    EXPECT_FALSE(state.isContended());
+#endif
+}
+
 TEST(Root1ResourceBrokerTest, DeliversLegacyMailboxMessagesThroughEpoll) {
 #if !defined(__linux__)
     GTEST_SKIP() << "Root1ResourceBroker prototype requires Linux eventfd/epoll";

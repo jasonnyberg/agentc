@@ -239,6 +239,10 @@ public:
     bool tryAcquire(ResourceState& state, ParticipantId participant) const;
     AcquireStatus acquireOrQueue(const ResourceKey& key, ResourceState& state, ParticipantId participant);
     bool release(const ResourceKey& key, ResourceState& state, ParticipantId owner);
+    bool recoverAbandonedResource(const ResourceKey& key,
+                                  ResourceState& state,
+                                  ParticipantId abandonedOwner,
+                                  std::string reason = {});
 
     bool sendMailboxMessage(ParticipantId participant, std::string payload, uint64_t sequence = 0);
     bool sendMailboxDescriptor(ParticipantId participant, const MailboxDescriptor& descriptor);

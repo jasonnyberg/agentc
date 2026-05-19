@@ -676,6 +676,64 @@ bool Root1ResourceBroker::release(const ResourceKey& key, ResourceState& state, 
     return true;
 }
 
+bool Root1ResourceBroker::recoverAbandonedResource(const ResourceKey& key,
+                                                   ResourceState& state,
+                                                   ParticipantId abandonedOwner,
+                                                   std::string reason) {
+    if (abandonedOwner == 0) {
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    if ((state.word_.load(std::memory_order_acquire) & ResourceState::kOwnerMask) != abandonedOwner) {
+        return false;
+    }
+
+    auto waiterIt = waiters_.find(key);
+    while (waiterIt != waiters_.end() && !waiterIt->second.empty()) {
+        ParticipantId next = waiterIt->second.front();
+        waiterIt->second.pop_front();
+        if (!isValidParticipantLocked(next)) {
+            continue;
+        }
+
+        const bool hasMoreWaiters = !waiterIt->second.empty();
+        const uint64_t nextState = (hasMoreWaiters ? ResourceState::kContendedBit : 0) | next;
+        state.word_.store(nextState, std::memory_order_release);
+
+        MailboxDescriptor ownerDied;
+        ownerDied.eventKind = MailboxEventKind::OwnerDied;
+        ownerDied.resource = key;
+        ownerDied.correlationId = abandonedOwner;
+        ownerDied.sequence = nextGrantToken_;
+        setInlinePayload(ownerDied, reason.empty() ? "resource owner abandoned" : reason);
+        pushDescriptorLocked(next, ownerDied);
+
+        BrokerEvent event;
+        event.kind = BrokerEventKind::OwnershipGranted;
+        event.resource = key;
+        event.grantToken = nextGrantToken_++;
+        event.sequence = event.grantToken;
+
+        MailboxDescriptor grant;
+        grant.eventKind = MailboxEventKind::OwnershipGranted;
+        grant.payloadKind = MailboxPayloadKind::None;
+        grant.resource = key;
+        grant.grantToken = event.grantToken;
+        grant.sequence = event.sequence;
+        pushDescriptorLocked(next, grant);
+        pushEventLocked(next, std::move(event));
+        return true;
+    }
+
+    if (waiterIt != waiters_.end() && waiterIt->second.empty()) {
+        waiters_.erase(waiterIt);
+    }
+
+    state.word_.store(0, std::memory_order_release);
+    return true;
+}
+
 bool Root1ResourceBroker::sendMailboxMessage(ParticipantId participant, std::string payload, uint64_t sequence) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!isValidParticipantLocked(participant)) {
