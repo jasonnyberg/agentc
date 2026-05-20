@@ -236,7 +236,8 @@
         status.publication @envelope.publication
         envelope
     |
-        {"ok": [], "state": "backpressure", "worker": "edict-thread-async"} @envelope
+        {"ok": [], "state": "error", "worker": "edict-thread-async"} @envelope
+        status.state @envelope.state
         status.task_id @envelope.task_id
         status.job_id @envelope.job_id
         status.waitable @envelope.waitable
@@ -253,12 +254,21 @@
     @task
     task.program test &
         task.expect.success_field test &
-            {"ok": ["ok"], "state": "contract_valid", "kind": "intern_task_contract"} @status
-            task.task_id @status.task_id
-            task.limits @status.limits
-            task.expect @status.expect
-            {} @status.error
-            status
+            task.limits.max_result_bytes test &
+                {"ok": ["ok"], "state": "contract_valid", "kind": "intern_task_contract"} @status
+                task.task_id @status.task_id
+                task.limits @status.limits
+                task.expect @status.expect
+                {} @status.error
+                status
+            |
+                {"ok": [], "state": "contract_error", "kind": "intern_task_contract"} @status
+                task.task_id @status.task_id
+                {} @error
+                'missing_result_limit @error.code
+                'intern task contract requires limits.max_result_bytes @error.message
+                error @status.error
+                status
         |
             {"ok": [], "state": "contract_error", "kind": "intern_task_contract"} @status
             task.task_id @status.task_id
@@ -276,6 +286,18 @@
         error @status.error
         status
 ] @intern.validate_task_contract
+
+[
+    @contract
+    {"ok": [], "state": "error", "worker": "edict-thread-async"} @envelope
+    contract.task_id @envelope.task_id
+    {} @envelope.job_id
+    {} @envelope.waitable
+    {} @envelope.publication
+    contract.error @envelope.error
+    {} @envelope.events
+    envelope
+] @intern.contract_error_envelope
 
 [
     @envelope
@@ -298,6 +320,6 @@
 ] @intern.validate_status_envelope
 
 [@task task worker.edict_prepare_task! @spec spec.ok test & spec worker.edict_run_status_prepared! @status status intern.run_envelope! | spec] @intern_run
-[@task task worker.edict_prepare_task! @spec spec.ok test & spec worker.edict_capacity_status! @capacity capacity.ok test & capacity.allowed test & spec worker.edict_start_status_prepared! @status status intern.start_envelope! | spec capacity intern.backpressure_envelope! | capacity | spec] @intern_start
+[@task task worker.edict_start_status! @status status intern.start_envelope!] @intern_start
 [@job job worker.edict_drain_events! @events job events worker.edict_collect_status! @status status intern.sync_envelope!] @intern_sync
 [@job job worker.edict_request_cancel! @events job events worker.edict_collect_status! @status status intern.sync_envelope!] @intern_cancel

@@ -1,4 +1,5 @@
 ### 2026-05-19
+- Advanced 🔗[G099 — Intern Task Quality Contracts](./Knowledge/Goals/G099-InternTaskQualityContracts/index.md) by enforcing malformed/over-broad async task contracts at `intern_start!`: background dispatch now rejects missing `expect.success_field` and missing `limits.max_result_bytes` before creating active worker jobs.
 - Advanced 🔗[G091 — Intern Worker Concurrency MVP](./Knowledge/Goals/G091-InternWorkerConcurrencyMvp/index.md) with first worker-visible cooperative cancellation checkpoints: async worker jobs carry a cancellation token into `runInternWorker`, and worker `yield!` boundaries now check that token before `EdictVM::resume()` executes later program steps.
 - Advanced 🔗[G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design](./Knowledge/Goals/G110-EventfdEpollMicroVmIpcDesign/index.md) by documenting the public parking `await!` contract boundary over continuation handles/status: resumed code receives a structured envelope, timeout/cancel are terminal envelopes, handles are retained until drop, and durable continuation identity is deferred to G096/G104.
 

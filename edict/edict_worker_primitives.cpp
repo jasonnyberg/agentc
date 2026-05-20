@@ -452,6 +452,62 @@ CPtr<agentc::ListreeValue> buildWorkerStartStatus(const AsyncInternJob& job) {
     return status;
 }
 
+CPtr<agentc::ListreeValue> buildWorkerStartContractErrorStatus(CPtr<agentc::ListreeValue> task,
+                                                                 const std::string& code,
+                                                                 const std::string& message) {
+    InternWorkerInput input;
+    input.taskId = stringField(task, "task_id");
+    if (input.taskId.empty()) {
+        input.taskId = stringField(task, "id");
+    }
+    if (input.taskId.empty()) {
+        input.taskId = "intern-task";
+    }
+
+    auto status = agentc::createNullValue();
+    agentc::addNamedItem(status, "ok", statusList(false));
+    agentc::addNamedItem(status, "kind", agentc::createStringValue("worker_start_status"));
+    agentc::addNamedItem(status, "state", agentc::createStringValue("error"));
+    agentc::addNamedItem(status, "started", statusList(false));
+    agentc::addNamedItem(status, "task_id", agentc::createStringValue(input.taskId));
+    agentc::addNamedItem(status, "worker", agentc::createStringValue("edict-thread-async"));
+    agentc::addNamedItem(status, "job_id", agentc::createNullValue());
+    agentc::addNamedItem(status, "waitable", agentc::createNullValue());
+    agentc::addNamedItem(status, "publication", agentc::createNullValue());
+    agentc::addNamedItem(status, "error_code", agentc::createStringValue(code));
+    agentc::addNamedItem(status, "error_message", agentc::createStringValue(message));
+    agentc::addNamedItem(status, "events", agentc::createListValue());
+    return status;
+}
+
+bool validateStartContract(CPtr<agentc::ListreeValue> task,
+                           std::string& code,
+                           std::string& message) {
+    if (!task || task->isListMode()) {
+        code = "invalid_task";
+        message = "intern_start requires a task object";
+        return false;
+    }
+    if (stringField(task, "program").empty()) {
+        code = "missing_program";
+        message = "intern task contract requires a non-empty program";
+        return false;
+    }
+    auto expect = namedValue(task, "expect");
+    if (stringField(expect, "success_field").empty()) {
+        code = "missing_success_field";
+        message = "intern task contract requires expect.success_field";
+        return false;
+    }
+    auto limits = namedValue(task, "limits");
+    if (stringField(limits, "max_result_bytes").empty()) {
+        code = "missing_result_limit";
+        message = "intern task contract requires limits.max_result_bytes";
+        return false;
+    }
+    return true;
+}
+
 CPtr<agentc::ListreeValue> buildWorkerStartBackpressureStatus(const InternWorkerInput& input,
                                                               size_t activeJobs,
                                                               size_t maxActiveJobs) {
@@ -460,6 +516,7 @@ CPtr<agentc::ListreeValue> buildWorkerStartBackpressureStatus(const InternWorker
     auto status = agentc::createNullValue();
     agentc::addNamedItem(status, "ok", statusList(true));
     agentc::addNamedItem(status, "kind", agentc::createStringValue("worker_start_status"));
+    agentc::addNamedItem(status, "state", agentc::createStringValue("backpressure"));
     agentc::addNamedItem(status, "started", statusList(false));
     agentc::addNamedItem(status, "task_id", agentc::createStringValue(input.taskId));
     agentc::addNamedItem(status, "worker", agentc::createStringValue("edict-thread-async"));
@@ -851,6 +908,12 @@ CPtr<agentc::ListreeValue> startStatusPrepared(CPtr<agentc::ListreeValue> prepar
 
 CPtr<agentc::ListreeValue> startStatus(CPtr<agentc::ListreeValue> task,
                                        bool allowUnsafeFfiCalls) {
+    std::string contractCode;
+    std::string contractMessage;
+    if (!validateStartContract(task, contractCode, contractMessage)) {
+        return buildWorkerStartContractErrorStatus(task, contractCode, contractMessage);
+    }
+
     InternWorkerInput input;
     CPtr<agentc::ListreeValue> errorEnvelope;
     if (!parseInternTask(task, allowUnsafeFfiCalls, "intern_start_status", input, errorEnvelope)) {

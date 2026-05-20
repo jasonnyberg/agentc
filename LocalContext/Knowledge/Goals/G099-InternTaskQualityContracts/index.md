@@ -65,30 +65,47 @@ The result envelope should reserve future slab publication metadata even while J
 - [x] Define a minimal first Listree/JSON task contract schema with `limits` and `expect` fields.
 - [x] Add first Edict helpers for validating intern task/status contracts over the completed G111 module-backed surface: `intern.validate_task_contract!` and `intern.validate_status_envelope!` now live in `cpp-agent/edict/modules/intern.edict`.
 - [ ] Provide examples for each safe task class.
-- [ ] Integrate the contract with the worker dispatch path from 🔗[G091](../G091-InternWorkerConcurrencyMvp/index.md).
+- [x] Integrate the contract with the worker dispatch path from 🔗[G091](../G091-InternWorkerConcurrencyMvp/index.md): `intern_start!` now rejects malformed/over-broad async tasks before launching a worker or creating an active broker waitable.
 - [x] Add first tests that reject underspecified intern tasks and validate public status-envelope shape.
+
+## Implementation Progress — 2026-05-19
+
+Dispatch-integration slice landed for async workers:
+
+- `intern.validate_task_contract!` now requires non-empty `program`, `expect.success_field`, and `limits.max_result_bytes`. Missing result limits are treated as over-broad async task contracts and return `error.code: "missing_result_limit"`.
+- `intern_start!` now rejects malformed/over-broad async tasks before launching a worker or creating an active broker waitable. The native start-status primitive mirrors the Edict validator contract at the dispatch boundary so the public module returns the usual intern start envelope shape without adding VM opcodes.
+- `intern_run!` remains permissive for now as blocking compatibility sugar; mandatory contract enforcement is currently scoped to async/background dispatch where malformed tasks can otherwise consume worker slots.
+- `InternWorkerTest.InternStartEnforcesTaskContractBeforeDispatch` covers missing `expect.success_field` and missing `limits.max_result_bytes`, and verifies active job count remains unchanged.
 
 ## Implementation Progress — 2026-05-18
 
 First contract-validation slice landed in `intern.edict`:
 
-- `intern.validate_task_contract!` accepts a task-like object and returns `state: "contract_valid"` when it has a non-empty `program` and `expect.success_field`; it preserves `task_id`, `limits`, and `expect` in the returned status.
-- Missing required fields return `state: "contract_error"` with structured `error.code` / `error.message`; the first checked error is `missing_program`, with `missing_success_field` also represented.
+- `intern.validate_task_contract!` accepts a task-like object and returns `state: "contract_valid"` when it has a non-empty `program`, `expect.success_field`, and `limits.max_result_bytes`; it preserves `task_id`, `limits`, and `expect` in the returned status.
+- Missing required fields return `state: "contract_error"` with structured `error.code` / `error.message`; checked errors include `missing_program`, `missing_success_field`, and `missing_result_limit`.
 - `intern.validate_status_envelope!` validates that a G111 public status/envelope has a visible `state` and returns `state: "envelope_valid"` with the envelope state, job/task ids, and publication field.
 - `InternWorkerTest.InternContractValidatorsCheckTaskAndStatusShape` covers a valid contract, an underspecified contract, and a valid public status envelope.
 
-This is intentionally a first reusable helper layer rather than mandatory dispatch enforcement. A later G099 slice should decide where `intern_start!` / `intern_run!` enforce contracts by default versus where callers opt into contract validation.
+## Validation — 2026-05-19
+- `cmake --build build --target edict_tests -j2` — passed.
+- `./build/edict/edict_tests --gtest_filter='InternWorkerTest.*:Root1AwaitSchedulerTest.*:Root1PrimitiveModuleTest.*:EdictVM.YieldedExecutionCanResumeCurrentCodeFrame' --gtest_brief=1` — passed 17/17.
 
 ## Progress Notes
+
+### 2026-05-19
+- Did: Integrated first contract enforcement with async worker dispatch. `intern_start!` rejects tasks missing `expect.success_field` or `limits.max_result_bytes` before worker launch, while preserving `intern_run!` compatibility for now. Added regression coverage for malformed/over-broad async task rejection and no active-job leak.
+- Decided: Mandatory enforcement starts at `intern_start!` because background jobs consume broker/waitable capacity; blocking `intern_run!` remains permissive until examples and result validation are stronger.
+- Remaining: Safe task-class examples, result validation beyond public envelope shape, low-confidence/malformed-result rejection, and deciding whether `intern_run!` should opt into strict contracts by default later.
+- Next: Add gather/classify/filter contract examples and first result-validation helper for expected result shape/success evidence.
 
 ### 2026-05-18
 - Did: Added first Edict-level contract validators in `intern.edict` and regression coverage in `InternWorkerTest.InternContractValidatorsCheckTaskAndStatusShape`.
 - Decided: Keep the first validators opt-in/helper-level rather than enforcing them in `intern_run!` / `intern_start!` immediately, so the public module-backed worker surface remains compatible while contract shape is refined.
-- Remaining: Dispatch integration, safe task-class examples, result validation beyond public envelope shape, and low-confidence/malformed-result rejection.
-- Next: Decide where `intern_start!` should call `intern.validate_task_contract!` by default and add tests for rejected over-broad or malformed task contracts.
+- Remaining: Safe task-class examples, result validation beyond public envelope shape, and low-confidence/malformed-result rejection.
+- Next: Add gather/classify/filter contract examples and first result-validation helper for expected result shape/success evidence.
 
 ## Acceptance Criteria
 - [x] Intern tasks have explicit, machine-checkable success criteria in the first helper layer (`expect.success_field`).
 - [ ] At least gather/classify/filter task contracts are represented.
-- [ ] Coordinator validation can reject malformed or low-confidence results beyond first task/envelope shape checks.
+- [ ] Coordinator validation can reject malformed or low-confidence results beyond first task/envelope shape checks; malformed/over-broad async tasks are rejected before dispatch.
 - [ ] Documentation states the “intern, not architect” constraint clearly.

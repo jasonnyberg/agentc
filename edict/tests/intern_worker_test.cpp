@@ -83,6 +83,16 @@ size_t listCount(CPtr<ListreeValue> value) {
     return count;
 }
 
+void addInternStartContract(CPtr<ListreeValue> task) {
+    auto expect = agentc::createNullValue();
+    agentc::addNamedItem(expect, "success_field", agentc::createStringValue("ok"));
+    agentc::addNamedItem(task, "expect", expect);
+
+    auto limits = agentc::createNullValue();
+    agentc::addNamedItem(limits, "max_result_bytes", agentc::createStringValue("65536"));
+    agentc::addNamedItem(task, "limits", limits);
+}
+
 bool eventListContainsKind(CPtr<ListreeValue> events, const std::string& kind) {
     if (!events || !events->isListMode()) {
         return false;
@@ -270,6 +280,7 @@ TEST(InternWorkerTest, ModuleBackedInternWordsUseImportedWorkerPrimitives) {
     auto bpTask = agentc::createNullValue();
     agentc::addNamedItem(bpTask, "task_id", agentc::createStringValue("ffi-module-backpressure"));
     agentc::addNamedItem(bpTask, "program", agentc::createStringValue("'unused @result.value"));
+    addInternStartContract(bpTask);
     agentc::addNamedItem(bpTask, "max_active_jobs", agentc::createStringValue("0"));
     vm.pushData(bpTask);
     state = vm.execute(compiler.compile("intern_start! @module_backpressure worker.edict_active_count! @bp_active_after"));
@@ -283,6 +294,7 @@ TEST(InternWorkerTest, ModuleBackedInternWordsUseImportedWorkerPrimitives) {
     auto asyncTask = agentc::createNullValue();
     agentc::addNamedItem(asyncTask, "task_id", agentc::createStringValue("ffi-async-demo"));
     agentc::addNamedItem(asyncTask, "program", agentc::createStringValue("input.label @result.label 'async @result.mode"));
+    addInternStartContract(asyncTask);
     agentc::addNamedItem(asyncTask, "input", agentc::fromJson(R"({"label":"epsilon"})"));
 
     vm.pushData(asyncTask);
@@ -319,6 +331,7 @@ TEST(InternWorkerTest, ModuleBackedInternWordsUseImportedWorkerPrimitives) {
     auto rawTask = agentc::createNullValue();
     agentc::addNamedItem(rawTask, "task_id", agentc::createStringValue("ffi-raw-demo"));
     agentc::addNamedItem(rawTask, "program", agentc::createStringValue("'raw @result.mode"));
+    addInternStartContract(rawTask);
     vm.pushData(rawTask);
     state = vm.execute(compiler.compile("worker.edict_start_status! @raw_job_status raw_job_status intern.start_envelope! @raw_job worker.edict_active_count! @active_mid"));
     ASSERT_FALSE(state & VM_ERROR) << vm.getError();
@@ -355,6 +368,7 @@ TEST(InternWorkerTest, ModuleBackedInternWordsUseImportedWorkerPrimitives) {
     auto cancelTask = agentc::createNullValue();
     agentc::addNamedItem(cancelTask, "task_id", agentc::createStringValue("ffi-cancel-demo"));
     agentc::addNamedItem(cancelTask, "program", agentc::createStringValue("'should-not-merge @result.value"));
+    addInternStartContract(cancelTask);
     vm.pushData(cancelTask);
     state = vm.execute(compiler.compile("worker.edict_start_status! @cancel_job_status cancel_job_status intern.start_envelope! @cancel_job cancel_job.job_id worker.edict_request_cancel! @cancel_events"));
     ASSERT_FALSE(state & VM_ERROR) << vm.getError();
@@ -391,6 +405,7 @@ TEST(InternWorkerTest, ModuleBackedInternWordsUseImportedWorkerPrimitives) {
     auto dropTask = agentc::createNullValue();
     agentc::addNamedItem(dropTask, "task_id", agentc::createStringValue("ffi-drop-demo"));
     agentc::addNamedItem(dropTask, "program", agentc::createStringValue("'dropped @result.value"));
+    addInternStartContract(dropTask);
     vm.pushData(dropTask);
     state = vm.execute(compiler.compile("worker.edict_start_status! @drop_job_status drop_job_status intern.start_envelope! @drop_job worker.edict_active_count! @drop_active_mid"));
     ASSERT_FALSE(state & VM_ERROR) << vm.getError();
@@ -444,6 +459,7 @@ TEST(InternWorkerTest, InternStartAndSyncCollectsStructuredResultAsynchronously)
     agentc::addNamedItem(task, "program", agentc::createStringValue(
         "input.label @result.label "
         "'done @result.status"));
+    addInternStartContract(task);
     agentc::addNamedItem(task, "input", agentc::fromJson(R"({"label":"gamma"})"));
 
     vm.pushData(task);
@@ -535,6 +551,45 @@ TEST(InternWorkerTest, InternContractValidatorsCheckTaskAndStatusShape) {
     EXPECT_EQ(textValue(namedValue(envelopeStatus, "envelope_state")), "complete");
 }
 
+TEST(InternWorkerTest, InternStartEnforcesTaskContractBeforeDispatch) {
+    auto coordinatorRoot = agentc::createNullValue();
+    EdictVM vm(coordinatorRoot);
+    EdictCompiler compiler;
+    loadModuleBackedIntern(vm, compiler);
+
+    auto missingExpect = agentc::createNullValue();
+    agentc::addNamedItem(missingExpect, "task_id", agentc::createStringValue("missing-expect"));
+    agentc::addNamedItem(missingExpect, "program", agentc::createStringValue("'unused @result.value"));
+    auto limits = agentc::createNullValue();
+    agentc::addNamedItem(limits, "max_result_bytes", agentc::createStringValue("65536"));
+    agentc::addNamedItem(missingExpect, "limits", limits);
+
+    vm.pushData(missingExpect);
+    int state = vm.execute(compiler.compile("intern_start! @missing_expect_status worker.edict_active_count! @active_after_missing_expect"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    auto missingExpectStatus = namedValue(coordinatorRoot, "missing_expect_status");
+    ASSERT_TRUE(missingExpectStatus);
+    EXPECT_EQ(textValue(namedValue(missingExpectStatus, "state")), "error");
+    EXPECT_EQ(textValue(namedValue(namedValue(missingExpectStatus, "error"), "code")), "missing_success_field");
+    EXPECT_EQ(sizeText(namedValue(coordinatorRoot, "active_after_missing_expect")), 0u);
+
+    auto overBroad = agentc::createNullValue();
+    agentc::addNamedItem(overBroad, "task_id", agentc::createStringValue("over-broad"));
+    agentc::addNamedItem(overBroad, "program", agentc::createStringValue("'unused @result.value"));
+    auto expect = agentc::createNullValue();
+    agentc::addNamedItem(expect, "success_field", agentc::createStringValue("ok"));
+    agentc::addNamedItem(overBroad, "expect", expect);
+
+    vm.pushData(overBroad);
+    state = vm.execute(compiler.compile("intern_start! @over_broad_status worker.edict_active_count! @active_after_over_broad"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    auto overBroadStatus = namedValue(coordinatorRoot, "over_broad_status");
+    ASSERT_TRUE(overBroadStatus);
+    EXPECT_EQ(textValue(namedValue(overBroadStatus, "state")), "error");
+    EXPECT_EQ(textValue(namedValue(namedValue(overBroadStatus, "error"), "code")), "missing_result_limit");
+    EXPECT_EQ(sizeText(namedValue(coordinatorRoot, "active_after_over_broad")), 0u);
+}
+
 TEST(InternWorkerTest, TerminalAsyncJobsAreRetainedUntilExplicitDrop) {
     auto coordinatorRoot = agentc::createNullValue();
     EdictVM vm(coordinatorRoot);
@@ -544,6 +599,7 @@ TEST(InternWorkerTest, TerminalAsyncJobsAreRetainedUntilExplicitDrop) {
     auto task = agentc::createNullValue();
     agentc::addNamedItem(task, "task_id", agentc::createStringValue("retention-demo"));
     agentc::addNamedItem(task, "program", agentc::createStringValue("'retained @result.value"));
+    addInternStartContract(task);
 
     vm.pushData(task);
     int state = vm.execute(compiler.compile("intern_start! @job"));
@@ -601,6 +657,7 @@ TEST(InternWorkerTest, InternStartReportsBackpressureWhenActiveLimitIsReached) {
     auto task = agentc::createNullValue();
     agentc::addNamedItem(task, "task_id", agentc::createStringValue("backpressure-demo"));
     agentc::addNamedItem(task, "program", agentc::createStringValue("'unused @result.value"));
+    addInternStartContract(task);
     agentc::addNamedItem(task, "max_active_jobs", agentc::createStringValue("0"));
 
     vm.pushData(task);
@@ -626,6 +683,7 @@ TEST(InternWorkerTest, InternCancelRequestsCancellationAndFinalSyncReportsCancel
     auto task = agentc::createNullValue();
     agentc::addNamedItem(task, "task_id", agentc::createStringValue("cancel-demo"));
     agentc::addNamedItem(task, "program", agentc::createStringValue("'should-not-merge @result.value"));
+    addInternStartContract(task);
 
     vm.pushData(task);
     int state = vm.execute(compiler.compile("intern_start! @job"));
@@ -698,6 +756,7 @@ TEST(InternWorkerTest, WorkerYieldCheckpointsObserveAsyncCancellation) {
     auto task = agentc::createNullValue();
     agentc::addNamedItem(task, "task_id", agentc::createStringValue("checkpoint-cancel-demo"));
     agentc::addNamedItem(task, "program", agentc::createStringValue(checkpointProgram));
+    addInternStartContract(task);
 
     vm.pushData(task);
     int state = vm.execute(compiler.compile("intern_start! @job"));
