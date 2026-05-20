@@ -38,6 +38,8 @@ job.job_id intern_cancel! @cancel_status
 | `imports` | optional | Shared import namespace recursively frozen before dispatch. |
 | `max_active_jobs` | optional | Async backpressure limit. If active jobs are already at this limit, `intern_start!` returns `state: "backpressure"` and does not launch a worker. |
 | `expect.success_field` | required for `intern_start!` | First machine-checkable success criterion. Current examples use `result.ok`. |
+| `expect.min_evidence_count` | optional | Opt-in result-trust threshold for the minimum number of non-empty evidence entries. |
+| `expect.min_confidence` | optional | Opt-in result-trust threshold over the first `low < medium < high` confidence ladder. |
 | `limits.max_result_bytes` | required for `intern_start!` | First bound against over-broad async task results. |
 
 ## Worker Root
@@ -83,9 +85,9 @@ The worker runs in a fresh `EdictVM` with these root fields:
 - structured error result when the task envelope is invalid
 - async dispatch rejection for malformed/over-broad contracts
 - safe gather/classify/filter task examples
-- explicit result-contract validation for success/evidence fields
+- explicit result-contract validation for success/evidence fields and confidence/evidence thresholds
 
-Latest focused validation: `./build/edict/edict_tests --gtest_filter='InternWorkerTest.*:Root1AwaitSchedulerTest.*:Root1PrimitiveModuleTest.*:EdictVM.YieldedExecutionCanResumeCurrentCodeFrame' --gtest_brief=1` passed 19/19 on 2026-05-19, including async `intern_start!` / `intern_sync!`, `intern_cancel!`, backpressure, unknown-job coverage, the module-backed FFI worker-primitive coverage, direct lower-level worker prepare-task/capacity-status/run-status/start-status/drain/collect-status/request-cancel/result-contract validation coverage, module-level Edict-owned run/start/backpressure/sync/cancel envelope branching, active-count coverage, explicit drop cleanup coverage, first module-backed Root1 participant/poll/mailbox descriptor coverage, and proof that raw VM startup no longer installs intern words as bootstrap builtins.
+Latest focused validation: `./build/edict/edict_tests --gtest_filter='InternWorkerTest.*:Root1AwaitSchedulerTest.*:Root1PrimitiveModuleTest.*:EdictVM.YieldedExecutionCanResumeCurrentCodeFrame' --gtest_brief=1` passed 20/20 on 2026-05-19, including async `intern_start!` / `intern_sync!`, `intern_cancel!`, backpressure, unknown-job coverage, the module-backed FFI worker-primitive coverage, direct lower-level worker prepare-task/capacity-status/run-status/start-status/drain/collect-status/request-cancel/result-contract validation coverage, confidence/evidence-threshold result rejection, module-level Edict-owned run/start/backpressure/sync/cancel envelope branching, active-count coverage, explicit drop cleanup coverage, first module-backed Root1 participant/poll/mailbox descriptor coverage, and proof that raw VM startup no longer installs intern words as bootstrap builtins.
 
 ## Async Path
 The async path is broker-compatible with 🔗[G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design](../../Goals/G110-EventfdEpollMicroVmIpcDesign/index.md). The LLM streaming/ghost-queue mechanics remain useful as an in-process reference, but the durable abstraction is now a logical job waitable/mailbox:

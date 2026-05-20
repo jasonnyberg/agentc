@@ -1,6 +1,6 @@
 # Goal: G099 — Intern Task Quality Contracts
 
-**Status**: ACTIVE / FIRST SLICE
+**Status**: ACTIVE / MVP CONTRACT SLICE COMPLETE
 **Created**: 2026-05-14  
 **Parent**: 🔗[G091 — Intern Worker Concurrency MVP](../G091-InternWorkerConcurrencyMvp/index.md)
 
@@ -41,7 +41,10 @@ Minimal first schema target:
   },
   "expect": {
     "result_shape": "object",
-    "success_field": "ok"
+    "success_field": "ok",
+    "evidence_field": "evidence",
+    "min_evidence_count": "1",
+    "min_confidence": "medium"
   },
   "async": {
     "waitable": null,
@@ -68,7 +71,18 @@ The result envelope should reserve future slab publication metadata even while J
 - [x] Integrate the contract with the worker dispatch path from 🔗[G091](../G091-InternWorkerConcurrencyMvp/index.md): `intern_start!` now rejects malformed/over-broad async tasks before launching a worker or creating an active broker waitable.
 - [x] Add first tests that reject underspecified intern tasks and validate public status-envelope shape.
 
+## Delegation Boundary
+
+Intern workers are bounded evidence gatherers, classifiers, filters, compressors, or context proxies. They may propose facts with evidence and confidence, but they do not own architecture decisions, multi-file design authority, durable state mutation, provider/runtime handles, or coordinator root merges. The coordinator must validate contracts and decide whether any returned facts are trustworthy enough to merge.
+
 ## Implementation Progress — 2026-05-19
+
+Confidence/evidence policy slice landed:
+
+- Safe task examples now include `expect.min_evidence_count` and `expect.min_confidence` alongside `expect.success_field` and `expect.evidence_field`.
+- `intern.validate_result_contract!` now rejects insufficient evidence, missing confidence, and confidence below the requested threshold. Supported first confidence ladder is `low < medium < high`.
+- Added `intern.validate_trusted_result!` as an opt-in coordinator-side convenience wrapper for validating an envelope against an expectation object without changing `intern_sync!` terminal envelopes.
+- `InternWorkerTest.InternResultContractAppliesConfidenceAndEvidenceThresholds` covers valid trusted results, `low_confidence`, `missing_confidence`, and `insufficient_evidence` outcomes.
 
 Dispatch-integration slice landed for async workers:
 
@@ -88,8 +102,8 @@ First contract-validation slice landed in `intern.edict`:
 
 ## Validation — 2026-05-19
 - `cmake --build build --target edict_tests -j2` — passed.
-- `./build/edict/edict_tests --gtest_filter='InternWorkerTest.InternExamplesRepresentSafeTaskClasses:InternWorkerTest.InternResultContractRequiresSuccessAndEvidence' --gtest_brief=1` — passed 2/2.
-- `./build/edict/edict_tests --gtest_filter='InternWorkerTest.*:Root1AwaitSchedulerTest.*:Root1PrimitiveModuleTest.*:EdictVM.YieldedExecutionCanResumeCurrentCodeFrame' --gtest_brief=1` — passed 19/19 after examples/result-validator work; earlier dispatch slice passed 17/17.
+- `./build/edict/edict_tests --gtest_filter='InternWorkerTest.InternExamplesRepresentSafeTaskClasses:InternWorkerTest.InternResultContractRequiresSuccessAndEvidence:InternWorkerTest.InternResultContractAppliesConfidenceAndEvidenceThresholds' --gtest_brief=1` — passed 3/3.
+- `./build/edict/edict_tests --gtest_filter='InternWorkerTest.*:Root1AwaitSchedulerTest.*:Root1PrimitiveModuleTest.*:EdictVM.YieldedExecutionCanResumeCurrentCodeFrame' --gtest_brief=1` — passed 20/20 after confidence/evidence-threshold work; earlier examples/result-validator slice passed 19/19 and dispatch slice passed 17/17.
 
 ## Progress Notes
 
@@ -97,9 +111,10 @@ First contract-validation slice landed in `intern.edict`:
 - Did: Integrated first contract enforcement with async worker dispatch. `intern_start!` rejects tasks missing `expect.success_field` or `limits.max_result_bytes` before worker launch, while preserving `intern_run!` compatibility for now. Added regression coverage for malformed/over-broad async task rejection and no active-job leak.
 - Did: Added safe task-class examples for gather/classify/filter as Edict module words: `intern.example_gather_task!`, `intern.example_classify_task!`, and `intern.example_filter_task!`. Each example carries bounded `limits`, explicit `expect`, empty read-only-safe context/import defaults, and a program that writes `result.ok` plus `result.evidence`.
 - Did: Added first result-validation helper surface, `intern.validate_result_contract!`, backed by the worker primitive substrate for robust nested-field checks. It accepts `{ "expect": ..., "envelope": ... }`, returns `state: "result_valid"` when a complete result has success evidence and evidence entries, and rejects missing envelope state/result/success/evidence with structured `result_error` codes.
-- Decided: Mandatory enforcement starts at `intern_start!` because background jobs consume broker/waitable capacity; blocking `intern_run!` remains permissive until examples and result validation are stronger. Result validation is exposed as an explicit helper for coordinator trust decisions rather than automatically mutating sync envelopes.
-- Remaining: Low-confidence result rejection, richer schema/shape checks beyond `result.ok` + `result.evidence`, and deciding whether `intern_run!` should opt into strict contracts by default later.
-- Next: Add confidence/evidence-threshold result policy and wire optional result validation into `intern_sync!`/coordinator-side trust decisions.
+- Did: Added confidence/evidence-threshold policy to result validation: `expect.min_evidence_count` rejects sparse evidence, `expect.min_confidence` rejects missing or low confidence using `low < medium < high`, and `intern.validate_trusted_result!` provides the opt-in coordinator-side wrapper over an expectation object plus a sync/run envelope.
+- Decided: Mandatory enforcement starts at `intern_start!` because background jobs consume broker/waitable capacity; blocking `intern_run!` remains permissive until examples and result validation are stronger. Result validation remains opt-in/coordinator-side rather than automatically mutating `intern_sync!` terminal envelopes; callers decide whether a completed intern result is trusted enough to merge.
+- Remaining: Richer schema/shape checks beyond `result.ok` + `result.evidence`, optional higher-level coordinator policy around automatic merge refusal, and deciding whether `intern_run!` should opt into strict contracts by default later.
+- Next: Reassess whether to continue G099 with result-shape schema checks or pivot back to G091 deeper worker lifecycle/private arena cleanup.
 
 ### 2026-05-18
 - Did: Added first Edict-level contract validators in `intern.edict` and regression coverage in `InternWorkerTest.InternContractValidatorsCheckTaskAndStatusShape`.
@@ -110,5 +125,5 @@ First contract-validation slice landed in `intern.edict`:
 ## Acceptance Criteria
 - [x] Intern tasks have explicit, machine-checkable success criteria in the first helper layer (`expect.success_field`).
 - [x] At least gather/classify/filter task contracts are represented.
-- [ ] Coordinator validation can reject malformed or low-confidence results beyond first task/envelope shape checks; malformed/over-broad async tasks are rejected before dispatch and the first explicit result validator rejects missing success/evidence fields.
-- [ ] Documentation states the “intern, not architect” constraint clearly.
+- [x] Coordinator validation can reject malformed or low-confidence results beyond first task/envelope shape checks; malformed/over-broad async tasks are rejected before dispatch and the explicit result validator rejects missing success/evidence, insufficient evidence, missing confidence, and low confidence.
+- [x] Documentation states the “intern, not architect” constraint clearly.

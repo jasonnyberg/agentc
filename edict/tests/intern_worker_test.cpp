@@ -637,6 +637,99 @@ TEST(InternWorkerTest, InternResultContractRequiresSuccessAndEvidence) {
     EXPECT_EQ(textValue(namedValue(namedValue(missingSuccessStatus, "error"), "code")), "missing_success_evidence");
 }
 
+TEST(InternWorkerTest, InternResultContractAppliesConfidenceAndEvidenceThresholds) {
+    auto coordinatorRoot = agentc::createNullValue();
+    EdictVM vm(coordinatorRoot);
+    EdictCompiler compiler;
+    loadModuleBackedIntern(vm, compiler);
+
+    auto expect = agentc::fromJson(R"({
+        "result_shape":"object",
+        "success_field":"ok",
+        "evidence_field":"evidence",
+        "min_evidence_count":"2",
+        "min_confidence":"medium"
+    })");
+    auto trustedEnvelope = agentc::fromJson(R"({
+        "state":"complete",
+        "task_id":"threshold-valid",
+        "result": {"ok":"ok", "evidence":["file.cpp:12", "test.log:3"], "confidence":"high"}
+    })");
+    vm.pushData(expect);
+    vm.pushData(trustedEnvelope);
+    int state = vm.execute(compiler.compile("intern.validate_trusted_result! @trusted_result_contract"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    auto trustedStatus = namedValue(coordinatorRoot, "trusted_result_contract");
+    ASSERT_TRUE(trustedStatus);
+    EXPECT_EQ(textValue(namedValue(trustedStatus, "state")), "result_valid");
+
+    auto lowConfidence = agentc::fromJson(R"({
+        "expect": {
+            "result_shape":"object",
+            "success_field":"ok",
+            "evidence_field":"evidence",
+            "min_evidence_count":"1",
+            "min_confidence":"medium"
+        },
+        "envelope": {
+            "state":"complete",
+            "task_id":"threshold-low-confidence",
+            "result": {"ok":"ok", "evidence":["file.cpp:12"], "confidence":"low"}
+        }
+    })");
+    vm.pushData(lowConfidence);
+    state = vm.execute(compiler.compile("intern.validate_result_contract! @low_confidence_contract"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    auto lowConfidenceStatus = namedValue(coordinatorRoot, "low_confidence_contract");
+    ASSERT_TRUE(lowConfidenceStatus);
+    EXPECT_EQ(textValue(namedValue(lowConfidenceStatus, "state")), "result_error");
+    EXPECT_EQ(textValue(namedValue(namedValue(lowConfidenceStatus, "error"), "code")), "low_confidence");
+
+    auto missingConfidence = agentc::fromJson(R"({
+        "expect": {
+            "result_shape":"object",
+            "success_field":"ok",
+            "evidence_field":"evidence",
+            "min_evidence_count":"1",
+            "min_confidence":"medium"
+        },
+        "envelope": {
+            "state":"complete",
+            "task_id":"threshold-missing-confidence",
+            "result": {"ok":"ok", "evidence":["file.cpp:12"]}
+        }
+    })");
+    vm.pushData(missingConfidence);
+    state = vm.execute(compiler.compile("intern.validate_result_contract! @missing_confidence_contract"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    auto missingConfidenceStatus = namedValue(coordinatorRoot, "missing_confidence_contract");
+    ASSERT_TRUE(missingConfidenceStatus);
+    EXPECT_EQ(textValue(namedValue(missingConfidenceStatus, "state")), "result_error");
+    EXPECT_EQ(textValue(namedValue(namedValue(missingConfidenceStatus, "error"), "code")), "missing_confidence");
+
+    auto insufficientEvidence = agentc::fromJson(R"({
+        "expect": {
+            "result_shape":"object",
+            "success_field":"ok",
+            "evidence_field":"evidence",
+            "min_evidence_count":"2",
+            "min_confidence":"low"
+        },
+        "envelope": {
+            "state":"complete",
+            "task_id":"threshold-insufficient-evidence",
+            "result": {"ok":"ok", "evidence":["file.cpp:12"], "confidence":"high"}
+        }
+    })");
+    vm.pushData(insufficientEvidence);
+    state = vm.execute(compiler.compile("intern.validate_result_contract! @insufficient_evidence_contract"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    auto insufficientEvidenceStatus = namedValue(coordinatorRoot, "insufficient_evidence_contract");
+    ASSERT_TRUE(insufficientEvidenceStatus);
+    EXPECT_EQ(textValue(namedValue(insufficientEvidenceStatus, "state")), "result_error");
+    EXPECT_EQ(textValue(namedValue(namedValue(insufficientEvidenceStatus, "error"), "code")), "insufficient_evidence");
+}
+
 TEST(InternWorkerTest, InternStartEnforcesTaskContractBeforeDispatch) {
     auto coordinatorRoot = agentc::createNullValue();
     EdictVM vm(coordinatorRoot);

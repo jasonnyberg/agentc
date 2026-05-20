@@ -98,7 +98,7 @@ bool valueTruthy(CPtr<agentc::ListreeValue> value) {
     if (value->isListMode()) {
         bool any = false;
         value->forEachList([&](CPtr<agentc::ListreeValueRef>& ref) {
-            if (ref && ref->getValue()) {
+            if (ref && valueTruthy(ref->getValue())) {
                 any = true;
             }
         });
@@ -109,11 +109,40 @@ bool valueTruthy(CPtr<agentc::ListreeValue> value) {
     }
     bool anyNamed = false;
     value->forEachTree([&](const std::string&, CPtr<agentc::ListreeItem>& item) {
-        if (item && item->getValue(false, false)) {
+        if (item && valueTruthy(item->getValue(false, false))) {
             anyNamed = true;
         }
     });
     return anyNamed;
+}
+
+size_t evidenceCount(CPtr<agentc::ListreeValue> evidence) {
+    if (!evidence) {
+        return 0;
+    }
+    if (!evidence->isListMode()) {
+        return valueTruthy(evidence) ? 1u : 0u;
+    }
+    size_t count = 0;
+    evidence->forEachList([&](CPtr<agentc::ListreeValueRef>& ref) {
+        if (ref && valueTruthy(ref->getValue())) {
+            ++count;
+        }
+    });
+    return count;
+}
+
+int confidenceRank(const std::string& confidence) {
+    if (confidence == "low") {
+        return 1;
+    }
+    if (confidence == "medium") {
+        return 2;
+    }
+    if (confidence == "high") {
+        return 3;
+    }
+    return 0;
 }
 
 CPtr<agentc::ListreeValue> jsonSnapshot(CPtr<agentc::ListreeValue> value) {
@@ -1012,8 +1041,25 @@ CPtr<agentc::ListreeValue> validateResultContract(CPtr<agentc::ListreeValue> che
     if (!valueTruthy(namedValue(result, "ok"))) {
         return fail("missing_success_evidence", "intern result requires result.ok success evidence");
     }
-    if (!valueTruthy(namedValue(result, "evidence"))) {
+    auto evidence = namedValue(result, "evidence");
+    if (!valueTruthy(evidence)) {
         return fail("missing_evidence", "intern result requires result.evidence before coordinator trust");
+    }
+
+    size_t minEvidenceCount = 0;
+    if (sizeField(expect, "min_evidence_count", minEvidenceCount) && evidenceCount(evidence) < minEvidenceCount) {
+        return fail("insufficient_evidence", "intern result evidence count is below expect.min_evidence_count");
+    }
+
+    const std::string minConfidence = stringField(expect, "min_confidence");
+    if (!minConfidence.empty()) {
+        const std::string confidence = stringField(result, "confidence");
+        if (confidence.empty()) {
+            return fail("missing_confidence", "intern result requires result.confidence for the requested confidence policy");
+        }
+        if (confidenceRank(confidence) < confidenceRank(minConfidence) || confidenceRank(minConfidence) == 0) {
+            return fail("low_confidence", "intern result confidence is below expect.min_confidence");
+        }
     }
 
     agentc::addNamedItem(status, "ok", statusList(true));

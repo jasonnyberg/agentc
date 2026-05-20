@@ -322,7 +322,7 @@
 [
     {"task_class": "gather", "task_id": "example-gather", "program": "'ok @result.ok 'gather @result.task_class 'bounded facts with file/path evidence @result.summary ['evidence://file:line'] @result.evidence 'high @result.confidence"} @task
     {"max_result_bytes": "65536", "timeout_ms": "1000", "max_events": "100"} @task.limits
-    {"result_shape": "object", "success_field": "ok", "evidence_field": "evidence"} @task.expect
+    {"result_shape": "object", "success_field": "ok", "evidence_field": "evidence", "min_evidence_count": "1", "min_confidence": "medium"} @task.expect
     {} @task.input
     {} @task.context
     {} @task.imports
@@ -332,7 +332,7 @@
 [
     {"task_class": "classify", "task_id": "example-classify", "program": "'ok @result.ok 'classify @result.task_class 'unknown @result.label ['evidence://test-log'] @result.evidence 'medium @result.confidence"} @task
     {"max_result_bytes": "32768", "timeout_ms": "1000", "max_events": "100"} @task.limits
-    {"result_shape": "object", "success_field": "ok", "evidence_field": "evidence"} @task.expect
+    {"result_shape": "object", "success_field": "ok", "evidence_field": "evidence", "min_evidence_count": "1", "min_confidence": "medium"} @task.expect
     {} @task.input
     {} @task.context
     {} @task.imports
@@ -342,7 +342,7 @@
 [
     {"task_class": "filter", "task_id": "example-filter", "program": "'ok @result.ok 'filter @result.task_class [] @result.matches ['evidence://query'] @result.evidence 'medium @result.confidence"} @task
     {"max_result_bytes": "32768", "timeout_ms": "1000", "max_events": "100"} @task.limits
-    {"result_shape": "object", "success_field": "ok", "evidence_field": "evidence"} @task.expect
+    {"result_shape": "object", "success_field": "ok", "evidence_field": "evidence", "min_evidence_count": "1", "min_confidence": "medium"} @task.expect
     {} @task.input
     {} @task.context
     {} @task.imports
@@ -350,6 +350,13 @@
 ] @intern.example_filter_task
 
 [worker.edict_validate_result_contract!] @intern.validate_result_contract
+[
+    @envelope @expect
+    {} @check
+    expect @check.expect
+    envelope @check.envelope
+    check intern.validate_result_contract!
+] @intern.validate_trusted_result
 
 [@task task worker.edict_prepare_task! @spec spec.ok test & spec worker.edict_run_status_prepared! @status status intern.run_envelope! | spec] @intern_run
 [@task task worker.edict_start_status! @status status intern.start_envelope!] @intern_start
