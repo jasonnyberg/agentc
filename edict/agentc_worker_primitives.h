@@ -31,6 +31,7 @@ typedef unsigned int ltv;
 // fds/pointers; future Root1/worker primitives should split out more generic
 // participant, waitable, mailbox, and envelope-construction policy.
 ltv agentc_worker_edict_active_count_ltv(void);
+ltv agentc_worker_edict_lifecycle_status_ltv(void);
 ltv agentc_worker_edict_prepare_task_ltv(ltv task);
 ltv agentc_worker_edict_capacity_status_ltv(ltv task_or_spec);
 ltv agentc_worker_edict_run_status_ltv(ltv task);

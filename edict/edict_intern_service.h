@@ -20,6 +20,7 @@
 namespace agentc::edict::intern {
 
 CPtr<agentc::ListreeValue> activeCount();
+CPtr<agentc::ListreeValue> lifecycleStatus();
 CPtr<agentc::ListreeValue> prepareTask(CPtr<agentc::ListreeValue> task,
                                        bool allowUnsafeFfiCalls = false);
 CPtr<agentc::ListreeValue> capacityStatus(CPtr<agentc::ListreeValue> taskOrSpec,

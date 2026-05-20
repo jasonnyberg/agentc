@@ -769,6 +769,52 @@ TEST(InternWorkerTest, InternStartEnforcesTaskContractBeforeDispatch) {
     EXPECT_EQ(sizeText(namedValue(coordinatorRoot, "active_after_over_broad")), 0u);
 }
 
+TEST(InternWorkerTest, WorkerLifecycleStatusTracksAbandonedRunningJobs) {
+    auto coordinatorRoot = agentc::createNullValue();
+    EdictVM vm(coordinatorRoot);
+    EdictCompiler compiler;
+    loadModuleBackedIntern(vm, compiler);
+
+    int state = vm.execute(compiler.compile("worker.edict_lifecycle_status! @lifecycle_before"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    auto before = namedValue(coordinatorRoot, "lifecycle_before");
+    ASSERT_TRUE(before);
+    const size_t abandonedBefore = sizeText(namedValue(before, "total_abandoned_jobs"));
+
+    std::string program;
+    for (int i = 0; i < 2000; ++i) {
+        program += "yield! ";
+    }
+    program += "'finished @result.value";
+
+    auto task = agentc::createNullValue();
+    agentc::addNamedItem(task, "task_id", agentc::createStringValue("lifecycle-abandon-demo"));
+    agentc::addNamedItem(task, "program", agentc::createStringValue(program));
+    addInternStartContract(task);
+
+    vm.pushData(task);
+    state = vm.execute(compiler.compile("intern_start! @job"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    auto job = namedValue(coordinatorRoot, "job");
+    ASSERT_TRUE(job);
+    EXPECT_EQ(textValue(namedValue(job, "state")), "started");
+    const std::string jobId = textValue(namedValue(job, "job_id"));
+    ASSERT_FALSE(jobId.empty());
+
+    vm.pushData(agentc::createStringValue(jobId));
+    state = vm.execute(compiler.compile("worker.edict_drop! @drop_status worker.edict_lifecycle_status! @lifecycle_after_drop"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    auto dropStatus = namedValue(coordinatorRoot, "drop_status");
+    ASSERT_TRUE(dropStatus);
+    EXPECT_EQ(textValue(namedValue(dropStatus, "state")), "abandoned");
+
+    auto afterDrop = namedValue(coordinatorRoot, "lifecycle_after_drop");
+    ASSERT_TRUE(afterDrop);
+    EXPECT_EQ(textValue(namedValue(afterDrop, "kind")), "worker_lifecycle_status");
+    EXPECT_GE(sizeText(namedValue(afterDrop, "total_abandoned_jobs")), abandonedBefore + 1);
+    EXPECT_GE(sizeText(namedValue(afterDrop, "total_started_jobs")), 1u);
+}
+
 TEST(InternWorkerTest, TerminalAsyncJobsAreRetainedUntilExplicitDrop) {
     auto coordinatorRoot = agentc::createNullValue();
     EdictVM vm(coordinatorRoot);

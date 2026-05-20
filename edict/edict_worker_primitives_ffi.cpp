@@ -49,6 +49,10 @@ extern "C" ltv agentc_worker_edict_active_count_ltv(void) {
     return release_ltv_value(agentc::edict::intern::activeCount());
 }
 
+extern "C" ltv agentc_worker_edict_lifecycle_status_ltv(void) {
+    return release_ltv_value(agentc::edict::intern::lifecycleStatus());
+}
+
 extern "C" ltv agentc_worker_edict_prepare_task_ltv(ltv task) {
     return release_ltv_value(agentc::edict::intern::prepareTask(borrow_ltv_value(task), false));
 }

@@ -562,6 +562,31 @@ bool validateStartContract(CPtr<agentc::ListreeValue> task,
     return true;
 }
 
+CPtr<agentc::ListreeValue> buildWorkerLifecycleStatus(size_t activeJobs,
+                                                        size_t trackedJobs,
+                                                        size_t retainedTerminalJobs,
+                                                        size_t abandonedRunningJobs,
+                                                        uint64_t totalStartedJobs,
+                                                        uint64_t totalFinishedJobs,
+                                                        uint64_t totalAbandonedJobs,
+                                                        uint64_t totalDroppedTerminalJobs,
+                                                        uint64_t totalSweptTerminalJobs) {
+    auto status = agentc::createNullValue();
+    agentc::addNamedItem(status, "ok", statusList(true));
+    agentc::addNamedItem(status, "kind", agentc::createStringValue("worker_lifecycle_status"));
+    agentc::addNamedItem(status, "worker", agentc::createStringValue("edict-thread-async"));
+    agentc::addNamedItem(status, "active_jobs", agentc::createStringValue(std::to_string(activeJobs)));
+    agentc::addNamedItem(status, "tracked_jobs", agentc::createStringValue(std::to_string(trackedJobs)));
+    agentc::addNamedItem(status, "retained_terminal_jobs", agentc::createStringValue(std::to_string(retainedTerminalJobs)));
+    agentc::addNamedItem(status, "abandoned_running_jobs", agentc::createStringValue(std::to_string(abandonedRunningJobs)));
+    agentc::addNamedItem(status, "total_started_jobs", agentc::createStringValue(std::to_string(totalStartedJobs)));
+    agentc::addNamedItem(status, "total_finished_jobs", agentc::createStringValue(std::to_string(totalFinishedJobs)));
+    agentc::addNamedItem(status, "total_abandoned_jobs", agentc::createStringValue(std::to_string(totalAbandonedJobs)));
+    agentc::addNamedItem(status, "total_dropped_terminal_jobs", agentc::createStringValue(std::to_string(totalDroppedTerminalJobs)));
+    agentc::addNamedItem(status, "total_swept_terminal_jobs", agentc::createStringValue(std::to_string(totalSweptTerminalJobs)));
+    return status;
+}
+
 CPtr<agentc::ListreeValue> buildWorkerStartBackpressureStatus(const InternWorkerInput& input,
                                                               size_t activeJobs,
                                                               size_t maxActiveJobs) {
@@ -671,6 +696,19 @@ public:
         return startStatusWithLimit(std::move(input), defaultMaxActiveJobs_);
     }
 
+    CPtr<agentc::ListreeValue> lifecycleStatus() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return buildWorkerLifecycleStatus(activeCountLocked(),
+                                          jobs_.size(),
+                                          retainedTerminalCountLocked(),
+                                          abandonedRunningJobs_,
+                                          totalStartedJobs_,
+                                          totalFinishedJobs_,
+                                          totalAbandonedJobs_,
+                                          totalDroppedTerminalJobs_,
+                                          totalSweptTerminalJobs_);
+    }
+
     std::shared_ptr<AsyncInternJob> launchJob(InternWorkerInput input) {
         auto job = std::make_shared<AsyncInternJob>();
         job->numericId = nextJobId_++;
@@ -684,11 +722,20 @@ public:
         {
             std::lock_guard<std::mutex> lock(mutex_);
             jobs_[job->jobId] = job;
+            ++totalStartedJobs_;
         }
 
         std::thread([this, job]() {
             runInternWorker(job->input, *job->slot);
-            if (job->abandoned.load()) {
+            const bool abandoned = job->abandoned.load();
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                ++totalFinishedJobs_;
+                if (abandoned && abandonedRunningJobs_ > 0) {
+                    --abandonedRunningJobs_;
+                }
+            }
+            if (abandoned) {
                 return;
             }
             const auto outcome = job->slot->load();
@@ -815,6 +862,10 @@ public:
             ready = job->slot->ready();
             if (!ready) {
                 job->abandoned.store(true);
+                ++abandonedRunningJobs_;
+                ++totalAbandonedJobs_;
+            } else {
+                ++totalDroppedTerminalJobs_;
             }
             jobs_.erase(it);
         }
@@ -838,6 +889,17 @@ private:
         return active;
     }
 
+    size_t retainedTerminalCountLocked() const {
+        size_t retained = 0;
+        for (const auto& entry : jobs_) {
+            const auto& job = entry.second;
+            if (job && job->terminalObserved && job->slot->ready()) {
+                ++retained;
+            }
+        }
+        return retained;
+    }
+
     void sweepRetainedTerminalJobsLocked() {
         std::vector<std::shared_ptr<AsyncInternJob>> terminalJobs;
         for (const auto& entry : jobs_) {
@@ -855,6 +917,7 @@ private:
         const size_t toErase = terminalJobs.size() - maxRetainedTerminalJobs_;
         for (size_t i = 0; i < toErase; ++i) {
             jobs_.erase(terminalJobs[i]->jobId);
+            ++totalSweptTerminalJobs_;
         }
     }
 
@@ -864,6 +927,12 @@ private:
     uint64_t nextTerminalSequence_ = 1;
     size_t defaultMaxActiveJobs_ = 64;
     size_t maxRetainedTerminalJobs_ = 64;
+    size_t abandonedRunningJobs_ = 0;
+    uint64_t totalStartedJobs_ = 0;
+    uint64_t totalFinishedJobs_ = 0;
+    uint64_t totalAbandonedJobs_ = 0;
+    uint64_t totalDroppedTerminalJobs_ = 0;
+    uint64_t totalSweptTerminalJobs_ = 0;
     std::unordered_map<std::string, std::shared_ptr<AsyncInternJob>> jobs_;
 };
 
@@ -883,6 +952,10 @@ namespace intern {
 
 CPtr<agentc::ListreeValue> activeCount() {
     return agentc::createStringValue(std::to_string(internJobManager().activeCount()));
+}
+
+CPtr<agentc::ListreeValue> lifecycleStatus() {
+    return internJobManager().lifecycleStatus();
 }
 
 CPtr<agentc::ListreeValue> prepareTask(CPtr<agentc::ListreeValue> task,

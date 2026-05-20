@@ -60,7 +60,7 @@ First async slice details:
 - `intern_start!` supports task `max_active_jobs`; when the active-job count is at the limit it returns `state: "backpressure"`, `error.code: "backpressure"`, and a `Backpressure` descriptor without launching a worker.
 - `intern_run!` remains blocking convenience over the same deterministic worker helper.
 
-G111 is complete, so remaining G091 hardening is now lifecycle/resource policy over the module-backed worker surface: deeper private arena/slab cleanup for the later scheduler and clearer abandoned detached-worker accounting. First lifecycle cleanup landed on 2026-05-18: terminal async jobs are retained for repeated `intern_sync!` until `worker.edict_drop!` or bounded terminal-retention sweep, `worker.edict_active_count!` counts only non-terminal/non-abandoned jobs, dropping a running job returns `state: "abandoned"` and suppresses later mailbox publication, dropping a terminal retained job returns `state: "dropped"`, and cancellation is non-retroactive after terminal completion. First worker-visible cooperative cancellation checkpointing landed on 2026-05-19: async worker programs that reach `yield!` hand control to the worker runtime, which checks the job cancellation token before resuming the code frame. Then promote 🔗[G099 — Intern Task Quality Contracts](../G099-InternTaskQualityContracts/index.md) with the now-concrete event/backpressure/cancel fields.
+G111 is complete, so remaining G091 hardening is now lifecycle/resource policy over the module-backed worker surface: deeper private arena/slab cleanup for the later scheduler and clearer abandoned detached-worker accounting. First lifecycle cleanup landed on 2026-05-18: terminal async jobs are retained for repeated `intern_sync!` until `worker.edict_drop!` or bounded terminal-retention sweep, `worker.edict_active_count!` counts only non-terminal/non-abandoned jobs, dropping a running job returns `state: "abandoned"` and suppresses later mailbox publication, dropping a terminal retained job returns `state: "dropped"`, and cancellation is non-retroactive after terminal completion. First worker-visible cooperative cancellation checkpointing landed on 2026-05-19: async worker programs that reach `yield!` hand control to the worker runtime, which checks the job cancellation token before resuming the code frame. First abandoned-worker accounting also landed on 2026-05-19: `worker.edict_lifecycle_status!` exposes active/tracked/retained-terminal/abandoned-running counts plus started/finished/abandoned/dropped/swept cumulative counters.
 
 ## Implemented Path — Async Intern Jobs
 The G091 async slice is shaped by 🔗[G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design](../G110-EventfdEpollMicroVmIpcDesign/index.md). The earlier ghost-queue mechanics remain a useful implementation reference and fallback, but the implemented abstraction is a broker-compatible waitable job/mailbox:
@@ -90,6 +90,7 @@ Implementation choice:
   - terminal jobs are retained so repeated `intern_sync!` returns the same final envelope until explicit `worker.edict_drop!` or bounded terminal-retention sweep;
   - `worker.edict_drop!` on a terminal job forgets the retained result and returns `state: "dropped"`;
   - `worker.edict_drop!` on a running job forgets the handle, marks the job `abandoned`, returns `state: "abandoned"`, and lets the detached thread unwind without publishing a now-orphaned completion descriptor;
+  - `worker.edict_lifecycle_status!` reports lifecycle/resource accounting for the current process-local manager: active/tracked/retained-terminal/abandoned-running counts and cumulative started/finished/abandoned/terminal-dropped/terminal-swept counters;
   - `intern_cancel!` / `worker.edict_request_cancel!` is cooperative and non-retroactive: if the worker is still running, final collection reports `cancelled`; if the worker is already terminal, cancellation is a no-op and collection returns the terminal complete/error result.
 - Later cleanup may still extract shared queue/result mechanics, but only if it preserves the Root1 broker abstraction.
 
@@ -104,10 +105,11 @@ Related architecture concept: 🔗[Layered mmap Micro-VM Architecture](../../Con
 ## Progress Notes
 
 ### 2026-05-19
+- Did: Added first abandoned-worker accounting over the module-backed worker primitive surface. `worker.edict_lifecycle_status!` now reports current active/tracked/retained-terminal/abandoned-running counts plus cumulative started/finished/abandoned/terminal-dropped/terminal-swept counters. The detached worker exit path decrements abandoned-running accounting without publishing orphan completion descriptors.
 - Did: Added the first worker-visible cooperative cancellation checkpoint protocol. Async worker jobs now carry a shared cancellation token into `runInternWorker`; when worker code executes `yield!`, the worker runtime checks the token before calling `EdictVM::resume()`. If cancellation has been requested, the worker stores a cancelled outcome immediately and does not execute later program steps.
-- Decided: `yield!` is the first cancellation checkpoint boundary because it already records/resumes VM frame state and avoids new intern-specific VM opcodes. This keeps cancellation cooperative and explicit in worker programs.
-- Remaining: Deeper private arena/slab cleanup for the later scheduler and abandoned-worker/resource accounting beyond handle abandonment.
-- Next: Move to G099 dispatch integration: decide where `intern_start!` should enforce `intern.validate_task_contract!` and add malformed/over-broad task rejection tests.
+- Decided: `yield!` is the first cancellation checkpoint boundary because it already records/resumes VM frame state and avoids new intern-specific VM opcodes. This keeps cancellation cooperative and explicit in worker programs. Running `drop` remains handle abandonment rather than preemption, but now has visible lifecycle accounting.
+- Remaining: Deeper private arena/slab cleanup for the later scheduler and richer resource accounting when process-isolated workers/slab publications exist.
+- Next: Reassess whether to close the current G091 thread-worker lifecycle phase or continue with private arena/slab cleanup design boundaries before G103/G105/G107.
 
 ### 2026-05-18
 - Did: Landed first lifecycle/drop semantics on the completed G111 module-backed worker surface: terminal async statuses are retained for repeated sync until explicit drop or bounded sweep, active counts exclude terminal/abandoned jobs, running drops return `abandoned`, terminal drops return `dropped`, abandoned workers suppress orphan completion publication, and cancellation is non-retroactive after terminal completion.
@@ -117,7 +119,7 @@ Related architecture concept: 🔗[Layered mmap Micro-VM Architecture](../../Con
 
 ## Validation — 2026-05-19
 - `cmake --build build --target edict_tests -j2` — passed.
-- `./build/edict/edict_tests --gtest_filter='InternWorkerTest.*:Root1AwaitSchedulerTest.*:Root1PrimitiveModuleTest.*:EdictVM.YieldedExecutionCanResumeCurrentCodeFrame' --gtest_brief=1` — passed 16/16.
+- `./build/edict/edict_tests --gtest_filter='InternWorkerTest.*:Root1AwaitSchedulerTest.*:Root1PrimitiveModuleTest.*:EdictVM.YieldedExecutionCanResumeCurrentCodeFrame' --gtest_brief=1` — passed 21/21 after abandoned-worker accounting; earlier checkpoint slice passed 16/16.
 - Earlier focused checkpoint slice: `./build/edict/edict_tests --gtest_filter='InternWorkerTest.WorkerYieldCheckpointsObserveAsyncCancellation:InternWorkerTest.InternCancelRequestsCancellationAndFinalSyncReportsCancelled' --gtest_brief=1` — passed 2/2.
 
 ## Validation — 2026-05-18

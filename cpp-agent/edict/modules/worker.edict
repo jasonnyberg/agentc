@@ -9,6 +9,7 @@
 
 {} @worker
 [workerffi.agentc_worker_edict_active_count_ltv!] @worker.edict_active_count
+[workerffi.agentc_worker_edict_lifecycle_status_ltv!] @worker.edict_lifecycle_status
 [workerffi.agentc_worker_edict_prepare_task_ltv!] @worker.edict_prepare_task
 [workerffi.agentc_worker_edict_capacity_status_ltv!] @worker.edict_capacity_status
 [workerffi.agentc_worker_edict_run_status_ltv!] @worker.edict_run_status
