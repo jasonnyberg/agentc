@@ -86,6 +86,10 @@ extern "C" ltv agentc_worker_edict_collect_status_ltv(ltv job_or_request, ltv ev
                                                                  borrow_ltv_value(events)));
 }
 
+extern "C" ltv agentc_worker_edict_validate_result_contract_ltv(ltv check) {
+    return release_ltv_value(agentc::edict::intern::validateResultContract(borrow_ltv_value(check)));
+}
+
 extern "C" ltv agentc_worker_edict_drop_ltv(ltv job_or_request) {
     return release_ltv_value(agentc::edict::intern::drop(borrow_ltv_value(job_or_request)));
 }

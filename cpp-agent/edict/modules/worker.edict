@@ -18,4 +18,5 @@
 [workerffi.agentc_worker_edict_drain_events_ltv!] @worker.edict_drain_events
 [workerffi.agentc_worker_edict_request_cancel_ltv!] @worker.edict_request_cancel
 [workerffi.agentc_worker_edict_collect_status_ltv!] @worker.edict_collect_status
+[workerffi.agentc_worker_edict_validate_result_contract_ltv!] @worker.edict_validate_result_contract
 [workerffi.agentc_worker_edict_drop_ltv!] @worker.edict_drop

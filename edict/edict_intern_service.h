@@ -36,6 +36,7 @@ CPtr<agentc::ListreeValue> drainEvents(CPtr<agentc::ListreeValue> jobOrRequest);
 CPtr<agentc::ListreeValue> requestCancel(CPtr<agentc::ListreeValue> jobOrRequest);
 CPtr<agentc::ListreeValue> collectStatus(CPtr<agentc::ListreeValue> jobOrRequest,
                                          CPtr<agentc::ListreeValue> events);
+CPtr<agentc::ListreeValue> validateResultContract(CPtr<agentc::ListreeValue> check);
 CPtr<agentc::ListreeValue> drop(CPtr<agentc::ListreeValue> jobOrRequest);
 
 } // namespace agentc::edict::intern

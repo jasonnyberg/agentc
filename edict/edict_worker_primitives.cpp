@@ -91,6 +91,31 @@ bool hasExplicitFalseOk(CPtr<agentc::ListreeValue> value) {
     return !any;
 }
 
+bool valueTruthy(CPtr<agentc::ListreeValue> value) {
+    if (!value) {
+        return false;
+    }
+    if (value->isListMode()) {
+        bool any = false;
+        value->forEachList([&](CPtr<agentc::ListreeValueRef>& ref) {
+            if (ref && ref->getValue()) {
+                any = true;
+            }
+        });
+        return any;
+    }
+    if (value->getData() && value->getLength() > 0) {
+        return true;
+    }
+    bool anyNamed = false;
+    value->forEachTree([&](const std::string&, CPtr<agentc::ListreeItem>& item) {
+        if (item && item->getValue(false, false)) {
+            anyNamed = true;
+        }
+    });
+    return anyNamed;
+}
+
 CPtr<agentc::ListreeValue> jsonSnapshot(CPtr<agentc::ListreeValue> value) {
     if (!value) {
         return agentc::createNullValue();
@@ -952,6 +977,49 @@ CPtr<agentc::ListreeValue> collectStatus(CPtr<agentc::ListreeValue> jobOrRequest
     }
     return cancel ? internJobManager().collectStatus(jobId, internJobManager().requestCancelEvents(jobId))
                   : internJobManager().collectStatus(jobId, events);
+}
+
+CPtr<agentc::ListreeValue> validateResultContract(CPtr<agentc::ListreeValue> check) {
+    auto envelope = namedValue(check, "envelope");
+    auto expect = namedValue(check, "expect");
+    auto result = namedValue(envelope, "result");
+    const std::string taskId = stringField(envelope, "task_id");
+    const std::string envelopeState = stringField(envelope, "state");
+
+    auto status = agentc::createNullValue();
+    agentc::addNamedItem(status, "kind", agentc::createStringValue("intern_result_contract"));
+    agentc::addNamedItem(status, "task_id", taskId.empty() ? agentc::createNullValue() : agentc::createStringValue(taskId));
+    agentc::addNamedItem(status, "envelope_state", envelopeState.empty() ? agentc::createNullValue() : agentc::createStringValue(envelopeState));
+    agentc::addNamedItem(status, "expect", jsonSnapshot(expect));
+    agentc::addNamedItem(status, "result", jsonSnapshot(result));
+
+    auto fail = [&](const std::string& code, const std::string& message) {
+        agentc::addNamedItem(status, "ok", statusList(false));
+        agentc::addNamedItem(status, "state", agentc::createStringValue("result_error"));
+        agentc::addNamedItem(status, "error", errorObject(code, message));
+        return status;
+    };
+
+    if (envelopeState.empty()) {
+        return fail("missing_envelope_state", "intern result validation requires envelope.state");
+    }
+    if (!result) {
+        return fail("missing_result", "intern result validation requires envelope.result");
+    }
+    if (stringField(expect, "success_field").empty()) {
+        return fail("missing_success_field", "intern result contract requires expect.success_field");
+    }
+    if (!valueTruthy(namedValue(result, "ok"))) {
+        return fail("missing_success_evidence", "intern result requires result.ok success evidence");
+    }
+    if (!valueTruthy(namedValue(result, "evidence"))) {
+        return fail("missing_evidence", "intern result requires result.evidence before coordinator trust");
+    }
+
+    agentc::addNamedItem(status, "ok", statusList(true));
+    agentc::addNamedItem(status, "state", agentc::createStringValue("result_valid"));
+    agentc::addNamedItem(status, "error", agentc::createNullValue());
+    return status;
 }
 
 CPtr<agentc::ListreeValue> drop(CPtr<agentc::ListreeValue> jobOrRequest) {

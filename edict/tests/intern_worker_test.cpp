@@ -551,6 +551,92 @@ TEST(InternWorkerTest, InternContractValidatorsCheckTaskAndStatusShape) {
     EXPECT_EQ(textValue(namedValue(envelopeStatus, "envelope_state")), "complete");
 }
 
+TEST(InternWorkerTest, InternExamplesRepresentSafeTaskClasses) {
+    auto coordinatorRoot = agentc::createNullValue();
+    EdictVM vm(coordinatorRoot);
+    EdictCompiler compiler;
+    loadModuleBackedIntern(vm, compiler);
+
+    int state = vm.execute(compiler.compile(
+        "intern.example_gather_task! @gather "
+        "gather intern.validate_task_contract! @gather_contract "
+        "intern.example_classify_task! @classify "
+        "classify intern.validate_task_contract! @classify_contract "
+        "intern.example_filter_task! @filter "
+        "filter intern.validate_task_contract! @filter_contract"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+
+    auto gather = namedValue(coordinatorRoot, "gather");
+    ASSERT_TRUE(gather);
+    EXPECT_EQ(textValue(namedValue(gather, "task_class")), "gather");
+    EXPECT_EQ(textValue(namedValue(namedValue(coordinatorRoot, "gather_contract"), "state")), "contract_valid");
+
+    auto classify = namedValue(coordinatorRoot, "classify");
+    ASSERT_TRUE(classify);
+    EXPECT_EQ(textValue(namedValue(classify, "task_class")), "classify");
+    EXPECT_EQ(textValue(namedValue(namedValue(coordinatorRoot, "classify_contract"), "state")), "contract_valid");
+
+    auto filter = namedValue(coordinatorRoot, "filter");
+    ASSERT_TRUE(filter);
+    EXPECT_EQ(textValue(namedValue(filter, "task_class")), "filter");
+    EXPECT_EQ(textValue(namedValue(namedValue(coordinatorRoot, "filter_contract"), "state")), "contract_valid");
+}
+
+TEST(InternWorkerTest, InternResultContractRequiresSuccessAndEvidence) {
+    auto coordinatorRoot = agentc::createNullValue();
+    EdictVM vm(coordinatorRoot);
+    EdictCompiler compiler;
+    loadModuleBackedIntern(vm, compiler);
+
+    auto validCheck = agentc::fromJson(R"({
+        "expect": {"result_shape":"object", "success_field":"ok", "evidence_field":"evidence"},
+        "envelope": {
+            "state":"complete",
+            "task_id":"result-contract-valid",
+            "result": {"ok":"ok", "summary":"bounded", "evidence":["file.cpp:12"], "confidence":"high"}
+        }
+    })");
+    vm.pushData(validCheck);
+    int state = vm.execute(compiler.compile("intern.validate_result_contract! @valid_result_contract"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    auto validStatus = namedValue(coordinatorRoot, "valid_result_contract");
+    ASSERT_TRUE(validStatus);
+    EXPECT_EQ(textValue(namedValue(validStatus, "state")), "result_valid");
+    EXPECT_EQ(listStrings(namedValue(validStatus, "ok")), std::vector<std::string>({"ok"}));
+
+    auto missingEvidence = agentc::fromJson(R"({
+        "expect": {"result_shape":"object", "success_field":"ok", "evidence_field":"evidence"},
+        "envelope": {
+            "state":"complete",
+            "task_id":"result-contract-missing-evidence",
+            "result": {"ok":"ok", "summary":"unsupported"}
+        }
+    })");
+    vm.pushData(missingEvidence);
+    state = vm.execute(compiler.compile("intern.validate_result_contract! @missing_evidence_contract"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    auto missingEvidenceStatus = namedValue(coordinatorRoot, "missing_evidence_contract");
+    ASSERT_TRUE(missingEvidenceStatus);
+    EXPECT_EQ(textValue(namedValue(missingEvidenceStatus, "state")), "result_error");
+    EXPECT_EQ(textValue(namedValue(namedValue(missingEvidenceStatus, "error"), "code")), "missing_evidence");
+
+    auto missingSuccess = agentc::fromJson(R"({
+        "expect": {"result_shape":"object", "success_field":"ok", "evidence_field":"evidence"},
+        "envelope": {
+            "state":"complete",
+            "task_id":"result-contract-missing-success",
+            "result": {"summary":"unsupported", "evidence":["file.cpp:12"]}
+        }
+    })");
+    vm.pushData(missingSuccess);
+    state = vm.execute(compiler.compile("intern.validate_result_contract! @missing_success_contract"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    auto missingSuccessStatus = namedValue(coordinatorRoot, "missing_success_contract");
+    ASSERT_TRUE(missingSuccessStatus);
+    EXPECT_EQ(textValue(namedValue(missingSuccessStatus, "state")), "result_error");
+    EXPECT_EQ(textValue(namedValue(namedValue(missingSuccessStatus, "error"), "code")), "missing_success_evidence");
+}
+
 TEST(InternWorkerTest, InternStartEnforcesTaskContractBeforeDispatch) {
     auto coordinatorRoot = agentc::createNullValue();
     EdictVM vm(coordinatorRoot);
