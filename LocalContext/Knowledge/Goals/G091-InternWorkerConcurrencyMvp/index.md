@@ -1,6 +1,6 @@
 # Goal: G091 — Intern Worker Concurrency MVP
 
-**Status**: ACTIVE
+**Status**: ACTIVE / THREAD-BACKEND PHASE BOUNDED
 
 **Created**: 2026-05-14  
 **Parent**: 🔗[G078 — Edict-Resident Agent Loop Consolidation](../G078-EdictResidentAgentLoopConsolidation/index.md)
@@ -33,7 +33,8 @@ The intern model is the clearest application-level payoff for AgentC's substrate
 - [x] Add broker-compatible async cancellation/backpressure policy and regression coverage.
 - [x] Harden first lifecycle/drop semantics for the current thread-worker backend: active counts now exclude terminal retained jobs, final async statuses are retained for repeated sync until explicit drop or bounded retention sweep, running drops explicitly abandon the handle without killing the detached worker, and cancellation is non-retroactive once a worker is terminal.
 - [x] Add first worker-visible cooperative cancellation checkpoint protocol: async worker programs that execute `yield!` are resumed by the worker runtime only after checking the job cancellation token, allowing long-running cooperative workers to terminate before executing later program steps.
-- [ ] Harden explicit private slab/arena cleanup for the later multi-worker scheduler; the current thread-worker slice still uses normal `CPtr`/VM lifetime cleanup and JSON result copying.
+- [x] Document the private arena/slab cleanup boundary for the current thread-worker backend versus future G103/G105/G107 process/slab workers; current cleanup relies on scoped VM/CPtr teardown, JSON result copying, explicit job drop/terminal retention policy, and lifecycle accounting rather than premature slab ownership machinery.
+- [ ] Harden explicit private slab/arena cleanup when the later multi-worker/process scheduler introduces separate worker arenas, static slab mounts, or published result slabs.
 
 ## Acceptance Criteria
 - [x] A checked-in test demonstrates coordinator dispatch to at least one worker VM and structured result collection.
@@ -98,6 +99,44 @@ Implementation choice:
 
 Result envelopes should reserve a `publication` field for future read-only slab publication even while the first async slice returns JSON-copied results. This keeps the control-plane API compatible with later Root1 slab-advertisement work.
 
+## Private Arena / Slab Cleanup Boundary — 2026-05-19
+
+The current G091 backend is a **thread-worker control-plane proof**, not the final slab-isolated worker substrate. Its cleanup contract is intentionally narrower than future G103/G105/G107 work:
+
+### Current thread-worker backend owns
+
+- **Fresh worker VM lifetime**: each blocking or async worker constructs a fresh `EdictVM` and worker root. VM stacks, code frames, transient execution state, private `workspace`, and worker-local result construction are normal process heap/`CPtr` state that are released when `runInternWorker` returns and the thread unwinds.
+- **Coordinator-safe transfer**: `input` is JSON-snapshotted before dispatch; `context` and `imports` are recursively marked `ReadOnly`; worker result JSON is parsed into coordinator-owned `ListreeValue` state only on coordinator/main-thread collection.
+- **Async handle lifecycle**: `InternJobManager` owns process-local job records, Root1-compatible participant mailboxes, cancellation tokens, retained terminal statuses, explicit drop semantics, and bounded terminal retention. `worker.edict_lifecycle_status!` exposes active/tracked/retained-terminal/abandoned-running counts and cumulative started/finished/abandoned/dropped/swept counters.
+- **Abandoned running jobs**: running `drop` is handle abandonment, not thread preemption. The detached worker continues to unwind naturally, suppresses orphan completion publication, and decrements abandoned-running accounting when it exits.
+- **Intentional process-lifetime manager**: the manager remains intentionally process-lifetime/leaked because detached workers may still reference broker/job resources during shutdown; letting the OS reclaim process resources is safer than destructing broker state while detached workers can still finish.
+
+### Current thread-worker backend explicitly does not own
+
+- separate mmap worker arenas or slab id ranges;
+- durable private overlay slabs;
+- immutable static core/import slab mounting;
+- OS-level read-only mappings or no-mutate retain/release semantics;
+- worker-published immutable result slabs;
+- cross-process pidfd/forkserver launch or process-local native sidecar rehydration;
+- durable reconstruction of async job records after process crash.
+
+### Future handoff boundaries
+
+- 🔗[G103 — Build-Time Static Core Declaration Image MVP](../G103-BuildTimeStaticCoreDeclarationImageMvp/index.md) owns declarative static import/module images and manifest validation. G091 should not serialize process-local worker VM frames or native handles into those static slabs.
+- 🔗[G105 — ReadOnly Static Slab Ownership Model](../G105-ReadOnlyStaticSlabOwnershipModel/index.md) owns no-mutate retain/release, immortal/static slab identification, and cursor/pin behavior for OS-read-only mapped nodes. G091 should continue using logical `ReadOnly` plus JSON copying until this ownership model exists.
+- 🔗[G106 — Root1 Slab Advertisement Registry](../G106-Root1SlabAdvertisementRegistry/index.md) owns advertised immutable publication roots, slab ranges, epochs, and lease/permission metadata. G091's `publication: null` field is only the API reservation for that future path.
+- 🔗[G107 — Process-Isolated Micro-VM Interns](../G107-ProcessIsolatedMicroVmInterns/index.md) owns process launch, static image mounting, private dynamic overlays, process-local capability rehydration policy, pidfd owner-death handling, and returning results/publications across a Root1 mailbox boundary.
+
+### Reopen G091 implementation when
+
+- worker jobs acquire explicit arena/slab handles that need release separate from C++ scope teardown;
+- results are published as immutable slab roots instead of JSON-copied values;
+- async job records must survive process restart/session resume;
+- process-isolated workers require coordinator-visible resource accounting beyond the current thread-worker lifecycle counters.
+
+Until one of those conditions is true, additional G091 arena cleanup code would be premature and risks duplicating G103/G105/G106/G107 responsibilities.
+
 Safety hardening discovered after the first slice is now addressed for public VM/Cursor paths: 🔗[WP — Listree Traversal State and ReadOnly Slab Audit](../../WorkProducts/WP-ListreeTraversalStateReadOnlySlabAudit-2026-05-14/index.md) found that recursively frozen dictionaries could be mutated by removal paths through `Cursor::remove()` / `ListreeItem::getValue(pop=true)`, and 🔗[G109 — Listree ReadOnly Mutation Surface Hardening](../G109-ListreeReadOnlyMutationSurfaceHardening/index.md) fixed assignment/removal/list-pop/cleanup-pruning guards before broader async-worker trust.
 
 Related architecture concept: 🔗[Layered mmap Micro-VM Architecture](../../Concepts/LayeredMmapMicroVmArchitecture/index.md) records the longer-term memory-substrate direction: static read-only core/import slabs, private per-VM overlays, Root1-brokered mutable coordination/mailbox slabs, optional published communication slabs, and process-isolated micro-VM cores for near-zero-copy intern scaling. 🔗[G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design](../G110-EventfdEpollMicroVmIpcDesign/index.md) has defined the logical waitable/mailbox shape used by the first async intern backend. 🔗[G111](../G111-Root1WorkerPrimitiveFfiEdictInternMigration/index.md) now captures the migration path for replacing intern-specific VM opcodes with importable native primitives plus Edict module policy. Do not jump directly to a full allocator rewrite from G091; keep hardening broker-compatible async worker semantics first, then let G103–G110 harden the slab substrate in staged slices.
@@ -108,8 +147,10 @@ Related architecture concept: 🔗[Layered mmap Micro-VM Architecture](../../Con
 - Did: Added first abandoned-worker accounting over the module-backed worker primitive surface. `worker.edict_lifecycle_status!` now reports current active/tracked/retained-terminal/abandoned-running counts plus cumulative started/finished/abandoned/terminal-dropped/terminal-swept counters. The detached worker exit path decrements abandoned-running accounting without publishing orphan completion descriptors.
 - Did: Added the first worker-visible cooperative cancellation checkpoint protocol. Async worker jobs now carry a shared cancellation token into `runInternWorker`; when worker code executes `yield!`, the worker runtime checks the token before calling `EdictVM::resume()`. If cancellation has been requested, the worker stores a cancelled outcome immediately and does not execute later program steps.
 - Decided: `yield!` is the first cancellation checkpoint boundary because it already records/resumes VM frame state and avoids new intern-specific VM opcodes. This keeps cancellation cooperative and explicit in worker programs. Running `drop` remains handle abandonment rather than preemption, but now has visible lifecycle accounting.
-- Remaining: Deeper private arena/slab cleanup for the later scheduler and richer resource accounting when process-isolated workers/slab publications exist.
-- Next: Reassess whether to close the current G091 thread-worker lifecycle phase or continue with private arena/slab cleanup design boundaries before G103/G105/G107.
+- Did: Documented the private arena/slab cleanup boundary for the current thread-worker backend versus future G103/G105/G106/G107 static-slab, publication, and process-isolated worker responsibilities.
+- Decided: Current G091 thread-worker cleanup is sufficient until explicit worker arena/slab handles, immutable result publications, durable async job records, or process-isolated workers exist. More slab cleanup code now would duplicate planned G103/G105/G106/G107 ownership work.
+- Remaining: Richer resource accounting and explicit cleanup only when process-isolated workers/slab publications exist.
+- Next: Pivot to the next substrate prerequisite rather than adding premature G091 slab code; likely G103 static declaration image MVP or G105 static slab ownership audit, depending on desired sequencing.
 
 ### 2026-05-18
 - Did: Landed first lifecycle/drop semantics on the completed G111 module-backed worker surface: terminal async statuses are retained for repeated sync until explicit drop or bounded sweep, active counts exclude terminal/abandoned jobs, running drops return `abandoned`, terminal drops return `dropped`, abandoned workers suppress orphan completion publication, and cancellation is non-retroactive after terminal completion.
