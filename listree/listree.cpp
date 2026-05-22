@@ -123,7 +123,7 @@ bool isStaticImmortalListreeValue(const ListreeValue* value) {
     try {
         auto& allocator = Allocator<ListreeValue>::getAllocator();
         const SlabId sid = allocator.getSlabId(value);
-        return allocator.slabIsStaticImmortal(sid.first);
+        return allocator.slotIsStaticImmortal(sid);
     } catch (...) {
         return false;
     }

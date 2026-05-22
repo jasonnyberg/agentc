@@ -59,19 +59,18 @@ The first G105 ownership model remains **immortal static slabs for image/lease l
 The first probe implements process-local static-immortal slab metadata without claiming true OS-read-only mmap support yet:
 
 - `Allocator<T>::markSlabStaticImmortal(uint16_t slabIndex)` marks an already-live slab as static/immortal for the process.
-- `Allocator<T>::slabIsStaticImmortal(uint16_t slabIndex)` exposes the process-local static predicate.
-- For static-immortal slabs, `tryRetain(...)`, `modrefs(...)`, and `deallocate(...)` avoid mutating slab-resident `inUse` and do not destruct individual static objects.
+- `Allocator<T>::markSlotStaticImmortal(SlabId)` marks exact live slots static/immortal, allowing mounted declaration images to avoid making unrelated dynamic values in the same slab immortal.
+- `Allocator<T>::slabIsStaticImmortal(uint16_t slabIndex)` and `Allocator<T>::slotIsStaticImmortal(SlabId)` expose the process-local static predicates.
+- For static-immortal slabs/slots, `tryRetain(...)`, `modrefs(...)`, and `deallocate(...)` avoid mutating slab-resident `inUse` and do not destruct individual static objects.
 - `ListreeValue::pin()` and `ListreeValue::unpin()` detect static-immortal `ListreeValue` residency and no-op instead of mutating `pinnedCount`.
 - `StaticSlabOwnershipTest.StaticImmortalSlabRetainReleaseAndCursorPinAreNoMutate` proves copied `CPtr` references, direct pin/unpin, and basic read/traversal of a static-marked Listree value leave both allocator refs and `pinnedCount` unchanged.
+- G103 now uses the slot-level seam in `mountDeclarationImageReadOnly(...)` so declaration images can be logically frozen and marked static-immortal without marking whole mixed-use dynamic slabs.
 
 This is still a **probe**, not final static slab mounting: static slabs are marked after normal allocation, and the backing memory is not yet protected by OS `PROT_READ`. It is nevertheless the first implementation seam G103 needs before declaration images can become true read-only slab mounts.
 
 ## Recommended Next Implementation Slice
 
-Continue toward G103/G105 convergence by either:
-
-1. adding read-only mmap mount/inspection for declaration images that uses static-immortal metadata without direct authority handles; or
-2. extending static ownership to static slab image import/readback so the test maps an actual file-backed read-only image instead of marking a live heap slab.
+Continue toward true G103/G105 convergence by extending static ownership to static slab image import/readback so the test maps an actual file-backed read-only image instead of marking live heap/Listree slots. The next step should prove the same no-mutate retain/release/pin semantics against a file-backed or mmap-protected declaration image.
 
 ## Acceptance Criteria
 - [ ] Static/read-only slabs can be mounted and traversed without mutating their `inUse` or node-local pin metadata.

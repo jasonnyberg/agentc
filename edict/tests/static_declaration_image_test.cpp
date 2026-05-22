@@ -87,6 +87,34 @@ TEST(StaticDeclarationImageTest, WorkerPrimitiveImageRoundTripsThroughFile) {
     std::filesystem::remove(path);
 }
 
+TEST(StaticDeclarationImageTest, ReadOnlyMountMarksDeclarationValueSlotsStaticImmortal) {
+    auto image = agentc::edict::static_image::buildWorkerPrimitiveDeclarationImage();
+    const SlabId rootSid = image.getSlabId();
+    const int pinsBefore = image->getPinnedCount();
+
+    auto mounted = agentc::edict::static_image::mountDeclarationImageReadOnly(image);
+    ASSERT_TRUE(mounted.validation.ok) << mounted.validation.code << ": " << mounted.validation.message;
+    ASSERT_TRUE(mounted.root);
+    EXPECT_TRUE(mounted.root->isReadOnly());
+    EXPECT_FALSE(mounted.staticValueSlots.empty());
+    EXPECT_TRUE(Allocator<agentc::ListreeValue>::getAllocator().slotIsStaticImmortal(rootSid));
+    const size_t refsBefore = Allocator<agentc::ListreeValue>::getAllocator().refs(rootSid);
+
+    {
+        CPtr<agentc::ListreeValue> copyA = mounted.root;
+        CPtr<agentc::ListreeValue> copyB = copyA;
+        EXPECT_EQ(Allocator<agentc::ListreeValue>::getAllocator().refs(rootSid), refsBefore);
+    }
+    EXPECT_EQ(Allocator<agentc::ListreeValue>::getAllocator().refs(rootSid), refsBefore);
+
+    mounted.root->pin();
+    mounted.root->unpin();
+    EXPECT_EQ(mounted.root->getPinnedCount(), pinsBefore);
+
+    const auto validation = agentc::edict::static_image::validateDeclarationImage(mounted.root);
+    EXPECT_TRUE(validation.ok) << validation.code << ": " << validation.message;
+}
+
 TEST(StaticDeclarationImageTest, ValidationRejectsPayloadHashMismatch) {
     auto image = agentc::edict::static_image::buildWorkerPrimitiveDeclarationImage();
     auto manifest = namedValue(image, "manifest");

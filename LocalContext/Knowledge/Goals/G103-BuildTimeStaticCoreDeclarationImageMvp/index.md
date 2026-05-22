@@ -31,7 +31,7 @@ Out of scope:
 - [x] Pick one small import/module surface as the first image payload: the `worker.edict` primitive declaration surface, represented as metadata-only symbol declarations.
 - [x] Add a deterministic test generator/readback path that emits a Listree/JSON declaration image plus manifest (`edict/static_declaration_image.{h,cpp}`). This is a pre-mmap first slice, not the final slab-file generator.
 - [x] Ensure the image contains no process-local handles or mutable VM activation state; symbols declare lazy process-local binding policy and `stores_native_handle: "false"`.
-- [ ] Add runtime mmap/read-only slab inspection/mount support sufficient to read the static declaration namespace.
+- [x] Add first runtime read-only inspection/mount support sufficient to read the static declaration namespace: `mountDeclarationImageReadOnly(...)` validates the image, recursively freezes it, and marks declaration `ListreeValue` slots static-immortal through the G105 ownership seam. True OS mmap read-only mounting remains a later slice.
 - [x] Add stale/incompatible manifest validation for the first schema slice, including payload-hash mismatch rejection.
 - [x] Add checked-in tests around deterministic generation, manifest validation, metadata-only policy, and file readback.
 
@@ -77,16 +77,18 @@ This slice intentionally does **not** yet generate mmap slab files or mount OS-r
 - Added `edict/static_declaration_image.h` and `edict/static_declaration_image.cpp`.
 - Added `agentc::edict::static_image::buildWorkerPrimitiveDeclarationImage()` for deterministic metadata-only `worker.edict` declaration-image generation.
 - Added `writeDeclarationImage(...)`, `readDeclarationImage(...)`, `validateDeclarationImage(...)`, and deterministic `declarationPayloadHash(...)` helpers.
-- Added `StaticDeclarationImageTest.WorkerPrimitiveImageIsMetadataOnlyAndValidates`, `StaticDeclarationImageTest.WorkerPrimitiveImageRoundTripsThroughFile`, and `StaticDeclarationImageTest.ValidationRejectsPayloadHashMismatch`.
+- Added `mountDeclarationImageReadOnly(...)` as the first runtime inspection/mount seam: it validates the declaration image, recursively applies logical `ReadOnly`, collects declaration `ListreeValue` slots, and marks those exact slots static-immortal via G105 so retain/release and pin/unpin do not mutate static metadata.
+- Added `StaticDeclarationImageTest.WorkerPrimitiveImageIsMetadataOnlyAndValidates`, `StaticDeclarationImageTest.WorkerPrimitiveImageRoundTripsThroughFile`, `StaticDeclarationImageTest.ReadOnlyMountMarksDeclarationValueSlotsStaticImmortal`, and `StaticDeclarationImageTest.ValidationRejectsPayloadHashMismatch`.
 
 ## Validation — 2026-05-19
 
 - `cmake --build build --target edict_tests -j2` — passed.
-- `./build/edict/edict_tests --gtest_filter='StaticDeclarationImageTest.*' --gtest_brief=1` — passed 3/3.
+- `./build/edict/edict_tests --gtest_filter='StaticDeclarationImageTest.*' --gtest_brief=1` — passed 4/4.
+- `./build/edict/edict_tests --gtest_filter='StaticDeclarationImageTest.*:InternWorkerTest.*:Root1AwaitSchedulerTest.*:Root1PrimitiveModuleTest.*:EdictVM.YieldedExecutionCanResumeCurrentCodeFrame' --gtest_brief=1` — passed 25/25.
 
 ## Acceptance Criteria
 - [x] A static declaration image can be generated deterministically from source metadata for the first `worker.edict` payload.
-- [ ] Runtime code can mmap/read the image as read-only Listree/slab data; current first slice round-trips through deterministic JSON/Listree readback only.
+- [x] Runtime code can inspect/mount the image as logically read-only static-immortal Listree data through the G105 static slot seam; true OS mmap read-only slab data remains a later implementation slice.
 - [x] The image manifest records enough version/hash/root-id information to detect stale or incompatible artifacts for the first schema slice.
 - [x] No raw native handles are stored as authoritative shared state.
 - [x] Documentation explains the distinction between declarative import image and lazy process-local native binding.

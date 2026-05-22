@@ -7,6 +7,7 @@
 
 #include "static_declaration_image.h"
 
+#include <algorithm>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
@@ -193,6 +194,42 @@ ValidationResult validateDeclarationImage(CPtr<agentc::ListreeValue> image) {
     }
 
     return ValidationResult{true, "ok", "static declaration image is valid"};
+}
+
+MountedDeclarationImage mountDeclarationImageReadOnly(CPtr<agentc::ListreeValue> image) {
+    MountedDeclarationImage mounted;
+    mounted.root = image;
+    mounted.validation = validateDeclarationImage(image);
+    if (!mounted.validation.ok || !image) {
+        return mounted;
+    }
+
+    // Freeze logically before marking slots immortal; setReadOnly mutates flags
+    // and therefore must not run after a real OS read-only mapping is active.
+    image->setReadOnly(true);
+
+    auto& allocator = Allocator<agentc::ListreeValue>::getAllocator();
+    std::vector<SlabId> slots;
+    image->traverse([&](CPtr<agentc::ListreeValue> value) {
+        if (!value) {
+            return;
+        }
+        const SlabId sid = value.getSlabId();
+        if (std::find(slots.begin(), slots.end(), sid) == slots.end()) {
+            slots.push_back(sid);
+        }
+    });
+    const SlabId rootSid = image.getSlabId();
+    if (std::find(slots.begin(), slots.end(), rootSid) == slots.end()) {
+        slots.push_back(rootSid);
+    }
+
+    for (const auto& sid : slots) {
+        if (allocator.markSlotStaticImmortal(sid)) {
+            mounted.staticValueSlots.push_back(sid);
+        }
+    }
+    return mounted;
 }
 
 } // namespace agentc::edict::static_image

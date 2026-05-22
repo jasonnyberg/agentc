@@ -10,6 +10,7 @@
 #include "../listree/listree.h"
 
 #include <string>
+#include <vector>
 
 namespace agentc::edict::static_image {
 
@@ -17,6 +18,12 @@ struct ValidationResult {
     bool ok = false;
     std::string code;
     std::string message;
+};
+
+struct MountedDeclarationImage {
+    CPtr<agentc::ListreeValue> root;
+    ValidationResult validation;
+    std::vector<SlabId> staticValueSlots;
 };
 
 // G103 first slice: a deterministic declarative import image for the small
@@ -32,6 +39,7 @@ bool writeDeclarationImage(CPtr<agentc::ListreeValue> image,
 CPtr<agentc::ListreeValue> readDeclarationImage(const std::string& path,
                                                 std::string* error = nullptr);
 ValidationResult validateDeclarationImage(CPtr<agentc::ListreeValue> image);
+MountedDeclarationImage mountDeclarationImageReadOnly(CPtr<agentc::ListreeValue> image);
 
 std::string declarationPayloadHash(CPtr<agentc::ListreeValue> declarations);
 

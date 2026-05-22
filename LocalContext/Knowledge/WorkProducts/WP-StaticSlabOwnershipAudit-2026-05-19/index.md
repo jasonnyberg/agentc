@@ -142,9 +142,10 @@ A future code slice needs at least one of these seams:
 A first process-local G105 static-ownership probe landed after this audit:
 
 - `Allocator<T>::markSlabStaticImmortal(...)` records static/immortal slab indices.
-- `Allocator<T>::slabIsStaticImmortal(...)` exposes the static predicate.
-- `tryRetain(...)`, `modrefs(...)`, and `deallocate(...)` skip `inUse` mutation/destruction for static-immortal slab ids.
+- `Allocator<T>::markSlotStaticImmortal(...)` records exact static/immortal slots for mixed dynamic slabs.
+- `Allocator<T>::slabIsStaticImmortal(...)` / `slotIsStaticImmortal(...)` expose static predicates.
+- `tryRetain(...)`, `modrefs(...)`, and `deallocate(...)` skip `inUse` mutation/destruction for static-immortal slab/slot ids.
 - `ListreeValue::pin()` / `unpin()` no-op for static-immortal `ListreeValue` slabs, avoiding `pinnedCount` writes.
 - `StaticSlabOwnershipTest.StaticImmortalSlabRetainReleaseAndCursorPinAreNoMutate` proves copied `CPtr` references, direct pin/unpin, and basic read/traversal leave refs and pins unchanged for a static-marked Listree value.
 
-This probe does not yet map OS-read-only memory. It marks an existing live slab static/immortal and validates the no-mutate ownership seam. The next step is to apply the seam to read-only static image import/mounting.
+This probe does not yet map OS-read-only memory. It marks existing live slabs/slots static/immortal and validates the no-mutate ownership seam. G103 now applies the slot-level seam in `mountDeclarationImageReadOnly(...)` for logically read-only declaration-image inspection. The next step is to prove the same seam against actual read-only static image import/mounting.
