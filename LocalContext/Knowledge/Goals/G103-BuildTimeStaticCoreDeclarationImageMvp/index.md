@@ -76,15 +76,16 @@ This slice intentionally does **not** yet generate mmap slab files or mount OS-r
 
 - Added `edict/static_declaration_image.h` and `edict/static_declaration_image.cpp`.
 - Added `agentc::edict::static_image::buildWorkerPrimitiveDeclarationImage()` for deterministic metadata-only `worker.edict` declaration-image generation.
-- Added `writeDeclarationImage(...)`, `readDeclarationImage(...)`, `validateDeclarationImage(...)`, and deterministic `declarationPayloadHash(...)` helpers.
+- Added `writeDeclarationImage(...)`, `readDeclarationImage(...)`, `readDeclarationImageMmapReadOnly(...)`, `validateDeclarationImage(...)`, and deterministic `declarationPayloadHash(...)` helpers.
 - Added `mountDeclarationImageReadOnly(...)` as the first runtime inspection/mount seam: it validates the declaration image, recursively applies logical `ReadOnly`, collects declaration `ListreeValue` slots, and marks those exact slots static-immortal via G105 so retain/release and pin/unpin do not mutate static metadata.
-- Added `StaticDeclarationImageTest.WorkerPrimitiveImageIsMetadataOnlyAndValidates`, `StaticDeclarationImageTest.WorkerPrimitiveImageRoundTripsThroughFile`, `StaticDeclarationImageTest.ReadOnlyMountMarksDeclarationValueSlotsStaticImmortal`, and `StaticDeclarationImageTest.ValidationRejectsPayloadHashMismatch`.
+- Added read-only mmap byte import for declaration-image files. This maps the JSON artifact with `PROT_READ` and parses it into a mounted Listree declaration image; true Listree nodes are still heap/private slots marked static-immortal after validation.
+- Added `StaticDeclarationImageTest.WorkerPrimitiveImageIsMetadataOnlyAndValidates`, `StaticDeclarationImageTest.WorkerPrimitiveImageRoundTripsThroughFile`, `StaticDeclarationImageTest.MmapReadOnlyImageCanBeMountedStaticImmortal`, `StaticDeclarationImageTest.ReadOnlyMountMarksDeclarationValueSlotsStaticImmortal`, and `StaticDeclarationImageTest.ValidationRejectsPayloadHashMismatch`.
 
 ## Validation — 2026-05-19
 
 - `cmake --build build --target edict_tests -j2` — passed.
-- `./build/edict/edict_tests --gtest_filter='StaticDeclarationImageTest.*' --gtest_brief=1` — passed 4/4.
-- `./build/edict/edict_tests --gtest_filter='StaticDeclarationImageTest.*:InternWorkerTest.*:Root1AwaitSchedulerTest.*:Root1PrimitiveModuleTest.*:EdictVM.YieldedExecutionCanResumeCurrentCodeFrame' --gtest_brief=1` — passed 25/25.
+- `./build/edict/edict_tests --gtest_filter='StaticDeclarationImageTest.*' --gtest_brief=1` — passed 5/5 after read-only mmap file import; earlier static mount slice passed 4/4.
+- `./build/edict/edict_tests --gtest_filter='StaticDeclarationImageTest.*:InternWorkerTest.*:Root1AwaitSchedulerTest.*:Root1PrimitiveModuleTest.*:EdictVM.YieldedExecutionCanResumeCurrentCodeFrame' --gtest_brief=1` — passed 25/25 before read-only mmap file import; rerun this slice before final commit.
 
 ## Acceptance Criteria
 - [x] A static declaration image can be generated deterministically from source metadata for the first `worker.edict` payload.

@@ -87,6 +87,39 @@ TEST(StaticDeclarationImageTest, WorkerPrimitiveImageRoundTripsThroughFile) {
     std::filesystem::remove(path);
 }
 
+TEST(StaticDeclarationImageTest, MmapReadOnlyImageCanBeMountedStaticImmortal) {
+    auto image = agentc::edict::static_image::buildWorkerPrimitiveDeclarationImage();
+    const auto path = std::filesystem::temp_directory_path() /
+                      "agentc-worker-static-declaration-image-mmap-test.json";
+
+    std::string error;
+    ASSERT_TRUE(agentc::edict::static_image::writeDeclarationImage(image, path.string(), &error)) << error;
+    auto restored = agentc::edict::static_image::readDeclarationImageMmapReadOnly(path.string(), &error);
+    ASSERT_TRUE(restored) << error;
+    EXPECT_EQ(agentc::toJson(restored), agentc::toJson(image));
+
+    auto mounted = agentc::edict::static_image::mountDeclarationImageReadOnly(restored);
+    ASSERT_TRUE(mounted.validation.ok) << mounted.validation.code << ": " << mounted.validation.message;
+    ASSERT_TRUE(mounted.root);
+    EXPECT_TRUE(mounted.root->isReadOnly());
+    EXPECT_FALSE(mounted.staticValueSlots.empty());
+
+    const SlabId rootSid = mounted.root.getSlabId();
+    EXPECT_TRUE(Allocator<agentc::ListreeValue>::getAllocator().slotIsStaticImmortal(rootSid));
+    const size_t refsBefore = Allocator<agentc::ListreeValue>::getAllocator().refs(rootSid);
+    const int pinsBefore = mounted.root->getPinnedCount();
+    {
+        CPtr<agentc::ListreeValue> copy = mounted.root;
+        EXPECT_EQ(Allocator<agentc::ListreeValue>::getAllocator().refs(rootSid), refsBefore);
+    }
+    mounted.root->pin();
+    mounted.root->unpin();
+    EXPECT_EQ(Allocator<agentc::ListreeValue>::getAllocator().refs(rootSid), refsBefore);
+    EXPECT_EQ(mounted.root->getPinnedCount(), pinsBefore);
+
+    std::filesystem::remove(path);
+}
+
 TEST(StaticDeclarationImageTest, ReadOnlyMountMarksDeclarationValueSlotsStaticImmortal) {
     auto image = agentc::edict::static_image::buildWorkerPrimitiveDeclarationImage();
     const SlabId rootSid = image.getSlabId();

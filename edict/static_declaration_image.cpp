@@ -8,9 +8,15 @@
 #include "static_declaration_image.h"
 
 #include <algorithm>
+#include <cerrno>
+#include <cstring>
+#include <fcntl.h>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <vector>
 
 namespace agentc::edict::static_image {
@@ -145,6 +151,44 @@ CPtr<agentc::ListreeValue> readDeclarationImage(const std::string& path,
     auto value = agentc::fromJson(buffer.str());
     if (!value && error) {
         *error = "failed to parse static declaration image: " + path;
+    }
+    return value;
+}
+
+CPtr<agentc::ListreeValue> readDeclarationImageMmapReadOnly(const std::string& path,
+                                                            std::string* error) {
+    const int fd = ::open(path.c_str(), O_RDONLY);
+    if (fd < 0) {
+        if (error) {
+            *error = "failed to open static declaration image for read-only mmap: " + path;
+        }
+        return nullptr;
+    }
+
+    struct stat st {};
+    if (::fstat(fd, &st) != 0 || st.st_size <= 0) {
+        if (error) {
+            *error = "failed to stat static declaration image for read-only mmap: " + path;
+        }
+        ::close(fd);
+        return nullptr;
+    }
+
+    const size_t size = static_cast<size_t>(st.st_size);
+    void* mapped = ::mmap(nullptr, size, PROT_READ, MAP_PRIVATE, fd, 0);
+    ::close(fd);
+    if (mapped == MAP_FAILED) {
+        if (error) {
+            *error = std::string("failed to mmap static declaration image read-only: ") + std::strerror(errno);
+        }
+        return nullptr;
+    }
+
+    std::string json(static_cast<const char*>(mapped), size);
+    ::munmap(mapped, size);
+    auto value = agentc::fromJson(json);
+    if (!value && error) {
+        *error = "failed to parse read-only mmapped static declaration image: " + path;
     }
     return value;
 }

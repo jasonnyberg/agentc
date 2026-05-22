@@ -38,6 +38,8 @@ bool writeDeclarationImage(CPtr<agentc::ListreeValue> image,
                            std::string* error = nullptr);
 CPtr<agentc::ListreeValue> readDeclarationImage(const std::string& path,
                                                 std::string* error = nullptr);
+CPtr<agentc::ListreeValue> readDeclarationImageMmapReadOnly(const std::string& path,
+                                                            std::string* error = nullptr);
 ValidationResult validateDeclarationImage(CPtr<agentc::ListreeValue> image);
 MountedDeclarationImage mountDeclarationImageReadOnly(CPtr<agentc::ListreeValue> image);
 
