@@ -1,6 +1,6 @@
 # Goal: G103 — Build-Time Static Core Declaration Image MVP
 
-**Status**: PLANNED  
+**Status**: ACTIVE / FIRST DECLARATION IMAGE SLICE
 **Created**: 2026-05-14  
 **Parent**: 🔗[G096 — Authoritative mmap Session Resume](../G096-AuthoritativeMmapSessionResume/index.md)  
 **Related Concept**: 🔗[Layered mmap Micro-VM Architecture](../../Concepts/LayeredMmapMicroVmArchitecture/index.md)
@@ -27,20 +27,69 @@ Out of scope:
 - storing raw `dlopen`/`dlsym` handles in static slabs.
 
 ## Implementation Plan
-- [ ] Define the minimal static declaration image manifest schema.
-- [ ] Pick one small import/module surface as the first image payload.
-- [ ] Add a build-time image generator or deterministic test generator that emits slab files plus manifest.
-- [ ] Ensure the image contains no process-local handles or mutable VM activation state.
-- [ ] Add runtime inspection/mount support sufficient to read the static declaration namespace.
-- [ ] Add stale/incompatible manifest validation.
-- [ ] Add checked-in tests around generation, manifest validation, and runtime readback.
+- [x] Define the minimal static declaration image manifest schema for the first slice: `format`, `format_version`, `image_kind`, `module`, `root_id`, `hash_algorithm`, `payload_hash`, `contains_native_handles`, `native_binding_policy`, and `forbidden_payloads`.
+- [x] Pick one small import/module surface as the first image payload: the `worker.edict` primitive declaration surface, represented as metadata-only symbol declarations.
+- [x] Add a deterministic test generator/readback path that emits a Listree/JSON declaration image plus manifest (`edict/static_declaration_image.{h,cpp}`). This is a pre-mmap first slice, not the final slab-file generator.
+- [x] Ensure the image contains no process-local handles or mutable VM activation state; symbols declare lazy process-local binding policy and `stores_native_handle: "false"`.
+- [ ] Add runtime mmap/read-only slab inspection/mount support sufficient to read the static declaration namespace.
+- [x] Add stale/incompatible manifest validation for the first schema slice, including payload-hash mismatch rejection.
+- [x] Add checked-in tests around deterministic generation, manifest validation, metadata-only policy, and file readback.
+
+## First Declaration Image Schema — 2026-05-19
+
+The first image is deliberately **declarative metadata only**. It is encoded as a Listree/JSON root with:
+
+```json
+{
+  "manifest": {
+    "format": "agentc.static_declaration_image",
+    "format_version": "1",
+    "image_kind": "declarative_import_module",
+    "module": "worker.edict",
+    "root_id": "worker.edict/declarations",
+    "hash_algorithm": "fnv1a64",
+    "payload_hash": "...",
+    "contains_native_handles": "false",
+    "native_binding_policy": "lazy_process_local_sidecar",
+    "forbidden_payloads": [
+      "dlopen_handle",
+      "dlsym_pointer",
+      "function_pointer",
+      "eventfd",
+      "epoll_fd",
+      "pidfd",
+      "edict_vm_pointer",
+      "activation_frame",
+      "credential",
+      "provider_handle"
+    ]
+  },
+  "declarations": []
+}
+```
+
+Each declaration records the public Edict word, expected native symbol name, stack signature, category, lazy binding policy, worker allowance, and the explicit `stores_native_handle: "false"` assertion. The chosen first payload is the small `worker.edict` primitive surface because it is immediately relevant to G091/G099, has concrete C ABI names, and exercises the important distinction between static declarative namespace metadata and process-local Cartographer/FFI binding sidecars.
+
+This slice intentionally does **not** yet generate mmap slab files or mount OS-read-only mappings. It establishes deterministic image content, manifest/hash validation, handle-exclusion policy, and readback tests so the later mmap/static-slab slice has a stable schema target.
+
+## Implementation Progress — 2026-05-19
+
+- Added `edict/static_declaration_image.h` and `edict/static_declaration_image.cpp`.
+- Added `agentc::edict::static_image::buildWorkerPrimitiveDeclarationImage()` for deterministic metadata-only `worker.edict` declaration-image generation.
+- Added `writeDeclarationImage(...)`, `readDeclarationImage(...)`, `validateDeclarationImage(...)`, and deterministic `declarationPayloadHash(...)` helpers.
+- Added `StaticDeclarationImageTest.WorkerPrimitiveImageIsMetadataOnlyAndValidates`, `StaticDeclarationImageTest.WorkerPrimitiveImageRoundTripsThroughFile`, and `StaticDeclarationImageTest.ValidationRejectsPayloadHashMismatch`.
+
+## Validation — 2026-05-19
+
+- `cmake --build build --target edict_tests -j2` — passed.
+- `./build/edict/edict_tests --gtest_filter='StaticDeclarationImageTest.*' --gtest_brief=1` — passed 3/3.
 
 ## Acceptance Criteria
-- [ ] A static declaration image can be generated deterministically from source metadata.
-- [ ] Runtime code can mmap/read the image as read-only Listree/slab data.
-- [ ] The image manifest records enough version/hash/root-id information to detect stale or incompatible artifacts.
-- [ ] No raw native handles are stored as authoritative shared state.
-- [ ] Documentation explains the distinction between declarative import image and lazy process-local native binding.
+- [x] A static declaration image can be generated deterministically from source metadata for the first `worker.edict` payload.
+- [ ] Runtime code can mmap/read the image as read-only Listree/slab data; current first slice round-trips through deterministic JSON/Listree readback only.
+- [x] The image manifest records enough version/hash/root-id information to detect stale or incompatible artifacts for the first schema slice.
+- [x] No raw native handles are stored as authoritative shared state.
+- [x] Documentation explains the distinction between declarative import image and lazy process-local native binding.
 
 ## Notes
 This goal is intentionally narrower than full Root0/Root1. It creates the first durable artifact that later Root1 and micro-VM workers can mount.

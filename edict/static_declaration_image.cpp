@@ -1,0 +1,198 @@
+// This file is part of AgentC.
+//
+// AgentC is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as
+// published by the Free Software Foundation, either version 3 of
+// the License, or (at your option) any later version.
+
+#include "static_declaration_image.h"
+
+#include <fstream>
+#include <iomanip>
+#include <sstream>
+#include <vector>
+
+namespace agentc::edict::static_image {
+namespace {
+
+CPtr<agentc::ListreeValue> namedValue(CPtr<agentc::ListreeValue> value,
+                                      const std::string& name) {
+    if (!value || value->isListMode()) {
+        return nullptr;
+    }
+    auto item = value->find(name);
+    return item ? item->getValue(false, false) : nullptr;
+}
+
+std::string stringValue(CPtr<agentc::ListreeValue> value) {
+    if (!value || !value->getData() || value->getLength() == 0) {
+        return {};
+    }
+    if ((value->getFlags() & agentc::LtvFlags::Binary) != agentc::LtvFlags::None) {
+        return {};
+    }
+    return std::string(static_cast<const char*>(value->getData()), value->getLength());
+}
+
+CPtr<agentc::ListreeValue> stringList(std::initializer_list<std::string> values) {
+    auto list = agentc::createListValue();
+    for (const auto& value : values) {
+        agentc::addListItem(list, agentc::createStringValue(value));
+    }
+    return list;
+}
+
+CPtr<agentc::ListreeValue> symbolDeclaration(const std::string& word,
+                                             const std::string& nativeSymbol,
+                                             const std::string& stackSignature,
+                                             const std::string& category) {
+    auto symbol = agentc::createNullValue();
+    agentc::addNamedItem(symbol, "word", agentc::createStringValue(word));
+    agentc::addNamedItem(symbol, "native_symbol", agentc::createStringValue(nativeSymbol));
+    agentc::addNamedItem(symbol, "stack_signature", agentc::createStringValue(stackSignature));
+    agentc::addNamedItem(symbol, "category", agentc::createStringValue(category));
+    agentc::addNamedItem(symbol, "binding", agentc::createStringValue("lazy_process_local"));
+    agentc::addNamedItem(symbol, "stores_native_handle", agentc::createStringValue("false"));
+    agentc::addNamedItem(symbol, "worker_allowed", agentc::createStringValue("true"));
+    agentc::addNamedItem(symbol, "notes", agentc::createStringValue(
+        "Declarative metadata only; actual Cartographer/FFI binding is process-local."));
+    return symbol;
+}
+
+std::string fnv1a64(const std::string& text) {
+    uint64_t hash = 14695981039346656037ull;
+    for (unsigned char ch : text) {
+        hash ^= static_cast<uint64_t>(ch);
+        hash *= 1099511628211ull;
+    }
+    std::ostringstream out;
+    out << std::hex << std::setfill('0') << std::setw(16) << hash;
+    return out.str();
+}
+
+ValidationResult fail(const std::string& code, const std::string& message) {
+    return ValidationResult{false, code, message};
+}
+
+} // namespace
+
+std::string declarationPayloadHash(CPtr<agentc::ListreeValue> declarations) {
+    return fnv1a64(agentc::toJson(declarations));
+}
+
+CPtr<agentc::ListreeValue> buildWorkerPrimitiveDeclarationImage() {
+    auto declarations = agentc::createListValue();
+    agentc::addListItem(declarations, symbolDeclaration(
+        "worker.edict_active_count", "agentc_worker_edict_active_count_ltv", "() -> ltv", "lifecycle"));
+    agentc::addListItem(declarations, symbolDeclaration(
+        "worker.edict_lifecycle_status", "agentc_worker_edict_lifecycle_status_ltv", "() -> ltv", "lifecycle"));
+    agentc::addListItem(declarations, symbolDeclaration(
+        "worker.edict_prepare_task", "agentc_worker_edict_prepare_task_ltv", "(ltv task) -> ltv", "task"));
+    agentc::addListItem(declarations, symbolDeclaration(
+        "worker.edict_start_status", "agentc_worker_edict_start_status_ltv", "(ltv task) -> ltv", "async"));
+    agentc::addListItem(declarations, symbolDeclaration(
+        "worker.edict_collect_status", "agentc_worker_edict_collect_status_ltv", "(ltv job_or_request, ltv events) -> ltv", "async"));
+    agentc::addListItem(declarations, symbolDeclaration(
+        "worker.edict_validate_result_contract", "agentc_worker_edict_validate_result_contract_ltv", "(ltv check) -> ltv", "contract"));
+
+    auto manifest = agentc::createNullValue();
+    agentc::addNamedItem(manifest, "format", agentc::createStringValue("agentc.static_declaration_image"));
+    agentc::addNamedItem(manifest, "format_version", agentc::createStringValue("1"));
+    agentc::addNamedItem(manifest, "image_kind", agentc::createStringValue("declarative_import_module"));
+    agentc::addNamedItem(manifest, "module", agentc::createStringValue("worker.edict"));
+    agentc::addNamedItem(manifest, "root_id", agentc::createStringValue("worker.edict/declarations"));
+    agentc::addNamedItem(manifest, "hash_algorithm", agentc::createStringValue("fnv1a64"));
+    agentc::addNamedItem(manifest, "payload_hash", agentc::createStringValue(declarationPayloadHash(declarations)));
+    agentc::addNamedItem(manifest, "contains_native_handles", agentc::createStringValue("false"));
+    agentc::addNamedItem(manifest, "native_binding_policy", agentc::createStringValue("lazy_process_local_sidecar"));
+    agentc::addNamedItem(manifest, "forbidden_payloads", stringList({
+        "dlopen_handle", "dlsym_pointer", "function_pointer", "eventfd", "epoll_fd",
+        "pidfd", "edict_vm_pointer", "activation_frame", "credential", "provider_handle"
+    }));
+
+    auto image = agentc::createNullValue();
+    agentc::addNamedItem(image, "manifest", manifest);
+    agentc::addNamedItem(image, "declarations", declarations);
+    return image;
+}
+
+bool writeDeclarationImage(CPtr<agentc::ListreeValue> image,
+                           const std::string& path,
+                           std::string* error) {
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    if (!out) {
+        if (error) {
+            *error = "failed to open static declaration image for writing: " + path;
+        }
+        return false;
+    }
+    out << agentc::toJson(image);
+    return static_cast<bool>(out);
+}
+
+CPtr<agentc::ListreeValue> readDeclarationImage(const std::string& path,
+                                                std::string* error) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) {
+        if (error) {
+            *error = "failed to open static declaration image for reading: " + path;
+        }
+        return nullptr;
+    }
+    std::stringstream buffer;
+    buffer << in.rdbuf();
+    auto value = agentc::fromJson(buffer.str());
+    if (!value && error) {
+        *error = "failed to parse static declaration image: " + path;
+    }
+    return value;
+}
+
+ValidationResult validateDeclarationImage(CPtr<agentc::ListreeValue> image) {
+    auto manifest = namedValue(image, "manifest");
+    auto declarations = namedValue(image, "declarations");
+    if (!manifest || !declarations || !declarations->isListMode()) {
+        return fail("invalid_shape", "static declaration image requires manifest and list declarations");
+    }
+    if (stringValue(namedValue(manifest, "format")) != "agentc.static_declaration_image") {
+        return fail("invalid_format", "static declaration image format mismatch");
+    }
+    if (stringValue(namedValue(manifest, "format_version")) != "1") {
+        return fail("unsupported_version", "static declaration image format_version is unsupported");
+    }
+    if (stringValue(namedValue(manifest, "contains_native_handles")) != "false") {
+        return fail("native_handles_forbidden", "static declaration image must not contain native handles");
+    }
+    if (stringValue(namedValue(manifest, "native_binding_policy")) != "lazy_process_local_sidecar") {
+        return fail("invalid_binding_policy", "native bindings must remain process-local sidecars");
+    }
+    if (stringValue(namedValue(manifest, "payload_hash")) != declarationPayloadHash(declarations)) {
+        return fail("payload_hash_mismatch", "static declaration image payload hash mismatch");
+    }
+
+    bool symbolError = false;
+    std::string missingField;
+    declarations->forEachList([&](CPtr<agentc::ListreeValueRef>& ref) {
+        auto symbol = ref ? ref->getValue() : nullptr;
+        if (symbolError) {
+            return;
+        }
+        if (stringValue(namedValue(symbol, "word")).empty()) {
+            symbolError = true;
+            missingField = "word";
+        } else if (stringValue(namedValue(symbol, "native_symbol")).empty()) {
+            symbolError = true;
+            missingField = "native_symbol";
+        } else if (stringValue(namedValue(symbol, "stores_native_handle")) != "false") {
+            symbolError = true;
+            missingField = "stores_native_handle=false";
+        }
+    });
+    if (symbolError) {
+        return fail("invalid_symbol_declaration", "static declaration symbol missing required field: " + missingField);
+    }
+
+    return ValidationResult{true, "ok", "static declaration image is valid"};
+}
+
+} // namespace agentc::edict::static_image
