@@ -1,6 +1,6 @@
 # Goal: G105 — ReadOnly Static Slab Ownership Model
 
-**Status**: PLANNED  
+**Status**: ACTIVE / AUDIT COMPLETE
 **Created**: 2026-05-14  
 **Parent**: 🔗[G096 — Authoritative mmap Session Resume](../G096-AuthoritativeMmapSessionResume/index.md)  
 **Related Concept**: 🔗[Layered mmap Micro-VM Architecture](../../Concepts/LayeredMmapMicroVmArchitecture/index.md)
@@ -26,13 +26,42 @@ Alternatives to keep in view:
 - copy-on-write promotion into private dynamic slabs.
 
 ## Implementation Plan
-- [ ] Audit allocator `inUse`, `CPtr`, cursor pinning, and `ListreeValue::pinnedCount` assumptions.
-- [ ] Incorporate G109's hardened logical ReadOnly mutation surface before relying on OS-level read-only mappings.
+- [x] Audit allocator `inUse`, `CPtr`, cursor pinning, and `ListreeValue::pinnedCount` assumptions. Evidence captured in 🔗[WP — Static Slab Ownership Audit](../../WorkProducts/WP-StaticSlabOwnershipAudit-2026-05-19/index.md).
+- [x] Incorporate G109's hardened logical ReadOnly mutation surface before relying on OS-level read-only mappings; G109 is complete for public VM/Cursor mutation surfaces, but this audit records why logical `ReadOnly` is not enough for OS-read-only slabs.
 - [ ] Define a way to identify static/read-only slab ranges or layers.
 - [ ] Implement no-mutate retain/release behavior for static immortal slabs.
 - [ ] Define how cursor/path pinning behaves on immortal static nodes.
 - [ ] Add tests proving read-only mapped/static nodes can be referenced/read without metadata writes.
-- [ ] Document what is immortal, what is private, and what remains future shadow-sidecar work.
+- [x] Document what is immortal, what is private, and what remains future shadow-sidecar work in the first audit/work product.
+
+## Audit Findings — 2026-05-19
+
+The first focused audit is captured in 🔗[WP — Static Slab Ownership Audit](../../WorkProducts/WP-StaticSlabOwnershipAudit-2026-05-19/index.md). Key findings:
+
+- Current `Allocator<T>` stores live refcounts in slab-resident `inUse`; `CPtr` copy/destruction, `Allocator::tryRetain`, `Allocator::modrefs`, and `Allocator::deallocate` mutate that array during normal reference use.
+- Current `MmapFile` allocator slabs are writable persistence slabs, not static read-only slabs: both create and reattach paths map `[inUse][items]` with `PROT_READ | PROT_WRITE`.
+- `Cursor` navigation writes `ListreeValue::pinnedCount` through `pinPath()` / `unpinPath()` even for read-only logical values.
+- Current structured persistence serializes mutable operational fields such as `pinnedCount` and strips logical `ReadOnly` on restore, which is correct for mutable session restore but not sufficient for static core images.
+- G109's logical `ReadOnly` guards are necessary but insufficient for true OS-read-only static slabs because allocator refcounts, cursor pinning, and execution frame state can still write outside public mutation APIs.
+
+## Current Decision
+
+The first G105 ownership model remains **immortal static slabs for image/lease lifetime**:
+
+- static nodes are not individually freed;
+- retain/release of static ids must not mutate static slab `inUse`;
+- static cursor pin/unpin must be no-op or process-local sidecar-backed;
+- mutable VM stacks, activation frames, native handles, job records, eventfds/pidfds, provider handles, and Cartographer sidecars stay private/process-local or Root1-owned;
+- G103 static declaration images contain metadata, not authority.
+
+## Recommended Next Implementation Slice
+
+Before G103 true mmap mounting, implement a tiny static-ownership probe:
+
+1. define static slab/range metadata and an `isStatic(slabId)`-style predicate;
+2. add a no-mutate retain/release path or narrow static handle wrapper for static slab ids;
+3. define no-op or sidecar-backed cursor pinning for static nodes;
+4. add a test that maps/marks a static range and proves references/traversal do not mutate `inUse` or node-local `pinnedCount`.
 
 ## Acceptance Criteria
 - [ ] Static/read-only slabs can be mounted and traversed without mutating their `inUse` or node-local pin metadata.
