@@ -137,12 +137,14 @@ A future code slice needs at least one of these seams:
 - Do not require full sidecar refcounting unless no-op immortal static ownership proves insufficient.
 - Do not make `intern_start!` depend on static image mounting until the declaration-image path and static ownership model are separately validated.
 
-## Recommended next step
+## Probe implemented after audit
 
-Before true G103 mmap mounting, implement a tiny G105 static-ownership probe:
+A first process-local G105 static-ownership probe landed after this audit:
 
-- define static slab/range metadata in the allocator without changing normal dynamic slabs;
-- add an `isStatic`/immortal path for retain/release or a narrow static handle wrapper;
-- add a read-only traversal/reference test that proves no `inUse`/`pinnedCount` writes occur for static nodes.
+- `Allocator<T>::markSlabStaticImmortal(...)` records static/immortal slab indices.
+- `Allocator<T>::slabIsStaticImmortal(...)` exposes the static predicate.
+- `tryRetain(...)`, `modrefs(...)`, and `deallocate(...)` skip `inUse` mutation/destruction for static-immortal slab ids.
+- `ListreeValue::pin()` / `unpin()` no-op for static-immortal `ListreeValue` slabs, avoiding `pinnedCount` writes.
+- `StaticSlabOwnershipTest.StaticImmortalSlabRetainReleaseAndCursorPinAreNoMutate` proves copied `CPtr` references, direct pin/unpin, and basic read/traversal leave refs and pins unchanged for a static-marked Listree value.
 
-If that is too invasive, keep G103's next slice at the manifest/mount-inspection layer and avoid constructing live `CPtr`s directly into OS-read-only static slabs.
+This probe does not yet map OS-read-only memory. It marks an existing live slab static/immortal and validates the no-mutate ownership seam. The next step is to apply the seam to read-only static image import/mounting.

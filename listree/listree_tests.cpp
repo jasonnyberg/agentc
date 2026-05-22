@@ -26,6 +26,14 @@ static std::string valueText(CPtr<ListreeValue> value) {
     return std::string(static_cast<const char*>(value->getData()), value->getLength());
 }
 
+static void resetListreeAllocatorsForStaticTests() {
+    Allocator<ListreeValue>::getAllocator().resetForTests();
+    Allocator<ListreeValueRef>::getAllocator().resetForTests();
+    Allocator<CLL<ListreeValueRef>>::getAllocator().resetForTests();
+    Allocator<ListreeItem>::getAllocator().resetForTests();
+    Allocator<AATree<ListreeItem>>::getAllocator().resetForTests();
+}
+
 // Test basic ListreeValue creation
 TEST(ListreeTest, BasicCreation) {
     // Create a null value
@@ -150,6 +158,44 @@ int main(int argc, char **argv) {
 // ======================================================================
 // G058 — ReadOnly branch tests
 // ======================================================================
+
+TEST(StaticSlabOwnershipTest, StaticImmortalSlabRetainReleaseAndCursorPinAreNoMutate) {
+    resetListreeAllocatorsForStaticTests();
+
+    SlabId rootSid;
+    size_t refsBefore = 0;
+    int pinsBefore = 0;
+    {
+        CPtr<ListreeValue> root = createNullValue();
+        addNamedItem(root, "name", createStringValue("static-root"));
+        rootSid = root.getSlabId();
+        ASSERT_TRUE(Allocator<ListreeValue>::getAllocator().markSlabStaticImmortal(rootSid.first));
+        EXPECT_TRUE(Allocator<ListreeValue>::getAllocator().slabIsStaticImmortal(rootSid.first));
+
+        refsBefore = Allocator<ListreeValue>::getAllocator().refs(rootSid);
+        pinsBefore = root->getPinnedCount();
+        {
+            CPtr<ListreeValue> copyA = root;
+            CPtr<ListreeValue> copyB = copyA;
+            EXPECT_EQ(Allocator<ListreeValue>::getAllocator().refs(rootSid), refsBefore);
+        }
+        EXPECT_EQ(Allocator<ListreeValue>::getAllocator().refs(rootSid), refsBefore);
+
+        root->pin();
+        root->unpin();
+        EXPECT_EQ(root->getPinnedCount(), pinsBefore);
+
+        EXPECT_EQ(valueText(root->find("name")->getValue()), "static-root");
+        root->traverse([](CPtr<ListreeValue>) {});
+        EXPECT_EQ(root->getPinnedCount(), pinsBefore);
+        EXPECT_EQ(Allocator<ListreeValue>::getAllocator().refs(rootSid), refsBefore);
+    }
+
+    EXPECT_TRUE(Allocator<ListreeValue>::getAllocator().valid(rootSid));
+    EXPECT_EQ(Allocator<ListreeValue>::getAllocator().refs(rootSid), refsBefore);
+
+    resetListreeAllocatorsForStaticTests();
+}
 
 TEST(ReadOnlyTest, MutationGuardsFindInsert) {
     CPtr<ListreeValue> root = createNullValue();

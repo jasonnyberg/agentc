@@ -241,8 +241,8 @@ public:
     ListreeValue(void* data, size_t length, LtvFlags flags);
     ListreeValue(const std::string& str, LtvFlags flags = LtvFlags::Duplicate);
     ~ListreeValue();
-    void pin() { pinnedCount.fetch_add(1, std::memory_order_relaxed); }
-    void unpin() { if (pinnedCount.load(std::memory_order_relaxed) > 0) pinnedCount.fetch_sub(1, std::memory_order_relaxed); }
+    void pin();
+    void unpin();
     int getPinnedCount() const { return pinnedCount.load(std::memory_order_relaxed); }
     bool isReadOnly() const { return (flags & LtvFlags::ReadOnly) != LtvFlags::None; }
     // Mark this node (and optionally all descendants) permanently immutable.

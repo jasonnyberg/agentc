@@ -114,6 +114,39 @@ std::ostream& operator<<(std::ostream& os, const ListreeItem& lti) { os << "LTI(
 // ListreeValue Implementation
 //////////////////////////////////////////////////
 
+namespace {
+
+bool isStaticImmortalListreeValue(const ListreeValue* value) {
+    if (!value) {
+        return false;
+    }
+    try {
+        auto& allocator = Allocator<ListreeValue>::getAllocator();
+        const SlabId sid = allocator.getSlabId(value);
+        return allocator.slabIsStaticImmortal(sid.first);
+    } catch (...) {
+        return false;
+    }
+}
+
+} // namespace
+
+void ListreeValue::pin() {
+    if (isStaticImmortalListreeValue(this)) {
+        return;
+    }
+    pinnedCount.fetch_add(1, std::memory_order_relaxed);
+}
+
+void ListreeValue::unpin() {
+    if (isStaticImmortalListreeValue(this)) {
+        return;
+    }
+    if (pinnedCount.load(std::memory_order_relaxed) > 0) {
+        pinnedCount.fetch_sub(1, std::memory_order_relaxed);
+    }
+}
+
 void ListreeValue::setReadOnly(bool recursive) {
     // Never freeze bytecode/thunk nodes.  The VM stores the instruction pointer
     // directly inside these nodes via find(".ip", insert=true) (writeFrameIp).

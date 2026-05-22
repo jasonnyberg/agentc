@@ -590,6 +590,7 @@ private:
     std::vector<SlabId> checkpointWatermarks;
     std::vector<bool> checkpointAppendOnly;
     std::unordered_set<SlabId> rollbackProtectedFreeSlots;
+    std::unordered_set<uint16_t> staticImmortalSlabs_;
     bool lastRollbackUsedFastPath = false;
     bool lastRollbackUsedStrictFastPath = false;
 
@@ -608,6 +609,7 @@ private:
         checkpointAppendOnly.clear();
         allocationLog.clear();
         rollbackProtectedFreeSlots.clear();
+        staticImmortalSlabs_.clear();
         lastRollbackUsedFastPath = false;
         lastRollbackUsedStrictFastPath = false;
         clearSlabsOnly();
@@ -1317,6 +1319,9 @@ public:
 
     bool deallocate(SlabId si) {
         std::lock_guard<std::recursive_mutex> lock(mutex_);
+        if (slabIsStaticImmortal(si.first)) {
+            return false;
+        }
         if (valid(si)) {
             // Decrement reference count
             Slab *slab = slabs[si.first];
@@ -1378,6 +1383,9 @@ public:
     void modrefs(SlabId si, int delta = 1) { 
         std::lock_guard<std::recursive_mutex> lock(mutex_);
         if (si.first < NUM_SLABS && slabs[si.first] && si.second < SLAB_SIZE) {
+            if (slabIsStaticImmortal(si.first)) {
+                return;
+            }
             slabs[si.first]->inUse[si.second] += delta; 
         }
     }
@@ -1386,7 +1394,9 @@ public:
         std::lock_guard<std::recursive_mutex> lock(mutex_);
         if (!si) return false;
         if (si.first < NUM_SLABS && slabs[si.first] && si.second < SLAB_SIZE && slabs[si.first]->inUse[si.second] > 0) {
-            slabs[si.first]->inUse[si.second] += 1;
+            if (!slabIsStaticImmortal(si.first)) {
+                slabs[si.first]->inUse[si.second] += 1;
+            }
             return true;
         }
         return false;
@@ -1398,6 +1408,20 @@ public:
             return slabs[si.first]->inUse[si.second]; 
         }
         return 0;
+    }
+
+    bool markSlabStaticImmortal(uint16_t slabIndex) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        if (slabIndex >= NUM_SLABS || !slabs[slabIndex]) {
+            return false;
+        }
+        staticImmortalSlabs_.insert(slabIndex);
+        return true;
+    }
+
+    bool slabIsStaticImmortal(uint16_t slabIndex) const {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        return staticImmortalSlabs_.find(slabIndex) != staticImmortalSlabs_.end();
     }
 
     bool lastRollbackUsedWatermarkFastPath() const {

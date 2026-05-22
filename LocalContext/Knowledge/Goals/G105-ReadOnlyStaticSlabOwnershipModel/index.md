@@ -1,6 +1,6 @@
 # Goal: G105 — ReadOnly Static Slab Ownership Model
 
-**Status**: ACTIVE / AUDIT COMPLETE
+**Status**: ACTIVE / STATIC OWNERSHIP PROBE
 **Created**: 2026-05-14  
 **Parent**: 🔗[G096 — Authoritative mmap Session Resume](../G096-AuthoritativeMmapSessionResume/index.md)  
 **Related Concept**: 🔗[Layered mmap Micro-VM Architecture](../../Concepts/LayeredMmapMicroVmArchitecture/index.md)
@@ -28,10 +28,10 @@ Alternatives to keep in view:
 ## Implementation Plan
 - [x] Audit allocator `inUse`, `CPtr`, cursor pinning, and `ListreeValue::pinnedCount` assumptions. Evidence captured in 🔗[WP — Static Slab Ownership Audit](../../WorkProducts/WP-StaticSlabOwnershipAudit-2026-05-19/index.md).
 - [x] Incorporate G109's hardened logical ReadOnly mutation surface before relying on OS-level read-only mappings; G109 is complete for public VM/Cursor mutation surfaces, but this audit records why logical `ReadOnly` is not enough for OS-read-only slabs.
-- [ ] Define a way to identify static/read-only slab ranges or layers.
-- [ ] Implement no-mutate retain/release behavior for static immortal slabs.
-- [ ] Define how cursor/path pinning behaves on immortal static nodes.
-- [ ] Add tests proving read-only mapped/static nodes can be referenced/read without metadata writes.
+- [x] Define a first way to identify static/read-only slab ranges or layers: `Allocator<T>::markSlabStaticImmortal(...)` plus `slabIsStaticImmortal(...)` marks process-local immortal static slab indices for the first probe.
+- [x] Implement first no-mutate retain/release behavior for static immortal slabs: `tryRetain`, `modrefs`, and `deallocate` skip `inUse` mutation/destruction for static-immortal slab ids.
+- [x] Define first cursor/path pinning behavior on immortal static nodes: `ListreeValue::pin()` / `unpin()` no-op when the value resides in a static-immortal `ListreeValue` slab.
+- [x] Add tests proving static marked nodes can be referenced/read/traversed without metadata writes to `inUse` or `pinnedCount` in the first process-local static probe.
 - [x] Document what is immortal, what is private, and what remains future shadow-sidecar work in the first audit/work product.
 
 ## Audit Findings — 2026-05-19
@@ -54,14 +54,24 @@ The first G105 ownership model remains **immortal static slabs for image/lease l
 - mutable VM stacks, activation frames, native handles, job records, eventfds/pidfds, provider handles, and Cartographer sidecars stay private/process-local or Root1-owned;
 - G103 static declaration images contain metadata, not authority.
 
+## First Static Ownership Probe — 2026-05-19
+
+The first probe implements process-local static-immortal slab metadata without claiming true OS-read-only mmap support yet:
+
+- `Allocator<T>::markSlabStaticImmortal(uint16_t slabIndex)` marks an already-live slab as static/immortal for the process.
+- `Allocator<T>::slabIsStaticImmortal(uint16_t slabIndex)` exposes the process-local static predicate.
+- For static-immortal slabs, `tryRetain(...)`, `modrefs(...)`, and `deallocate(...)` avoid mutating slab-resident `inUse` and do not destruct individual static objects.
+- `ListreeValue::pin()` and `ListreeValue::unpin()` detect static-immortal `ListreeValue` residency and no-op instead of mutating `pinnedCount`.
+- `StaticSlabOwnershipTest.StaticImmortalSlabRetainReleaseAndCursorPinAreNoMutate` proves copied `CPtr` references, direct pin/unpin, and basic read/traversal of a static-marked Listree value leave both allocator refs and `pinnedCount` unchanged.
+
+This is still a **probe**, not final static slab mounting: static slabs are marked after normal allocation, and the backing memory is not yet protected by OS `PROT_READ`. It is nevertheless the first implementation seam G103 needs before declaration images can become true read-only slab mounts.
+
 ## Recommended Next Implementation Slice
 
-Before G103 true mmap mounting, implement a tiny static-ownership probe:
+Continue toward G103/G105 convergence by either:
 
-1. define static slab/range metadata and an `isStatic(slabId)`-style predicate;
-2. add a no-mutate retain/release path or narrow static handle wrapper for static slab ids;
-3. define no-op or sidecar-backed cursor pinning for static nodes;
-4. add a test that maps/marks a static range and proves references/traversal do not mutate `inUse` or node-local `pinnedCount`.
+1. adding read-only mmap mount/inspection for declaration images that uses static-immortal metadata without direct authority handles; or
+2. extending static ownership to static slab image import/readback so the test maps an actual file-backed read-only image instead of marking a live heap slab.
 
 ## Acceptance Criteria
 - [ ] Static/read-only slabs can be mounted and traversed without mutating their `inUse` or node-local pin metadata.
