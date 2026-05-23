@@ -46,6 +46,8 @@ The next mount architecture is captured in 🔗[WP — Static Declaration Image 
 
 Stage 2's test-only binary container is now implemented. It preserves the metadata-only/no-native-handle invariant while giving G103 a durable byte-format boundary before raw allocator-backed static slot mounting.
 
+The true static slot-table boundary is now specified in 🔗[WP — Static Slot Table Image Boundary](../../WorkProducts/WP-StaticSlotTableImageBoundary-2026-05-19/index.md). The decision is to implement a borrowed static slot-table inspector before allocator-mounted static slabs, using image-local ids for values/refs/items/lists/trees/blobs and validating section offsets, hashes, and no-native-handle policy before any dynamic Listree conversion.
+
 ## First Declaration Image Schema — 2026-05-19
 
 The first image is deliberately **declarative metadata only**. It is encoded as a Listree/JSON root with:
@@ -92,6 +94,7 @@ This slice intentionally does **not** yet generate mmap slab files or mount OS-r
 - Added read-only mmap byte import for declaration-image files. This maps the JSON artifact with `PROT_READ` and parses it into a mounted Listree declaration image; true Listree nodes are still heap/private slots marked static-immortal after validation.
 - Added a durable static mount design work product that defines the staged path from JSON-byte mmap import to binary containers, static slot tables, and eventual Root1 image mount registry integration.
 - Added a test-only static binary declaration-image container with magic/version/manifest-length/payload-length/manifest-json/payload-json bytes. The container is read through `PROT_READ` mmap, validates magic/version/lengths plus manifest payload hash, then mounts through `mountDeclarationImageReadOnly(...)`.
+- Added a static slot-table boundary plan that defines image-local ids, section layout, borrowed static view versus allocator-mounted static slab tradeoffs, validation checklist, and the next concrete `StaticSlotTableImage` prototype step.
 - Added `StaticDeclarationImageTest.WorkerPrimitiveImageIsMetadataOnlyAndValidates`, `StaticDeclarationImageTest.WorkerPrimitiveImageRoundTripsThroughFile`, `StaticDeclarationImageTest.BinaryContainerMmapValidatesAndMountsStaticImmortal`, `StaticDeclarationImageTest.BinaryContainerRejectsInvalidMagic`, `StaticDeclarationImageTest.MmapReadOnlyImageCanBeMountedStaticImmortal`, `StaticDeclarationImageTest.ReadOnlyMountMarksDeclarationValueSlotsStaticImmortal`, and `StaticDeclarationImageTest.ValidationRejectsPayloadHashMismatch`.
 
 ## Validation — 2026-05-19
