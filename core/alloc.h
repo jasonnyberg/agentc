@@ -27,6 +27,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 #include <bitset>
@@ -590,8 +591,8 @@ private:
     std::vector<SlabId> checkpointWatermarks;
     std::vector<bool> checkpointAppendOnly;
     std::unordered_set<SlabId> rollbackProtectedFreeSlots;
-    std::unordered_set<uint16_t> staticImmortalSlabs_;
-    std::unordered_set<SlabId> staticImmortalSlots_;
+    std::unordered_map<uint16_t, size_t> staticImmortalSlabs_;
+    std::unordered_map<SlabId, size_t> staticImmortalSlots_;
     bool lastRollbackUsedFastPath = false;
     bool lastRollbackUsedStrictFastPath = false;
 
@@ -1417,7 +1418,7 @@ public:
         if (slabIndex >= NUM_SLABS || !slabs[slabIndex]) {
             return false;
         }
-        staticImmortalSlabs_.insert(slabIndex);
+        ++staticImmortalSlabs_[slabIndex];
         return true;
     }
 
@@ -1426,18 +1427,32 @@ public:
         if (!valid(si)) {
             return false;
         }
-        staticImmortalSlots_.insert(si);
+        ++staticImmortalSlots_[si];
         return true;
     }
 
     bool unmarkSlabStaticImmortal(uint16_t slabIndex) {
         std::lock_guard<std::recursive_mutex> lock(mutex_);
-        return staticImmortalSlabs_.erase(slabIndex) > 0;
+        auto it = staticImmortalSlabs_.find(slabIndex);
+        if (it == staticImmortalSlabs_.end()) {
+            return false;
+        }
+        if (--it->second == 0) {
+            staticImmortalSlabs_.erase(it);
+        }
+        return true;
     }
 
     bool unmarkSlotStaticImmortal(SlabId si) {
         std::lock_guard<std::recursive_mutex> lock(mutex_);
-        return staticImmortalSlots_.erase(si) > 0;
+        auto it = staticImmortalSlots_.find(si);
+        if (it == staticImmortalSlots_.end()) {
+            return false;
+        }
+        if (--it->second == 0) {
+            staticImmortalSlots_.erase(it);
+        }
+        return true;
     }
 
     void clearStaticImmortalMarks() {

@@ -18,6 +18,7 @@
 #include <cstring>
 #include <unordered_set>
 #include <cstdio>
+#include <utility>
 
 namespace agentc {
 
@@ -507,6 +508,93 @@ void resetTransientListreeValue(ListreeValue& value) {
     value.payload.ext.length = 0;
     value.pinnedCount.store(0, std::memory_order_relaxed);
     value.flags = LtvFlags::Null;
+}
+
+namespace {
+
+template<typename T>
+uint32_t markActiveSlabsForStaticLease(std::vector<uint16_t>& markedSlabs) {
+    auto& allocator = Allocator<T>::getAllocator();
+    const auto stats = allocator.getStats();
+    for (const auto& slab : stats.slabs) {
+        if (!allocator.markSlabStaticImmortal(slab.slabIndex)) {
+            return 0;
+        }
+        markedSlabs.push_back(slab.slabIndex);
+    }
+    return stats.liveSlotCount;
+}
+
+template<typename T>
+void releaseStaticLeaseSlabs(std::vector<uint16_t>& markedSlabs) {
+    auto& allocator = Allocator<T>::getAllocator();
+    for (auto it = markedSlabs.rbegin(); it != markedSlabs.rend(); ++it) {
+        allocator.unmarkSlabStaticImmortal(*it);
+    }
+    markedSlabs.clear();
+}
+
+} // namespace
+
+ListreeStaticMountLease::~ListreeStaticMountLease() {
+    release();
+}
+
+ListreeStaticMountLease::ListreeStaticMountLease(ListreeStaticMountLease&& other) noexcept
+    : valueSlabs_(std::move(other.valueSlabs_)),
+      valueRefSlabs_(std::move(other.valueRefSlabs_)),
+      listSlabs_(std::move(other.listSlabs_)),
+      itemSlabs_(std::move(other.itemSlabs_)),
+      treeSlabs_(std::move(other.treeSlabs_)),
+      markedLiveSlotCount_(other.markedLiveSlotCount_),
+      active_(other.active_) {
+    other.markedLiveSlotCount_ = 0;
+    other.active_ = false;
+}
+
+ListreeStaticMountLease& ListreeStaticMountLease::operator=(ListreeStaticMountLease&& other) noexcept {
+    if (this != &other) {
+        release();
+        valueSlabs_ = std::move(other.valueSlabs_);
+        valueRefSlabs_ = std::move(other.valueRefSlabs_);
+        listSlabs_ = std::move(other.listSlabs_);
+        itemSlabs_ = std::move(other.itemSlabs_);
+        treeSlabs_ = std::move(other.treeSlabs_);
+        markedLiveSlotCount_ = other.markedLiveSlotCount_;
+        active_ = other.active_;
+        other.markedLiveSlotCount_ = 0;
+        other.active_ = false;
+    }
+    return *this;
+}
+
+bool ListreeStaticMountLease::markActiveSlabs() {
+    if (active_) {
+        return false;
+    }
+
+    uint32_t live = 0;
+    live += markActiveSlabsForStaticLease<ListreeValue>(valueSlabs_);
+    live += markActiveSlabsForStaticLease<ListreeValueRef>(valueRefSlabs_);
+    live += markActiveSlabsForStaticLease<CLL<ListreeValueRef>>(listSlabs_);
+    live += markActiveSlabsForStaticLease<ListreeItem>(itemSlabs_);
+    live += markActiveSlabsForStaticLease<AATree<ListreeItem>>(treeSlabs_);
+    markedLiveSlotCount_ = live;
+    active_ = true;
+    return true;
+}
+
+void ListreeStaticMountLease::release() {
+    if (!active_ && valueSlabs_.empty() && valueRefSlabs_.empty() && listSlabs_.empty() && itemSlabs_.empty() && treeSlabs_.empty()) {
+        return;
+    }
+    releaseStaticLeaseSlabs<AATree<ListreeItem>>(treeSlabs_);
+    releaseStaticLeaseSlabs<ListreeItem>(itemSlabs_);
+    releaseStaticLeaseSlabs<CLL<ListreeValueRef>>(listSlabs_);
+    releaseStaticLeaseSlabs<ListreeValueRef>(valueRefSlabs_);
+    releaseStaticLeaseSlabs<ListreeValue>(valueSlabs_);
+    markedLiveSlotCount_ = 0;
+    active_ = false;
 }
 
 CPtr<ListreeValue> createNullValue() { CPtr<ListreeValue> res; { SlabId sid = Allocator<ListreeValue>::getAllocator().allocate(nullptr, 0, LtvFlags::Null); res = CPtr<ListreeValue>(sid); } return res; }

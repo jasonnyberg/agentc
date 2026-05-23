@@ -34,6 +34,7 @@ Alternatives to keep in view:
 - [x] Add tests proving static marked nodes can be referenced/read/traversed without metadata writes to `inUse` or `pinnedCount` in the first process-local static probe.
 - [x] Add first tiny allocator-mounted static dictionary lookup test across the active Listree allocator family (`ListreeValue`, `ListreeValueRef`, `CLL`, `ListreeItem`, `AATree`) by marking active slabs static-immortal, dropping ordinary handles, re-adopting the static root id, and proving direct named lookup still works without refcount/live-slot churn.
 - [x] Add explicit process-local static mark clearing APIs (`clearStaticImmortalMarks`, unmark helpers, and mark-count inspection) plus a focused test proving clearing marks restores ordinary release/refcount mutation for a mounted static dictionary handle.
+- [x] Add a first `ListreeStaticMountLease` wrapper that marks active Listree-family slabs static-immortal and releases exactly its own marks on destruction/release, backed by allocator mark reference counts so external static owners are not cleared accidentally.
 - [x] Document what is immortal, what is private, and what remains future shadow-sidecar work in the first audit/work product.
 
 ## Audit Findings — 2026-05-19
@@ -67,14 +68,15 @@ The first probe implements process-local static-immortal slab metadata without c
 - `ListreeValue::pin()` and `ListreeValue::unpin()` detect static-immortal `ListreeValue` residency and no-op instead of mutating `pinnedCount`.
 - `StaticSlabOwnershipTest.StaticImmortalSlabRetainReleaseAndCursorPinAreNoMutate` proves copied `CPtr` references, direct pin/unpin, and basic read/traversal of a static-marked Listree value leave both allocator refs and `pinnedCount` unchanged.
 - `StaticSlabOwnershipTest.StaticMountedDictionaryLookupSurvivesHandleDropWithoutMutatingStaticSlabs` is the first tiny allocator-mounted static dictionary lookup probe. It freezes a small named-object tree, marks every active Listree-family slab static-immortal, lets ordinary handles drop, re-adopts the root `SlabId`, and performs direct named lookup while asserting root refs and aggregate live-slot counts remain stable.
-- `StaticSlabOwnershipTest.StaticMountClearRestoresNormalReleaseSemantics` proves that clearing process-local static marks during a mounted dictionary handle lifetime re-enables normal `CPtr` release/refcount mutation on drop. This is the first explicit static unmount/reset seam, though not yet an image lease registry.
+- `StaticSlabOwnershipTest.StaticMountClearRestoresNormalReleaseSemantics` proves that clearing process-local static marks during a mounted dictionary handle lifetime re-enables normal `CPtr` release/refcount mutation on drop.
+- `ListreeStaticMountLease` is the first explicit static mount/unmount wrapper for the Listree allocator family. It records slab marks made for the mounted image lifetime and releases them in reverse allocator order. Allocator static slab/slot marks are now reference-counted, so lease release does not clear independently-held static ownership marks. `StaticSlabOwnershipTest.StaticMountLeaseReleasesExactMarksWithoutClearingExternalOwners` covers this exact-mark behavior.
 - G103 now uses the slot-level seam in `mountDeclarationImageReadOnly(...)` so declaration images can be logically frozen and marked static-immortal without marking whole mixed-use dynamic slabs.
 
 This is still a **probe**, not final static slab mounting: static slabs are marked after normal allocation, and the backing memory is not yet protected by OS `PROT_READ`. It is nevertheless the first implementation seam G103 needs before declaration images can become true read-only slab mounts.
 
 ## Recommended Next Implementation Slice
 
-Continue toward true G103/G105 convergence by extending static ownership to static slab image import/readback so the test maps an actual file-backed read-only image instead of marking live heap/Listree slots. The next step should protect the tiny mounted dictionary with OS read-only backing or wrap static marks in an image lease/registry object that clears exact marks on unmount.
+Continue toward true G103/G105 convergence by extending static ownership to static slab image import/readback so the test maps an actual file-backed read-only image instead of marking live heap/Listree slots. The next step should protect the tiny mounted dictionary with OS read-only backing or connect `ListreeStaticMountLease` to an image/root registry that owns explicit mount ids.
 
 ## Acceptance Criteria
 - [ ] Static/read-only slabs can be mounted and traversed without mutating their `inUse` or node-local pin metadata.

@@ -319,6 +319,38 @@ TEST(StaticSlabOwnershipTest, StaticMountClearRestoresNormalReleaseSemantics) {
     resetListreeAllocatorsForStaticTests();
 }
 
+TEST(StaticSlabOwnershipTest, StaticMountLeaseReleasesExactMarksWithoutClearingExternalOwners) {
+    resetListreeAllocatorsForStaticTests();
+
+    SlabId rootSid;
+    uint16_t rootSlab = 0;
+    {
+        CPtr<ListreeValue> root = createNullValue();
+        addNamedItem(root, "key", createStringValue("value"));
+        root->setReadOnly(true);
+        rootSid = root.getSlabId();
+        rootSlab = rootSid.first;
+
+        ASSERT_TRUE(Allocator<ListreeValue>::getAllocator().markSlabStaticImmortal(rootSlab));
+        ASSERT_EQ(Allocator<ListreeValue>::getAllocator().staticImmortalSlabCount(), 1u);
+
+        {
+            ListreeStaticMountLease lease;
+            ASSERT_TRUE(lease.markActiveSlabs());
+            ASSERT_TRUE(lease.active());
+            ASSERT_GT(lease.markedLiveSlotCount(), 0u);
+            ASSERT_TRUE(Allocator<ListreeValue>::getAllocator().slotIsStaticImmortal(rootSid));
+        }
+
+        EXPECT_TRUE(Allocator<ListreeValue>::getAllocator().slotIsStaticImmortal(rootSid));
+        EXPECT_EQ(Allocator<ListreeValue>::getAllocator().staticImmortalSlabCount(), 1u);
+        EXPECT_TRUE(Allocator<ListreeValue>::getAllocator().unmarkSlabStaticImmortal(rootSlab));
+        EXPECT_FALSE(Allocator<ListreeValue>::getAllocator().slotIsStaticImmortal(rootSid));
+    }
+
+    resetListreeAllocatorsForStaticTests();
+}
+
 TEST(ReadOnlyTest, MutationGuardsFindInsert) {
     CPtr<ListreeValue> root = createNullValue();
     addNamedItem(root, "a", createStringValue("1"));

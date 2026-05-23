@@ -26,6 +26,7 @@
 #include <atomic>
 #include <memory>
 #include <unordered_set>
+#include <vector>
 
 template<typename T, typename Enable>
 struct ArenaWatermarkResetTraits;
@@ -291,6 +292,30 @@ public:
     void toDot(std::ostream& os, const std::string& label = "Listree") const;
     static bool unwind(SlabId sid);
     friend std::ostream& operator<<(std::ostream& os, const ListreeValue& ltv);
+};
+
+class ListreeStaticMountLease {
+public:
+    ListreeStaticMountLease() = default;
+    ~ListreeStaticMountLease();
+    ListreeStaticMountLease(const ListreeStaticMountLease&) = delete;
+    ListreeStaticMountLease& operator=(const ListreeStaticMountLease&) = delete;
+    ListreeStaticMountLease(ListreeStaticMountLease&& other) noexcept;
+    ListreeStaticMountLease& operator=(ListreeStaticMountLease&& other) noexcept;
+
+    bool markActiveSlabs();
+    void release();
+    bool active() const { return active_; }
+    uint32_t markedLiveSlotCount() const { return markedLiveSlotCount_; }
+
+private:
+    std::vector<uint16_t> valueSlabs_;
+    std::vector<uint16_t> valueRefSlabs_;
+    std::vector<uint16_t> listSlabs_;
+    std::vector<uint16_t> itemSlabs_;
+    std::vector<uint16_t> treeSlabs_;
+    uint32_t markedLiveSlotCount_ = 0;
+    bool active_ = false;
 };
 
 CPtr<ListreeValue> createNullValue();
