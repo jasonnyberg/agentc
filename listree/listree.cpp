@@ -597,6 +597,51 @@ void ListreeStaticMountLease::release() {
     active_ = false;
 }
 
+uint64_t ListreeStaticMountRegistry::mountActiveRoot(CPtr<ListreeValue> root) {
+    if (!root) {
+        return 0;
+    }
+
+    ListreeStaticMountLease lease;
+    if (!lease.markActiveSlabs()) {
+        return 0;
+    }
+
+    MountRecord record;
+    record.root = root.getSlabId();
+    record.lease = std::move(lease);
+    const uint64_t mountId = nextMountId_++;
+    mounts_.emplace(mountId, std::move(record));
+    return mountId;
+}
+
+bool ListreeStaticMountRegistry::unmount(uint64_t mountId) {
+    auto it = mounts_.find(mountId);
+    if (it == mounts_.end()) {
+        return false;
+    }
+    mounts_.erase(it);
+    return true;
+}
+
+CPtr<ListreeValue> ListreeStaticMountRegistry::root(uint64_t mountId) const {
+    auto it = mounts_.find(mountId);
+    if (it == mounts_.end()) {
+        return nullptr;
+    }
+    return CPtr<ListreeValue>(it->second.root);
+}
+
+SlabId ListreeStaticMountRegistry::rootId(uint64_t mountId) const {
+    auto it = mounts_.find(mountId);
+    return it == mounts_.end() ? SlabId() : it->second.root;
+}
+
+bool ListreeStaticMountRegistry::active(uint64_t mountId) const {
+    auto it = mounts_.find(mountId);
+    return it != mounts_.end() && it->second.lease.active();
+}
+
 CPtr<ListreeValue> createNullValue() { CPtr<ListreeValue> res; { SlabId sid = Allocator<ListreeValue>::getAllocator().allocate(nullptr, 0, LtvFlags::Null); res = CPtr<ListreeValue>(sid); } return res; }
 CPtr<ListreeValue> createListValue() { CPtr<ListreeValue> res; { SlabId sid = Allocator<ListreeValue>::getAllocator().allocate(nullptr, 0, LtvFlags::List); res = CPtr<ListreeValue>(sid); } return res; }
 CPtr<ListreeValue> createStringValue(const std::string& str, LtvFlags flags) { CPtr<ListreeValue> res; { SlabId sid = Allocator<ListreeValue>::getAllocator().allocate(str, flags); res = CPtr<ListreeValue>(sid); } return res; }

@@ -24,7 +24,9 @@
 #include "debug_helpers.h"
 
 #include <atomic>
+#include <cstdint>
 #include <memory>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -316,6 +318,25 @@ private:
     std::vector<uint16_t> treeSlabs_;
     uint32_t markedLiveSlotCount_ = 0;
     bool active_ = false;
+};
+
+class ListreeStaticMountRegistry {
+public:
+    uint64_t mountActiveRoot(CPtr<ListreeValue> root);
+    bool unmount(uint64_t mountId);
+    CPtr<ListreeValue> root(uint64_t mountId) const;
+    SlabId rootId(uint64_t mountId) const;
+    bool active(uint64_t mountId) const;
+    size_t activeMountCount() const { return mounts_.size(); }
+
+private:
+    struct MountRecord {
+        SlabId root;
+        ListreeStaticMountLease lease;
+    };
+
+    uint64_t nextMountId_ = 1;
+    std::unordered_map<uint64_t, MountRecord> mounts_;
 };
 
 CPtr<ListreeValue> createNullValue();

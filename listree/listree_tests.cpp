@@ -351,6 +351,45 @@ TEST(StaticSlabOwnershipTest, StaticMountLeaseReleasesExactMarksWithoutClearingE
     resetListreeAllocatorsForStaticTests();
 }
 
+TEST(StaticSlabOwnershipTest, StaticMountRegistryExposesLogicalMountIdsAndRoots) {
+    resetListreeAllocatorsForStaticTests();
+
+    ListreeStaticMountRegistry registry;
+    SlabId rootSid;
+    uint64_t mountId = 0;
+    {
+        CPtr<ListreeValue> root = createNullValue();
+        addNamedItem(root, "key", createStringValue("value"));
+        root->setReadOnly(true);
+        rootSid = root.getSlabId();
+
+        mountId = registry.mountActiveRoot(root);
+        ASSERT_NE(mountId, 0u);
+        EXPECT_TRUE(registry.active(mountId));
+        EXPECT_EQ(registry.rootId(mountId), rootSid);
+        EXPECT_EQ(registry.activeMountCount(), 1u);
+        EXPECT_TRUE(Allocator<ListreeValue>::getAllocator().slotIsStaticImmortal(rootSid));
+    }
+
+    ASSERT_TRUE(Allocator<ListreeValue>::getAllocator().valid(rootSid));
+    {
+        auto mountedRoot = registry.root(mountId);
+        ASSERT_TRUE(mountedRoot);
+        ASSERT_TRUE(mountedRoot->isReadOnly());
+        auto item = mountedRoot->find("key");
+        ASSERT_TRUE(item);
+        EXPECT_EQ(valueText(item->getValue()), "value");
+
+        EXPECT_TRUE(registry.unmount(mountId));
+        EXPECT_FALSE(registry.active(mountId));
+        EXPECT_EQ(registry.activeMountCount(), 0u);
+        EXPECT_FALSE(bool(registry.root(mountId)));
+        EXPECT_FALSE(Allocator<ListreeValue>::getAllocator().slotIsStaticImmortal(rootSid));
+    }
+
+    resetListreeAllocatorsForStaticTests();
+}
+
 TEST(ReadOnlyTest, MutationGuardsFindInsert) {
     CPtr<ListreeValue> root = createNullValue();
     addNamedItem(root, "a", createStringValue("1"));
