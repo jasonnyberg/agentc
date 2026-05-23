@@ -453,12 +453,20 @@ MountedDeclarationImage mountDeclarationImageReadOnly(CPtr<agentc::ListreeValue>
         return mounted;
     }
 
+    auto manifest = namedValue(image, "manifest");
+    agentc::ListreeStaticMountMetadata metadata;
+    metadata.manifestHash = stringValue(namedValue(manifest, "payload_hash"));
+    metadata.rootDescriptor = stringValue(namedValue(manifest, "root_id"));
+    metadata.sectionDescriptor = stringValue(namedValue(manifest, "image_kind")) + ":" + stringValue(namedValue(manifest, "module"));
+    metadata.provenance = "static_declaration_image";
+    metadata.imageId = stringValue(namedValue(manifest, "module")) + ":" + metadata.manifestHash;
+
     // The registry-backed mount keeps logical mount identity separate from the
     // native/process-local static ownership marks.  Freeze before the registry
     // lease is created because real static images become OS read-only after this
     // mutable preparation phase.
     image->setReadOnly(true);
-    mounted.mountId = registry.mountActiveRoot(image);
+    mounted.mountId = registry.mountActiveRoot(image, std::move(metadata));
     if (mounted.mountId == 0) {
         mounted.validation = ValidationResult{false, "mount_failed", "failed to register static declaration image mount"};
     }

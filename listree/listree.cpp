@@ -598,6 +598,11 @@ void ListreeStaticMountLease::release() {
 }
 
 uint64_t ListreeStaticMountRegistry::mountActiveRoot(CPtr<ListreeValue> root) {
+    return mountActiveRoot(root, {});
+}
+
+uint64_t ListreeStaticMountRegistry::mountActiveRoot(CPtr<ListreeValue> root,
+                                                     ListreeStaticMountMetadata metadata) {
     if (!root) {
         return 0;
     }
@@ -607,11 +612,14 @@ uint64_t ListreeStaticMountRegistry::mountActiveRoot(CPtr<ListreeValue> root) {
         return 0;
     }
 
-    MountRecord record;
-    record.root = root.getSlabId();
-    record.lease = std::move(lease);
     const uint64_t mountId = nextMountId_++;
-    mounts_.emplace(mountId, std::move(record));
+    auto [it, inserted] = mounts_.try_emplace(mountId);
+    if (!inserted) {
+        return 0;
+    }
+    it->second.root = root.getSlabId();
+    it->second.metadata = std::move(metadata);
+    it->second.lease = std::move(lease);
     return mountId;
 }
 
@@ -635,6 +643,11 @@ CPtr<ListreeValue> ListreeStaticMountRegistry::root(uint64_t mountId) const {
 SlabId ListreeStaticMountRegistry::rootId(uint64_t mountId) const {
     auto it = mounts_.find(mountId);
     return it == mounts_.end() ? SlabId() : it->second.root;
+}
+
+ListreeStaticMountMetadata ListreeStaticMountRegistry::metadata(uint64_t mountId) const {
+    auto it = mounts_.find(mountId);
+    return it == mounts_.end() ? ListreeStaticMountMetadata{} : it->second.metadata;
 }
 
 bool ListreeStaticMountRegistry::active(uint64_t mountId) const {

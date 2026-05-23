@@ -183,6 +183,12 @@ TEST(StaticDeclarationImageTest, RegistryBackedMountExposesLogicalMountIdAndRoot
         EXPECT_TRUE(mounted.root->isReadOnly());
         EXPECT_TRUE(registry.active(mounted.mountId));
         EXPECT_EQ(registry.rootId(mounted.mountId), rootSid);
+        const auto metadata = registry.metadata(mounted.mountId);
+        EXPECT_EQ(metadata.imageId, "worker.edict:" + textValue(namedValue(namedValue(mounted.root, "manifest"), "payload_hash")));
+        EXPECT_EQ(metadata.manifestHash, textValue(namedValue(namedValue(mounted.root, "manifest"), "payload_hash")));
+        EXPECT_EQ(metadata.rootDescriptor, "worker.edict/declarations");
+        EXPECT_EQ(metadata.sectionDescriptor, "declarative_import_module:worker.edict");
+        EXPECT_EQ(metadata.provenance, "static_declaration_image");
         mountId = mounted.mountId;
     }
 

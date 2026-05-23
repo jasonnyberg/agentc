@@ -33,6 +33,7 @@ Out of scope:
 - [x] Ensure the image contains no process-local handles or mutable VM activation state; symbols declare lazy process-local binding policy and `stores_native_handle: "false"`.
 - [x] Add first runtime read-only inspection/mount support sufficient to read the static declaration namespace: `mountDeclarationImageReadOnly(...)` validates the image, recursively freezes it, and marks declaration `ListreeValue` slots static-immortal through the G105 ownership seam. True OS mmap read-only mounting remains a later slice.
 - [x] Wire declaration-image mounting to the G105 `ListreeStaticMountRegistry` seam: registry-backed `mountDeclarationImageReadOnly(image, registry)` returns logical mount metadata (`mountId`, `rootId`) while registry lookup/unmount owns the static lease.
+- [x] Extend static mount registry metadata beyond process-local ids: registry records now include image id, manifest hash, root descriptor, section descriptor, and provenance for declaration-image mounts.
 - [x] Add stale/incompatible manifest validation for the first schema slice, including payload-hash mismatch rejection.
 - [x] Add checked-in tests around deterministic generation, manifest validation, metadata-only policy, and file readback.
 
@@ -92,7 +93,7 @@ This slice intentionally does **not** yet generate mmap slab files or mount OS-r
 - Added `agentc::edict::static_image::buildWorkerPrimitiveDeclarationImage()` for deterministic metadata-only `worker.edict` declaration-image generation.
 - Added `writeDeclarationImage(...)`, `readDeclarationImage(...)`, `readDeclarationImageMmapReadOnly(...)`, `validateDeclarationImage(...)`, and deterministic `declarationPayloadHash(...)` helpers.
 - Added `mountDeclarationImageReadOnly(...)` as the first runtime inspection/mount seam: it validates the declaration image, recursively applies logical `ReadOnly`, collects declaration `ListreeValue` slots, and marks those exact slots static-immortal via G105 so retain/release and pin/unpin do not mutate static metadata.
-- Added registry-backed `mountDeclarationImageReadOnly(image, registry)` as the first G103/G105 image/root metadata bridge: successful mounts expose a process-local logical `mountId`, stable `rootId`, registry root lookup after ordinary handles drop, and registry unmount behavior.
+- Added registry-backed `mountDeclarationImageReadOnly(image, registry)` as the first G103/G105 image/root metadata bridge: successful mounts expose a process-local logical `mountId`, stable `rootId`, image id, manifest hash, root descriptor, section descriptor, provenance, registry root lookup after ordinary handles drop, and registry unmount behavior.
 - Added read-only mmap byte import for declaration-image files. This maps the JSON artifact with `PROT_READ` and parses it into a mounted Listree declaration image; true Listree nodes are still heap/private slots marked static-immortal after validation.
 - Added a durable static mount design work product that defines the staged path from JSON-byte mmap import to binary containers, static slot tables, and eventual Root1 image mount registry integration.
 - Added a test-only static binary declaration-image container with magic/version/manifest-length/payload-length/manifest-json/payload-json bytes. The container is read through `PROT_READ` mmap, validates magic/version/lengths plus manifest payload hash, then mounts through `mountDeclarationImageReadOnly(...)`.
@@ -107,7 +108,7 @@ This slice intentionally does **not** yet generate mmap slab files or mount OS-r
 
 - `cmake --build build --target edict_tests -j2` — passed.
 - `./build/edict/edict_tests --gtest_filter='StaticSlotTableImageTest.*' --gtest_brief=1` — passed 4/4 after corrupt value/tree/list reference coverage; earlier borrowed static slot-table inspector passed 3/3.
-- `./build/edict/edict_tests --gtest_filter='StaticDeclarationImageTest.*' --gtest_brief=1` — passed 8/8 after registry-backed declaration-image mount metadata; earlier static binary container work passed 7/7, read-only mmap file import passed 5/5, and static mount slice passed 4/4.
+- `./build/edict/edict_tests --gtest_filter='StaticDeclarationImageTest.*' --gtest_brief=1` — passed 8/8 after richer registry-backed declaration-image mount metadata; earlier static binary container work passed 7/7, read-only mmap file import passed 5/5, and static mount slice passed 4/4.
 - `./build/edict/edict_tests --gtest_filter='StaticDeclarationImageTest.*:InternWorkerTest.*:Root1AwaitSchedulerTest.*:Root1PrimitiveModuleTest.*:EdictVM.YieldedExecutionCanResumeCurrentCodeFrame' --gtest_brief=1` — passed 25/25 before read-only mmap file import; rerun this slice before final commit.
 
 ## Acceptance Criteria

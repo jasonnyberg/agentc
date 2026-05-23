@@ -320,18 +320,29 @@ private:
     bool active_ = false;
 };
 
+struct ListreeStaticMountMetadata {
+    std::string imageId;
+    std::string manifestHash;
+    std::string rootDescriptor;
+    std::string sectionDescriptor;
+    std::string provenance;
+};
+
 class ListreeStaticMountRegistry {
 public:
     uint64_t mountActiveRoot(CPtr<ListreeValue> root);
+    uint64_t mountActiveRoot(CPtr<ListreeValue> root, ListreeStaticMountMetadata metadata);
     bool unmount(uint64_t mountId);
     CPtr<ListreeValue> root(uint64_t mountId) const;
     SlabId rootId(uint64_t mountId) const;
+    ListreeStaticMountMetadata metadata(uint64_t mountId) const;
     bool active(uint64_t mountId) const;
     size_t activeMountCount() const { return mounts_.size(); }
 
 private:
     struct MountRecord {
         SlabId root;
+        ListreeStaticMountMetadata metadata;
         ListreeStaticMountLease lease;
     };
 
