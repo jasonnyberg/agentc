@@ -260,6 +260,25 @@ uint32_t StaticSlotTableView::declarationValueId(size_t index) const {
     return index < declarationValueIds_.size() ? declarationValueIds_[index] : 0;
 }
 
+int64_t StaticSlotTableView::findDeclarationByWord(const std::string& word) const {
+    size_t low = 0;
+    size_t high = declarationWordIndex_.size();
+    while (low < high) {
+        const size_t mid = low + ((high - low) / 2);
+        const uint32_t declarationIndex = declarationWordIndex_[mid];
+        const std::string current = declarationWord(declarationIndex);
+        if (current == word) {
+            return static_cast<int64_t>(declarationIndex);
+        }
+        if (current < word) {
+            low = mid + 1;
+        } else {
+            high = mid;
+        }
+    }
+    return -1;
+}
+
 std::string StaticSlotTableView::declarationWord(size_t index) const {
     return index < declarations_.size() ? stringAt(declarations_[index].word) : std::string();
 }
@@ -728,6 +747,19 @@ StaticSlotTableView readStaticSlotTableImageMmapReadOnly(const std::string& path
     for (size_t i = 0; i < view.declarations_.size(); ++i) {
         if (view.stringAt(view.declarations_[i].storesNativeHandle) != "false") {
             view.validation_ = fail("native_handles_forbidden", "static slot table declaration stores a native handle");
+            if (error) {
+                *error = view.validation_.message;
+            }
+            return view;
+        }
+        view.declarationWordIndex_.push_back(static_cast<uint32_t>(i));
+    }
+    std::sort(view.declarationWordIndex_.begin(), view.declarationWordIndex_.end(), [&](uint32_t lhs, uint32_t rhs) {
+        return view.declarationWord(lhs) < view.declarationWord(rhs);
+    });
+    for (size_t i = 1; i < view.declarationWordIndex_.size(); ++i) {
+        if (view.declarationWord(view.declarationWordIndex_[i - 1]) == view.declarationWord(view.declarationWordIndex_[i])) {
+            view.validation_ = fail("duplicate_declaration_word", "static slot table declaration words must be unique");
             if (error) {
                 *error = view.validation_.message;
             }

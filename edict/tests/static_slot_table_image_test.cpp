@@ -152,6 +152,11 @@ TEST(StaticSlotTableImageTest, MmapViewInspectsWorkerDeclarationsWithoutListreeH
     EXPECT_EQ(view.valueKind(view.rootValueId()), agentc::edict::static_image::StaticSlotValueKind::List);
     EXPECT_EQ(view.listValueCount(view.rootValueId()), view.declarationCount());
 
+    const int64_t activeCountIndex = view.findDeclarationByWord("worker.edict_active_count");
+    ASSERT_GE(activeCountIndex, 0);
+    EXPECT_EQ(view.declarationNativeSymbol(static_cast<size_t>(activeCountIndex)), "agentc_worker_edict_active_count_ltv");
+    EXPECT_EQ(view.findDeclarationByWord("worker.edict_missing"), -1);
+
     bool foundActiveCount = false;
     bool foundContractValidator = false;
     for (size_t i = 0; i < view.declarationCount(); ++i) {

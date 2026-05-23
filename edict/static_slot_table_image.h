@@ -69,6 +69,7 @@ public:
     uint32_t listValueAt(uint32_t valueId, size_t index) const;
     std::string objectStringField(uint32_t valueId, const std::string& fieldName) const;
     uint32_t declarationValueId(size_t index) const;
+    int64_t findDeclarationByWord(const std::string& word) const;
     std::string declarationWord(size_t index) const;
     std::string declarationNativeSymbol(size_t index) const;
     std::string declarationStackSignature(size_t index) const;
@@ -88,6 +89,7 @@ private:
     std::vector<uint64_t> stringLengths_;
     std::vector<StaticSlotTableDeclaration> declarations_;
     std::vector<uint32_t> declarationValueIds_;
+    std::vector<uint32_t> declarationWordIndex_;
     std::vector<StaticSlotTableValueRecord> values_;
     std::vector<StaticSlotTableTreeRecord> trees_;
     std::vector<StaticSlotTableItemRecord> items_;

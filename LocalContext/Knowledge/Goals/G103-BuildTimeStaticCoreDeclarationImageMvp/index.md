@@ -46,7 +46,7 @@ The next mount architecture is captured in 🔗[WP — Static Declaration Image 
 
 Stage 2's test-only binary container is now implemented. It preserves the metadata-only/no-native-handle invariant while giving G103 a durable byte-format boundary before raw allocator-backed static slot mounting.
 
-The true static slot-table boundary is specified in 🔗[WP — Static Slot Table Image Boundary](../../WorkProducts/WP-StaticSlotTableImageBoundary-2026-05-19/index.md). The first borrowed static slot-table inspector is now implemented before allocator-mounted static slabs: it uses image-local string/declaration/value/list/item/tree ids, validates section lengths and payload hashes, rejects corrupt images, and inspects declarations plus generic object/list/string/tree records directly from read-only mmapped bytes without ordinary `CPtr`/Listree handles.
+The true static slot-table boundary is specified in 🔗[WP — Static Slot Table Image Boundary](../../WorkProducts/WP-StaticSlotTableImageBoundary-2026-05-19/index.md). The first borrowed static slot-table inspector is now implemented before allocator-mounted static slabs: it uses image-local string/declaration/value/list/item/tree ids, validates section lengths and payload hashes, rejects corrupt images, and inspects declarations plus generic object/list/string/tree records directly from read-only mmapped bytes without ordinary `CPtr`/Listree handles. It now also builds a borrowed sorted declaration-word index for dictionary-style lookup without dynamic Listree conversion.
 
 ## First Declaration Image Schema — 2026-05-19
 
@@ -97,6 +97,7 @@ This slice intentionally does **not** yet generate mmap slab files or mount OS-r
 - Added a static slot-table boundary plan that defines image-local ids, section layout, borrowed static view versus allocator-mounted static slab tradeoffs, validation checklist, and the next concrete `StaticSlotTableImage` prototype step.
 - Added `edict/static_slot_table_image.{h,cpp}` with `writeStaticSlotTableImage(...)` and `readStaticSlotTableImageMmapReadOnly(...)`. The first borrowed view stores compact string records, declaration records, generic value records, tree records, object item records, and list entry records, exposing module/declaration/object-field inspection without constructing ordinary Listree values from the mapped bytes.
 - Added tree/dictionary records for object values. Object fields are stored in sorted item ranges and `objectStringField(...)` uses borrowed binary-search lookup over the read-only mapped table.
+- Added `StaticSlotTableView::findDeclarationByWord(...)`, backed by a borrowed sorted declaration-word index built during validation. Duplicate declaration words now fail closed with `duplicate_declaration_word`.
 - Added corrupt-image validation for bad magic and payload hash mismatch.
 - Added `StaticDeclarationImageTest.WorkerPrimitiveImageIsMetadataOnlyAndValidates`, `StaticDeclarationImageTest.WorkerPrimitiveImageRoundTripsThroughFile`, `StaticDeclarationImageTest.BinaryContainerMmapValidatesAndMountsStaticImmortal`, `StaticDeclarationImageTest.BinaryContainerRejectsInvalidMagic`, `StaticDeclarationImageTest.MmapReadOnlyImageCanBeMountedStaticImmortal`, `StaticDeclarationImageTest.ReadOnlyMountMarksDeclarationValueSlotsStaticImmortal`, and `StaticDeclarationImageTest.ValidationRejectsPayloadHashMismatch`.
 
