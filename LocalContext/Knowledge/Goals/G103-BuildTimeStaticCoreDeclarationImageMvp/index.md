@@ -103,7 +103,7 @@ This slice intentionally does **not** yet generate mmap slab files or mount OS-r
 ## Validation — 2026-05-19
 
 - `cmake --build build --target edict_tests -j2` — passed.
-- `./build/edict/edict_tests --gtest_filter='StaticSlotTableImageTest.*' --gtest_brief=1` — passed 3/3 for the borrowed static slot-table inspector.
+- `./build/edict/edict_tests --gtest_filter='StaticSlotTableImageTest.*' --gtest_brief=1` — passed 4/4 after corrupt value/tree/list reference coverage; earlier borrowed static slot-table inspector passed 3/3.
 - `./build/edict/edict_tests --gtest_filter='StaticDeclarationImageTest.*' --gtest_brief=1` — passed 7/7 after static binary container work; earlier read-only mmap file import passed 5/5 and static mount slice passed 4/4.
 - `./build/edict/edict_tests --gtest_filter='StaticDeclarationImageTest.*:InternWorkerTest.*:Root1AwaitSchedulerTest.*:Root1PrimitiveModuleTest.*:EdictVM.YieldedExecutionCanResumeCurrentCodeFrame' --gtest_brief=1` — passed 25/25 before read-only mmap file import; rerun this slice before final commit.
 
