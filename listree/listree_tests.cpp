@@ -55,6 +55,22 @@ static uint32_t markAllActiveListreeSlabsStaticImmortalForTest() {
     return live;
 }
 
+static void clearAllListreeStaticImmortalMarksForTest() {
+    Allocator<ListreeValue>::getAllocator().clearStaticImmortalMarks();
+    Allocator<ListreeValueRef>::getAllocator().clearStaticImmortalMarks();
+    Allocator<CLL<ListreeValueRef>>::getAllocator().clearStaticImmortalMarks();
+    Allocator<ListreeItem>::getAllocator().clearStaticImmortalMarks();
+    Allocator<AATree<ListreeItem>>::getAllocator().clearStaticImmortalMarks();
+}
+
+static uint32_t activeListreeLiveSlotCountForTest() {
+    return Allocator<ListreeValue>::getAllocator().getStats().liveSlotCount +
+           Allocator<ListreeValueRef>::getAllocator().getStats().liveSlotCount +
+           Allocator<CLL<ListreeValueRef>>::getAllocator().getStats().liveSlotCount +
+           Allocator<ListreeItem>::getAllocator().getStats().liveSlotCount +
+           Allocator<AATree<ListreeItem>>::getAllocator().getStats().liveSlotCount;
+}
+
 // Test basic ListreeValue creation
 TEST(ListreeTest, BasicCreation) {
     // Create a null value
@@ -259,12 +275,46 @@ TEST(StaticSlabOwnershipTest, StaticMountedDictionaryLookupSurvivesHandleDropWit
 
     EXPECT_TRUE(Allocator<ListreeValue>::getAllocator().valid(rootSid));
     EXPECT_EQ(Allocator<ListreeValue>::getAllocator().refs(rootSid), rootRefsBefore);
-    EXPECT_EQ(Allocator<ListreeValue>::getAllocator().getStats().liveSlotCount +
-                  Allocator<ListreeValueRef>::getAllocator().getStats().liveSlotCount +
-                  Allocator<CLL<ListreeValueRef>>::getAllocator().getStats().liveSlotCount +
-                  Allocator<ListreeItem>::getAllocator().getStats().liveSlotCount +
-                  Allocator<AATree<ListreeItem>>::getAllocator().getStats().liveSlotCount,
-              liveSlotsBefore);
+    EXPECT_EQ(activeListreeLiveSlotCountForTest(), liveSlotsBefore);
+
+    resetListreeAllocatorsForStaticTests();
+}
+
+TEST(StaticSlabOwnershipTest, StaticMountClearRestoresNormalReleaseSemantics) {
+    resetListreeAllocatorsForStaticTests();
+
+    SlabId rootSid;
+    size_t rootRefsAfterStaticDrop = 0;
+    {
+        const SlabId allocatedRoot = Allocator<ListreeValue>::getAllocator().allocate(nullptr, 0, LtvFlags::Null);
+        CPtr<ListreeValue> root = CPtr<ListreeValue>::adoptRaw(allocatedRoot);
+        const SlabId allocatedValue = Allocator<ListreeValue>::getAllocator().allocate(std::string("value"), LtvFlags::Duplicate);
+        CPtr<ListreeValue> value = CPtr<ListreeValue>::adoptRaw(allocatedValue);
+        addNamedItem(root, "key", value);
+        root->setReadOnly(true);
+        rootSid = root.getSlabId();
+
+        ASSERT_GT(Allocator<ListreeValue>::getAllocator().refs(rootSid), 0u);
+        ASSERT_GT(markAllActiveListreeSlabsStaticImmortalForTest(), 0u);
+        ASSERT_TRUE(Allocator<ListreeValue>::getAllocator().slotIsStaticImmortal(rootSid));
+    }
+
+    ASSERT_TRUE(Allocator<ListreeValue>::getAllocator().valid(rootSid));
+    rootRefsAfterStaticDrop = Allocator<ListreeValue>::getAllocator().refs(rootSid);
+    ASSERT_GT(rootRefsAfterStaticDrop, 0u);
+    {
+        CPtr<ListreeValue> mounted = CPtr<ListreeValue>::adoptRaw(rootSid);
+        ASSERT_TRUE(mounted);
+        auto item = mounted->find("key");
+        ASSERT_TRUE(item);
+        EXPECT_EQ(valueText(item->getValue()), "value");
+
+        clearAllListreeStaticImmortalMarksForTest();
+        EXPECT_FALSE(Allocator<ListreeValue>::getAllocator().slotIsStaticImmortal(rootSid));
+    }
+
+    EXPECT_EQ(Allocator<ListreeValue>::getAllocator().refs(rootSid), rootRefsAfterStaticDrop - 1);
+    EXPECT_LE(activeListreeLiveSlotCountForTest(), 8u);
 
     resetListreeAllocatorsForStaticTests();
 }

@@ -1430,6 +1430,32 @@ public:
         return true;
     }
 
+    bool unmarkSlabStaticImmortal(uint16_t slabIndex) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        return staticImmortalSlabs_.erase(slabIndex) > 0;
+    }
+
+    bool unmarkSlotStaticImmortal(SlabId si) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        return staticImmortalSlots_.erase(si) > 0;
+    }
+
+    void clearStaticImmortalMarks() {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        staticImmortalSlabs_.clear();
+        staticImmortalSlots_.clear();
+    }
+
+    size_t staticImmortalSlabCount() const {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        return staticImmortalSlabs_.size();
+    }
+
+    size_t staticImmortalSlotCount() const {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        return staticImmortalSlots_.size();
+    }
+
     bool slabIsStaticImmortal(uint16_t slabIndex) const {
         std::lock_guard<std::recursive_mutex> lock(mutex_);
         return staticImmortalSlabs_.find(slabIndex) != staticImmortalSlabs_.end();
