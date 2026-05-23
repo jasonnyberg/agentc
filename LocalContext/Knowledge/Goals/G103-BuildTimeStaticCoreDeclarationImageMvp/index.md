@@ -35,6 +35,17 @@ Out of scope:
 - [x] Add stale/incompatible manifest validation for the first schema slice, including payload-hash mismatch rejection.
 - [x] Add checked-in tests around deterministic generation, manifest validation, metadata-only policy, and file readback.
 
+## Static Mount Plan — 2026-05-19
+
+The next mount architecture is captured in 🔗[WP — Static Declaration Image Mount Plan](../../WorkProducts/WP-StaticDeclarationImageMountPlan-2026-05-19/index.md). The plan distinguishes four stages:
+
+1. current JSON/Listree bridge: read-only mmap of JSON bytes, parse to dynamic Listree slots, then logical `ReadOnly` + G105 static-immortal slot marking;
+2. static binary declaration image container: magic/version/manifest/payload/hash validation while still parsing to dynamic slots;
+3. static slot table image: true OS-read-only `ListreeValue`/ref/item/list/tree slot tables with allocator-mounted static slab ranges or a borrowed static-view API;
+4. Root1 mount registry: image id, manifest, slab/layer ranges, epochs/leases, and process-local native sidecar identity.
+
+Recommended next code slice is a test-only static binary container before raw allocator-backed static slot mounting. This preserves the metadata-only/no-native-handle invariant while giving G103 a durable byte-format boundary.
+
 ## First Declaration Image Schema — 2026-05-19
 
 The first image is deliberately **declarative metadata only**. It is encoded as a Listree/JSON root with:
@@ -79,6 +90,7 @@ This slice intentionally does **not** yet generate mmap slab files or mount OS-r
 - Added `writeDeclarationImage(...)`, `readDeclarationImage(...)`, `readDeclarationImageMmapReadOnly(...)`, `validateDeclarationImage(...)`, and deterministic `declarationPayloadHash(...)` helpers.
 - Added `mountDeclarationImageReadOnly(...)` as the first runtime inspection/mount seam: it validates the declaration image, recursively applies logical `ReadOnly`, collects declaration `ListreeValue` slots, and marks those exact slots static-immortal via G105 so retain/release and pin/unpin do not mutate static metadata.
 - Added read-only mmap byte import for declaration-image files. This maps the JSON artifact with `PROT_READ` and parses it into a mounted Listree declaration image; true Listree nodes are still heap/private slots marked static-immortal after validation.
+- Added a durable static mount design work product that defines the staged path from JSON-byte mmap import to binary containers, static slot tables, and eventual Root1 image mount registry integration.
 - Added `StaticDeclarationImageTest.WorkerPrimitiveImageIsMetadataOnlyAndValidates`, `StaticDeclarationImageTest.WorkerPrimitiveImageRoundTripsThroughFile`, `StaticDeclarationImageTest.MmapReadOnlyImageCanBeMountedStaticImmortal`, `StaticDeclarationImageTest.ReadOnlyMountMarksDeclarationValueSlotsStaticImmortal`, and `StaticDeclarationImageTest.ValidationRejectsPayloadHashMismatch`.
 
 ## Validation — 2026-05-19
