@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <cstdint>
 #include <cstring>
 #include <fcntl.h>
 #include <fstream>
@@ -81,6 +82,79 @@ ValidationResult fail(const std::string& code, const std::string& message) {
     return ValidationResult{false, code, message};
 }
 
+constexpr char kContainerMagic[] = {'A', 'C', 'S', 'D', 'I', '0', '0', '1'};
+constexpr uint32_t kContainerVersion = 1;
+
+void appendU32(std::string& out, uint32_t value) {
+    for (int i = 0; i < 4; ++i) {
+        out.push_back(static_cast<char>((value >> (i * 8)) & 0xffu));
+    }
+}
+
+void appendU64(std::string& out, uint64_t value) {
+    for (int i = 0; i < 8; ++i) {
+        out.push_back(static_cast<char>((value >> (i * 8)) & 0xffu));
+    }
+}
+
+bool readU32(const char* data, size_t size, size_t& cursor, uint32_t& value) {
+    if (cursor + 4 > size) {
+        return false;
+    }
+    value = 0;
+    for (int i = 0; i < 4; ++i) {
+        value |= static_cast<uint32_t>(static_cast<unsigned char>(data[cursor++])) << (i * 8);
+    }
+    return true;
+}
+
+bool readU64(const char* data, size_t size, size_t& cursor, uint64_t& value) {
+    if (cursor + 8 > size) {
+        return false;
+    }
+    value = 0;
+    for (int i = 0; i < 8; ++i) {
+        value |= static_cast<uint64_t>(static_cast<unsigned char>(data[cursor++])) << (i * 8);
+    }
+    return true;
+}
+
+bool mappedFileReadOnly(const std::string& path,
+                        const char*& bytes,
+                        size_t& size,
+                        void*& mapped,
+                        std::string* error) {
+    const int fd = ::open(path.c_str(), O_RDONLY);
+    if (fd < 0) {
+        if (error) {
+            *error = "failed to open static declaration image for read-only mmap: " + path;
+        }
+        return false;
+    }
+
+    struct stat st {};
+    if (::fstat(fd, &st) != 0 || st.st_size <= 0) {
+        if (error) {
+            *error = "failed to stat static declaration image for read-only mmap: " + path;
+        }
+        ::close(fd);
+        return false;
+    }
+
+    size = static_cast<size_t>(st.st_size);
+    mapped = ::mmap(nullptr, size, PROT_READ, MAP_PRIVATE, fd, 0);
+    ::close(fd);
+    if (mapped == MAP_FAILED) {
+        if (error) {
+            *error = std::string("failed to mmap static declaration image read-only: ") + std::strerror(errno);
+        }
+        mapped = nullptr;
+        return false;
+    }
+    bytes = static_cast<const char*>(mapped);
+    return true;
+}
+
 } // namespace
 
 std::string declarationPayloadHash(CPtr<agentc::ListreeValue> declarations) {
@@ -137,6 +211,38 @@ bool writeDeclarationImage(CPtr<agentc::ListreeValue> image,
     return static_cast<bool>(out);
 }
 
+bool writeDeclarationImageContainer(CPtr<agentc::ListreeValue> image,
+                                    const std::string& path,
+                                    std::string* error) {
+    const auto validation = validateDeclarationImage(image);
+    if (!validation.ok) {
+        if (error) {
+            *error = validation.code + ": " + validation.message;
+        }
+        return false;
+    }
+    const std::string manifestJson = agentc::toJson(namedValue(image, "manifest"));
+    const std::string payloadJson = agentc::toJson(namedValue(image, "declarations"));
+
+    std::string bytes;
+    bytes.append(kContainerMagic, sizeof(kContainerMagic));
+    appendU32(bytes, kContainerVersion);
+    appendU64(bytes, static_cast<uint64_t>(manifestJson.size()));
+    appendU64(bytes, static_cast<uint64_t>(payloadJson.size()));
+    bytes.append(manifestJson);
+    bytes.append(payloadJson);
+
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    if (!out) {
+        if (error) {
+            *error = "failed to open static declaration image container for writing: " + path;
+        }
+        return false;
+    }
+    out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+    return static_cast<bool>(out);
+}
+
 CPtr<agentc::ListreeValue> readDeclarationImage(const std::string& path,
                                                 std::string* error) {
     std::ifstream in(path, std::ios::binary);
@@ -157,40 +263,100 @@ CPtr<agentc::ListreeValue> readDeclarationImage(const std::string& path,
 
 CPtr<agentc::ListreeValue> readDeclarationImageMmapReadOnly(const std::string& path,
                                                             std::string* error) {
-    const int fd = ::open(path.c_str(), O_RDONLY);
-    if (fd < 0) {
-        if (error) {
-            *error = "failed to open static declaration image for read-only mmap: " + path;
-        }
+    const char* bytes = nullptr;
+    size_t size = 0;
+    void* mapped = nullptr;
+    if (!mappedFileReadOnly(path, bytes, size, mapped, error)) {
         return nullptr;
     }
 
-    struct stat st {};
-    if (::fstat(fd, &st) != 0 || st.st_size <= 0) {
-        if (error) {
-            *error = "failed to stat static declaration image for read-only mmap: " + path;
-        }
-        ::close(fd);
-        return nullptr;
-    }
-
-    const size_t size = static_cast<size_t>(st.st_size);
-    void* mapped = ::mmap(nullptr, size, PROT_READ, MAP_PRIVATE, fd, 0);
-    ::close(fd);
-    if (mapped == MAP_FAILED) {
-        if (error) {
-            *error = std::string("failed to mmap static declaration image read-only: ") + std::strerror(errno);
-        }
-        return nullptr;
-    }
-
-    std::string json(static_cast<const char*>(mapped), size);
+    std::string json(bytes, size);
     ::munmap(mapped, size);
     auto value = agentc::fromJson(json);
     if (!value && error) {
         *error = "failed to parse read-only mmapped static declaration image: " + path;
     }
     return value;
+}
+
+CPtr<agentc::ListreeValue> readDeclarationImageContainerMmapReadOnly(const std::string& path,
+                                                                     std::string* error) {
+    const char* bytes = nullptr;
+    size_t size = 0;
+    void* mapped = nullptr;
+    if (!mappedFileReadOnly(path, bytes, size, mapped, error)) {
+        return nullptr;
+    }
+
+    auto cleanup = [&]() {
+        if (mapped) {
+            ::munmap(mapped, size);
+            mapped = nullptr;
+        }
+    };
+
+    size_t cursor = 0;
+    if (size < sizeof(kContainerMagic) || std::memcmp(bytes, kContainerMagic, sizeof(kContainerMagic)) != 0) {
+        if (error) {
+            *error = "invalid static declaration image container magic";
+        }
+        cleanup();
+        return nullptr;
+    }
+    cursor += sizeof(kContainerMagic);
+
+    uint32_t version = 0;
+    uint64_t manifestLen = 0;
+    uint64_t payloadLen = 0;
+    if (!readU32(bytes, size, cursor, version) ||
+        !readU64(bytes, size, cursor, manifestLen) ||
+        !readU64(bytes, size, cursor, payloadLen)) {
+        if (error) {
+            *error = "truncated static declaration image container header";
+        }
+        cleanup();
+        return nullptr;
+    }
+    if (version != kContainerVersion) {
+        if (error) {
+            *error = "unsupported static declaration image container version";
+        }
+        cleanup();
+        return nullptr;
+    }
+    if (manifestLen > size || payloadLen > size || cursor + manifestLen + payloadLen != size) {
+        if (error) {
+            *error = "invalid static declaration image container lengths";
+        }
+        cleanup();
+        return nullptr;
+    }
+
+    std::string manifestJson(bytes + cursor, static_cast<size_t>(manifestLen));
+    cursor += static_cast<size_t>(manifestLen);
+    std::string payloadJson(bytes + cursor, static_cast<size_t>(payloadLen));
+    cleanup();
+
+    auto manifest = agentc::fromJson(manifestJson);
+    auto declarations = agentc::fromJson(payloadJson);
+    if (!manifest || !declarations) {
+        if (error) {
+            *error = "failed to parse static declaration image container manifest or payload";
+        }
+        return nullptr;
+    }
+
+    auto image = agentc::createNullValue();
+    agentc::addNamedItem(image, "manifest", manifest);
+    agentc::addNamedItem(image, "declarations", declarations);
+    const auto validation = validateDeclarationImage(image);
+    if (!validation.ok) {
+        if (error) {
+            *error = validation.code + ": " + validation.message;
+        }
+        return nullptr;
+    }
+    return image;
 }
 
 ValidationResult validateDeclarationImage(CPtr<agentc::ListreeValue> image) {

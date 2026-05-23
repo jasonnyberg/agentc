@@ -10,6 +10,7 @@
 #include <gtest/gtest.h>
 
 #include <filesystem>
+#include <fstream>
 #include <string>
 
 namespace {
@@ -83,6 +84,44 @@ TEST(StaticDeclarationImageTest, WorkerPrimitiveImageRoundTripsThroughFile) {
     const auto validation = agentc::edict::static_image::validateDeclarationImage(restored);
     EXPECT_TRUE(validation.ok) << validation.code << ": " << validation.message;
     EXPECT_EQ(agentc::toJson(restored), agentc::toJson(image));
+
+    std::filesystem::remove(path);
+}
+
+TEST(StaticDeclarationImageTest, BinaryContainerMmapValidatesAndMountsStaticImmortal) {
+    auto image = agentc::edict::static_image::buildWorkerPrimitiveDeclarationImage();
+    const auto path = std::filesystem::temp_directory_path() /
+                      "agentc-worker-static-declaration-image-container-test.acsdi";
+
+    std::string error;
+    ASSERT_TRUE(agentc::edict::static_image::writeDeclarationImageContainer(image, path.string(), &error)) << error;
+    auto restored = agentc::edict::static_image::readDeclarationImageContainerMmapReadOnly(path.string(), &error);
+    ASSERT_TRUE(restored) << error;
+    auto validation = agentc::edict::static_image::validateDeclarationImage(restored);
+    ASSERT_TRUE(validation.ok) << validation.code << ": " << validation.message;
+
+    auto mounted = agentc::edict::static_image::mountDeclarationImageReadOnly(restored);
+    ASSERT_TRUE(mounted.validation.ok) << mounted.validation.code << ": " << mounted.validation.message;
+    ASSERT_TRUE(mounted.root);
+    EXPECT_TRUE(mounted.root->isReadOnly());
+    EXPECT_FALSE(mounted.staticValueSlots.empty());
+    EXPECT_TRUE(Allocator<agentc::ListreeValue>::getAllocator().slotIsStaticImmortal(mounted.root.getSlabId()));
+
+    std::filesystem::remove(path);
+}
+
+TEST(StaticDeclarationImageTest, BinaryContainerRejectsInvalidMagic) {
+    const auto path = std::filesystem::temp_directory_path() /
+                      "agentc-worker-static-declaration-image-bad-container-test.acsdi";
+    {
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        out << "not-a-valid-container";
+    }
+
+    std::string error;
+    auto restored = agentc::edict::static_image::readDeclarationImageContainerMmapReadOnly(path.string(), &error);
+    EXPECT_FALSE(restored);
+    EXPECT_NE(error.find("magic"), std::string::npos) << error;
 
     std::filesystem::remove(path);
 }

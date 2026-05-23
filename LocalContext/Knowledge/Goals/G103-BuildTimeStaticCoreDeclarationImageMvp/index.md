@@ -44,7 +44,7 @@ The next mount architecture is captured in 🔗[WP — Static Declaration Image 
 3. static slot table image: true OS-read-only `ListreeValue`/ref/item/list/tree slot tables with allocator-mounted static slab ranges or a borrowed static-view API;
 4. Root1 mount registry: image id, manifest, slab/layer ranges, epochs/leases, and process-local native sidecar identity.
 
-Recommended next code slice is a test-only static binary container before raw allocator-backed static slot mounting. This preserves the metadata-only/no-native-handle invariant while giving G103 a durable byte-format boundary.
+Stage 2's test-only binary container is now implemented. It preserves the metadata-only/no-native-handle invariant while giving G103 a durable byte-format boundary before raw allocator-backed static slot mounting.
 
 ## First Declaration Image Schema — 2026-05-19
 
@@ -91,12 +91,13 @@ This slice intentionally does **not** yet generate mmap slab files or mount OS-r
 - Added `mountDeclarationImageReadOnly(...)` as the first runtime inspection/mount seam: it validates the declaration image, recursively applies logical `ReadOnly`, collects declaration `ListreeValue` slots, and marks those exact slots static-immortal via G105 so retain/release and pin/unpin do not mutate static metadata.
 - Added read-only mmap byte import for declaration-image files. This maps the JSON artifact with `PROT_READ` and parses it into a mounted Listree declaration image; true Listree nodes are still heap/private slots marked static-immortal after validation.
 - Added a durable static mount design work product that defines the staged path from JSON-byte mmap import to binary containers, static slot tables, and eventual Root1 image mount registry integration.
-- Added `StaticDeclarationImageTest.WorkerPrimitiveImageIsMetadataOnlyAndValidates`, `StaticDeclarationImageTest.WorkerPrimitiveImageRoundTripsThroughFile`, `StaticDeclarationImageTest.MmapReadOnlyImageCanBeMountedStaticImmortal`, `StaticDeclarationImageTest.ReadOnlyMountMarksDeclarationValueSlotsStaticImmortal`, and `StaticDeclarationImageTest.ValidationRejectsPayloadHashMismatch`.
+- Added a test-only static binary declaration-image container with magic/version/manifest-length/payload-length/manifest-json/payload-json bytes. The container is read through `PROT_READ` mmap, validates magic/version/lengths plus manifest payload hash, then mounts through `mountDeclarationImageReadOnly(...)`.
+- Added `StaticDeclarationImageTest.WorkerPrimitiveImageIsMetadataOnlyAndValidates`, `StaticDeclarationImageTest.WorkerPrimitiveImageRoundTripsThroughFile`, `StaticDeclarationImageTest.BinaryContainerMmapValidatesAndMountsStaticImmortal`, `StaticDeclarationImageTest.BinaryContainerRejectsInvalidMagic`, `StaticDeclarationImageTest.MmapReadOnlyImageCanBeMountedStaticImmortal`, `StaticDeclarationImageTest.ReadOnlyMountMarksDeclarationValueSlotsStaticImmortal`, and `StaticDeclarationImageTest.ValidationRejectsPayloadHashMismatch`.
 
 ## Validation — 2026-05-19
 
 - `cmake --build build --target edict_tests -j2` — passed.
-- `./build/edict/edict_tests --gtest_filter='StaticDeclarationImageTest.*' --gtest_brief=1` — passed 5/5 after read-only mmap file import; earlier static mount slice passed 4/4.
+- `./build/edict/edict_tests --gtest_filter='StaticDeclarationImageTest.*' --gtest_brief=1` — passed 7/7 after static binary container work; earlier read-only mmap file import passed 5/5 and static mount slice passed 4/4.
 - `./build/edict/edict_tests --gtest_filter='StaticDeclarationImageTest.*:InternWorkerTest.*:Root1AwaitSchedulerTest.*:Root1PrimitiveModuleTest.*:EdictVM.YieldedExecutionCanResumeCurrentCodeFrame' --gtest_brief=1` — passed 25/25 before read-only mmap file import; rerun this slice before final commit.
 
 ## Acceptance Criteria
