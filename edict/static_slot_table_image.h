@@ -51,6 +51,13 @@ struct StaticSlotTableTreeRecord {
     uint32_t itemCount = 0;
 };
 
+struct StaticSlotTableSectionDescriptor {
+    std::string sectionId;
+    uint64_t byteOffset = 0;
+    uint64_t byteSize = 0;
+    std::string hash;
+};
+
 class StaticSlotTableView {
 public:
     StaticSlotTableView() = default;
@@ -62,6 +69,9 @@ public:
     size_t declarationCount() const { return declarations_.size(); }
     size_t valueCount() const { return values_.size(); }
     uint32_t rootValueId() const { return rootValueId_; }
+    size_t sectionCount() const { return sections_.size(); }
+    StaticSlotTableSectionDescriptor section(size_t index) const;
+    StaticSlotTableSectionDescriptor sectionById(const std::string& sectionId) const;
 
     std::string stringAt(uint32_t id) const;
     StaticSlotValueKind valueKind(uint32_t valueId) const;
@@ -94,6 +104,7 @@ private:
     std::vector<StaticSlotTableTreeRecord> trees_;
     std::vector<StaticSlotTableItemRecord> items_;
     std::vector<uint32_t> listEntries_;
+    std::vector<StaticSlotTableSectionDescriptor> sections_;
 };
 
 bool writeStaticSlotTableImage(CPtr<agentc::ListreeValue> declarationImage,

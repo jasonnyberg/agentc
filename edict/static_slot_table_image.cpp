@@ -193,6 +193,17 @@ ValidationResult fail(const std::string& code, const std::string& message) {
 
 } // namespace
 
+StaticSlotTableSectionDescriptor StaticSlotTableView::section(size_t index) const {
+    return index < sections_.size() ? sections_[index] : StaticSlotTableSectionDescriptor{};
+}
+
+StaticSlotTableSectionDescriptor StaticSlotTableView::sectionById(const std::string& sectionId) const {
+    auto it = std::find_if(sections_.begin(), sections_.end(), [&](const auto& section) {
+        return section.sectionId == sectionId;
+    });
+    return it == sections_.end() ? StaticSlotTableSectionDescriptor{} : *it;
+}
+
 std::string StaticSlotTableView::stringAt(uint32_t id) const {
     if (id >= stringOffsets_.size() || !stringBytes_) {
         return {};
@@ -560,6 +571,7 @@ StaticSlotTableView readStaticSlotTableImageMmapReadOnly(const std::string& path
         return view;
     }
 
+    const size_t bodyOffset = cursor;
     const char* body = bytes + cursor;
     const size_t bodySize = static_cast<size_t>(header.stringRecordBytes + header.declarationRecordBytes + header.valueRecordBytes + header.treeRecordBytes + header.itemRecordBytes + header.listEntryBytes + header.stringBytes);
     if (fnv1a64(std::string(body, bodySize)) != std::string(header.payloadHash)) {
@@ -569,6 +581,23 @@ StaticSlotTableView readStaticSlotTableImageMmapReadOnly(const std::string& path
         }
         return view;
     }
+
+    uint64_t sectionOffset = static_cast<uint64_t>(bodyOffset);
+    auto addSection = [&](const std::string& sectionId, uint64_t byteSize) {
+        view.sections_.push_back(StaticSlotTableSectionDescriptor{
+            sectionId,
+            sectionOffset,
+            byteSize,
+            fnv1a64(std::string(bytes + sectionOffset, static_cast<size_t>(byteSize)))});
+        sectionOffset += byteSize;
+    };
+    addSection("string_records", header.stringRecordBytes);
+    addSection("declaration_records", header.declarationRecordBytes);
+    addSection("value_records", header.valueRecordBytes);
+    addSection("tree_records", header.treeRecordBytes);
+    addSection("item_records", header.itemRecordBytes);
+    addSection("list_entries", header.listEntryBytes);
+    addSection("string_bytes", header.stringBytes);
 
     view.stringOffsets_.reserve(header.stringCount);
     view.stringLengths_.reserve(header.stringCount);

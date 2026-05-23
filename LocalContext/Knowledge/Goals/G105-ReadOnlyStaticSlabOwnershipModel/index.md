@@ -81,7 +81,7 @@ This is still a **probe**, not final static slab mounting: static slabs are mark
 
 ## Recommended Next Implementation Slice
 
-Continue toward true G103/G105 convergence by replacing the test-only dummy mmap file with an actual file-backed G103 static declaration image and extending registry records from logical metadata to true static-slot-table byte offsets, section hashes, and Root1-advertised mount/resource handles.
+Continue toward true G103/G105 convergence by wiring the new `StaticSlotTableView` section descriptors into `ListreeStaticMountRegistry` metadata, then replacing the test-only dummy mmap file with an actual file-backed G103 static declaration image and Root1-advertised mount/resource handles.
 
 ## Acceptance Criteria
 - [ ] Static/read-only slabs can be mounted and traversed without mutating their `inUse` or node-local pin metadata.
