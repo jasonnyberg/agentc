@@ -32,6 +32,7 @@ Alternatives to keep in view:
 - [x] Implement first no-mutate retain/release behavior for static immortal slabs: `tryRetain`, `modrefs`, and `deallocate` skip `inUse` mutation/destruction for static-immortal slab ids.
 - [x] Define first cursor/path pinning behavior on immortal static nodes: `ListreeValue::pin()` / `unpin()` no-op when the value resides in a static-immortal `ListreeValue` slab.
 - [x] Add tests proving static marked nodes can be referenced/read/traversed without metadata writes to `inUse` or `pinnedCount` in the first process-local static probe.
+- [x] Add first tiny allocator-mounted static dictionary lookup test across the active Listree allocator family (`ListreeValue`, `ListreeValueRef`, `CLL`, `ListreeItem`, `AATree`) by marking active slabs static-immortal, dropping ordinary handles, re-adopting the static root id, and proving direct named lookup still works without refcount/live-slot churn.
 - [x] Document what is immortal, what is private, and what remains future shadow-sidecar work in the first audit/work product.
 
 ## Audit Findings — 2026-05-19
@@ -64,13 +65,14 @@ The first probe implements process-local static-immortal slab metadata without c
 - For static-immortal slabs/slots, `tryRetain(...)`, `modrefs(...)`, and `deallocate(...)` avoid mutating slab-resident `inUse` and do not destruct individual static objects.
 - `ListreeValue::pin()` and `ListreeValue::unpin()` detect static-immortal `ListreeValue` residency and no-op instead of mutating `pinnedCount`.
 - `StaticSlabOwnershipTest.StaticImmortalSlabRetainReleaseAndCursorPinAreNoMutate` proves copied `CPtr` references, direct pin/unpin, and basic read/traversal of a static-marked Listree value leave both allocator refs and `pinnedCount` unchanged.
+- `StaticSlabOwnershipTest.StaticMountedDictionaryLookupSurvivesHandleDropWithoutMutatingStaticSlabs` is the first tiny allocator-mounted static dictionary lookup probe. It freezes a small named-object tree, marks every active Listree-family slab static-immortal, lets ordinary handles drop, re-adopts the root `SlabId`, and performs direct named lookup while asserting root refs and aggregate live-slot counts remain stable.
 - G103 now uses the slot-level seam in `mountDeclarationImageReadOnly(...)` so declaration images can be logically frozen and marked static-immortal without marking whole mixed-use dynamic slabs.
 
 This is still a **probe**, not final static slab mounting: static slabs are marked after normal allocation, and the backing memory is not yet protected by OS `PROT_READ`. It is nevertheless the first implementation seam G103 needs before declaration images can become true read-only slab mounts.
 
 ## Recommended Next Implementation Slice
 
-Continue toward true G103/G105 convergence by extending static ownership to static slab image import/readback so the test maps an actual file-backed read-only image instead of marking live heap/Listree slots. The next step should prove the same no-mutate retain/release/pin semantics against a file-backed or mmap-protected declaration image.
+Continue toward true G103/G105 convergence by extending static ownership to static slab image import/readback so the test maps an actual file-backed read-only image instead of marking live heap/Listree slots. The next step should either protect this tiny mounted dictionary with OS read-only backing or introduce explicit static mount/unmount/reset semantics so process-local static slab ownership cannot leak across image lifetimes.
 
 ## Acceptance Criteria
 - [ ] Static/read-only slabs can be mounted and traversed without mutating their `inUse` or node-local pin metadata.
