@@ -189,6 +189,14 @@ TEST(StaticDeclarationImageTest, RegistryBackedMountExposesLogicalMountIdAndRoot
         EXPECT_EQ(metadata.rootDescriptor, "worker.edict/declarations");
         EXPECT_EQ(metadata.sectionDescriptor, "declarative_import_module:worker.edict");
         EXPECT_EQ(metadata.provenance, "static_declaration_image");
+        EXPECT_EQ(metadata.root1ResourceDescriptor, "root1.static_mount/" + metadata.imageId);
+        ASSERT_EQ(metadata.sections.size(), 2u);
+        EXPECT_EQ(metadata.sections[0].sectionId, "manifest");
+        EXPECT_EQ(metadata.sections[0].kind, "object");
+        EXPECT_EQ(metadata.sections[0].count, 1u);
+        EXPECT_EQ(metadata.sections[1].sectionId, "declarations");
+        EXPECT_EQ(metadata.sections[1].kind, "list");
+        EXPECT_EQ(metadata.sections[1].count, listCount(namedValue(mounted.root, "declarations")));
         mountId = mounted.mountId;
     }
 

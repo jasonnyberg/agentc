@@ -42,6 +42,19 @@ std::string stringValue(CPtr<agentc::ListreeValue> value) {
     return std::string(static_cast<const char*>(value->getData()), value->getLength());
 }
 
+uint64_t listValueCount(CPtr<agentc::ListreeValue> value) {
+    if (!value || !value->isListMode()) {
+        return 0;
+    }
+    uint64_t count = 0;
+    value->forEachList([&](CPtr<agentc::ListreeValueRef>& ref) {
+        if (ref && ref->getValue()) {
+            ++count;
+        }
+    });
+    return count;
+}
+
 CPtr<agentc::ListreeValue> stringList(std::initializer_list<std::string> values) {
     auto list = agentc::createListValue();
     for (const auto& value : values) {
@@ -460,6 +473,11 @@ MountedDeclarationImage mountDeclarationImageReadOnly(CPtr<agentc::ListreeValue>
     metadata.sectionDescriptor = stringValue(namedValue(manifest, "image_kind")) + ":" + stringValue(namedValue(manifest, "module"));
     metadata.provenance = "static_declaration_image";
     metadata.imageId = stringValue(namedValue(manifest, "module")) + ":" + metadata.manifestHash;
+    metadata.root1ResourceDescriptor = "root1.static_mount/" + metadata.imageId;
+    metadata.sections.push_back(agentc::ListreeStaticMountSectionDescriptor{
+        "manifest", "object", 0, 1});
+    metadata.sections.push_back(agentc::ListreeStaticMountSectionDescriptor{
+        "declarations", "list", 0, listValueCount(namedValue(image, "declarations"))});
 
     // The registry-backed mount keeps logical mount identity separate from the
     // native/process-local static ownership marks.  Freeze before the registry

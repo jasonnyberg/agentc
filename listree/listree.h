@@ -320,12 +320,21 @@ private:
     bool active_ = false;
 };
 
+struct ListreeStaticMountSectionDescriptor {
+    std::string sectionId;
+    std::string kind;
+    uint64_t first = 0;
+    uint64_t count = 0;
+};
+
 struct ListreeStaticMountMetadata {
     std::string imageId;
     std::string manifestHash;
     std::string rootDescriptor;
     std::string sectionDescriptor;
     std::string provenance;
+    std::string root1ResourceDescriptor;
+    std::vector<ListreeStaticMountSectionDescriptor> sections;
 };
 
 class ListreeStaticMountRegistry {
