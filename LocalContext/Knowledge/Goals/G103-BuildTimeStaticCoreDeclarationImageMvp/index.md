@@ -46,7 +46,7 @@ The next mount architecture is captured in 🔗[WP — Static Declaration Image 
 
 Stage 2's test-only binary container is now implemented. It preserves the metadata-only/no-native-handle invariant while giving G103 a durable byte-format boundary before raw allocator-backed static slot mounting.
 
-The true static slot-table boundary is now specified in 🔗[WP — Static Slot Table Image Boundary](../../WorkProducts/WP-StaticSlotTableImageBoundary-2026-05-19/index.md). The decision is to implement a borrowed static slot-table inspector before allocator-mounted static slabs, using image-local ids for values/refs/items/lists/trees/blobs and validating section offsets, hashes, and no-native-handle policy before any dynamic Listree conversion.
+The true static slot-table boundary is specified in 🔗[WP — Static Slot Table Image Boundary](../../WorkProducts/WP-StaticSlotTableImageBoundary-2026-05-19/index.md). The first borrowed static slot-table inspector is now implemented before allocator-mounted static slabs: it uses image-local string/declaration ids, validates section lengths and payload hashes, rejects corrupt images, and inspects declarations directly from read-only mmapped bytes without ordinary `CPtr`/Listree handles.
 
 ## First Declaration Image Schema — 2026-05-19
 
@@ -95,11 +95,14 @@ This slice intentionally does **not** yet generate mmap slab files or mount OS-r
 - Added a durable static mount design work product that defines the staged path from JSON-byte mmap import to binary containers, static slot tables, and eventual Root1 image mount registry integration.
 - Added a test-only static binary declaration-image container with magic/version/manifest-length/payload-length/manifest-json/payload-json bytes. The container is read through `PROT_READ` mmap, validates magic/version/lengths plus manifest payload hash, then mounts through `mountDeclarationImageReadOnly(...)`.
 - Added a static slot-table boundary plan that defines image-local ids, section layout, borrowed static view versus allocator-mounted static slab tradeoffs, validation checklist, and the next concrete `StaticSlotTableImage` prototype step.
+- Added `edict/static_slot_table_image.{h,cpp}` with `writeStaticSlotTableImage(...)` and `readStaticSlotTableImageMmapReadOnly(...)`. The first borrowed view stores compact string records plus declaration records and exposes module/declaration inspection without constructing ordinary Listree values from the mapped bytes.
+- Added corrupt-image validation for bad magic and payload hash mismatch.
 - Added `StaticDeclarationImageTest.WorkerPrimitiveImageIsMetadataOnlyAndValidates`, `StaticDeclarationImageTest.WorkerPrimitiveImageRoundTripsThroughFile`, `StaticDeclarationImageTest.BinaryContainerMmapValidatesAndMountsStaticImmortal`, `StaticDeclarationImageTest.BinaryContainerRejectsInvalidMagic`, `StaticDeclarationImageTest.MmapReadOnlyImageCanBeMountedStaticImmortal`, `StaticDeclarationImageTest.ReadOnlyMountMarksDeclarationValueSlotsStaticImmortal`, and `StaticDeclarationImageTest.ValidationRejectsPayloadHashMismatch`.
 
 ## Validation — 2026-05-19
 
 - `cmake --build build --target edict_tests -j2` — passed.
+- `./build/edict/edict_tests --gtest_filter='StaticSlotTableImageTest.*' --gtest_brief=1` — passed 3/3 for the borrowed static slot-table inspector.
 - `./build/edict/edict_tests --gtest_filter='StaticDeclarationImageTest.*' --gtest_brief=1` — passed 7/7 after static binary container work; earlier read-only mmap file import passed 5/5 and static mount slice passed 4/4.
 - `./build/edict/edict_tests --gtest_filter='StaticDeclarationImageTest.*:InternWorkerTest.*:Root1AwaitSchedulerTest.*:Root1PrimitiveModuleTest.*:EdictVM.YieldedExecutionCanResumeCurrentCodeFrame' --gtest_brief=1` — passed 25/25 before read-only mmap file import; rerun this slice before final commit.
 

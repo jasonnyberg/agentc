@@ -26,6 +26,7 @@ set(LIB_SOURCES
     edict_root1_primitives.cpp
     root1_await_scheduler.cpp
     static_declaration_image.cpp
+    static_slot_table_image.cpp
     edict_repl.cpp
     block_accumulator.cpp
 )
@@ -67,6 +68,7 @@ add_executable(edict_tests
     tests/root1_primitive_module_test.cpp
     tests/root1_await_scheduler_test.cpp
     tests/static_declaration_image_test.cpp
+    tests/static_slot_table_image_test.cpp
 )
 target_compile_definitions(edict_tests PRIVATE
     TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../cartographer/tests"
