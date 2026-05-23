@@ -26,6 +26,9 @@ TEST(StaticSlotTableImageTest, MmapViewInspectsWorkerDeclarationsWithoutListreeH
     EXPECT_EQ(view.moduleName(), "worker.edict");
     EXPECT_GE(view.stringCount(), 6u);
     ASSERT_GE(view.declarationCount(), 6u);
+    EXPECT_GT(view.valueCount(), view.declarationCount());
+    EXPECT_EQ(view.valueKind(view.rootValueId()), agentc::edict::static_image::StaticSlotValueKind::List);
+    EXPECT_EQ(view.listValueCount(view.rootValueId()), view.declarationCount());
 
     bool foundActiveCount = false;
     bool foundContractValidator = false;
@@ -35,6 +38,11 @@ TEST(StaticSlotTableImageTest, MmapViewInspectsWorkerDeclarationsWithoutListreeH
             EXPECT_EQ(view.declarationNativeSymbol(i), "agentc_worker_edict_active_count_ltv");
             EXPECT_EQ(view.declarationStackSignature(i), "() -> ltv");
             EXPECT_EQ(view.declarationCategory(i), "lifecycle");
+            const uint32_t declarationObject = view.declarationValueId(i);
+            EXPECT_EQ(view.valueKind(declarationObject), agentc::edict::static_image::StaticSlotValueKind::Object);
+            EXPECT_EQ(view.objectStringField(declarationObject, "word"), "worker.edict_active_count");
+            EXPECT_EQ(view.objectStringField(declarationObject, "native_symbol"), "agentc_worker_edict_active_count_ltv");
+            EXPECT_EQ(view.objectStringField(declarationObject, "stores_native_handle"), "false");
         }
         if (view.declarationWord(i) == "worker.edict_validate_result_contract") {
             foundContractValidator = true;

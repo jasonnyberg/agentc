@@ -23,15 +23,22 @@ namespace agentc::edict::static_image {
 namespace {
 
 constexpr char kMagic[] = {'A', 'C', 'S', 'T', 'B', 'L', '0', '1'};
-constexpr uint32_t kVersion = 1;
+constexpr uint32_t kVersion = 2;
 
 struct Header {
     uint32_t version = 0;
     uint32_t moduleName = 0;
+    uint32_t rootValue = 0;
     uint32_t stringCount = 0;
     uint32_t declarationCount = 0;
+    uint32_t valueCount = 0;
+    uint32_t itemCount = 0;
+    uint32_t listEntryCount = 0;
     uint64_t stringRecordBytes = 0;
     uint64_t declarationRecordBytes = 0;
+    uint64_t valueRecordBytes = 0;
+    uint64_t itemRecordBytes = 0;
+    uint64_t listEntryBytes = 0;
     uint64_t stringBytes = 0;
     char payloadHash[17] = {};
 };
@@ -105,6 +112,41 @@ bool readU64(const char* data, size_t size, size_t& cursor, uint64_t& value) {
     return true;
 }
 
+void appendValueRecord(std::string& out, const StaticSlotTableValueRecord& value) {
+    appendU32(out, static_cast<uint32_t>(value.kind));
+    appendU32(out, value.stringId);
+    appendU32(out, value.first);
+    appendU32(out, value.count);
+}
+
+bool readValueRecord(const char* data,
+                     size_t size,
+                     size_t& cursor,
+                     StaticSlotTableValueRecord& value) {
+    uint32_t kind = 0;
+    if (!readU32(data, size, cursor, kind) ||
+        !readU32(data, size, cursor, value.stringId) ||
+        !readU32(data, size, cursor, value.first) ||
+        !readU32(data, size, cursor, value.count)) {
+        return false;
+    }
+    value.kind = static_cast<StaticSlotValueKind>(kind);
+    return true;
+}
+
+void appendItemRecord(std::string& out, const StaticSlotTableItemRecord& item) {
+    appendU32(out, item.name);
+    appendU32(out, item.value);
+}
+
+bool readItemRecord(const char* data,
+                    size_t size,
+                    size_t& cursor,
+                    StaticSlotTableItemRecord& item) {
+    return readU32(data, size, cursor, item.name) &&
+           readU32(data, size, cursor, item.value);
+}
+
 void appendDeclarationRecord(std::string& out, const StaticSlotTableDeclaration& declaration) {
     appendU32(out, declaration.word);
     appendU32(out, declaration.nativeSymbol);
@@ -146,6 +188,46 @@ std::string StaticSlotTableView::stringAt(uint32_t id) const {
         return {};
     }
     return std::string(stringBytes_ + offset, static_cast<size_t>(length));
+}
+
+StaticSlotValueKind StaticSlotTableView::valueKind(uint32_t valueId) const {
+    return valueId < values_.size() ? values_[valueId].kind : StaticSlotValueKind::Invalid;
+}
+
+size_t StaticSlotTableView::listValueCount(uint32_t valueId) const {
+    if (valueId >= values_.size() || values_[valueId].kind != StaticSlotValueKind::List) {
+        return 0;
+    }
+    return values_[valueId].count;
+}
+
+uint32_t StaticSlotTableView::listValueAt(uint32_t valueId, size_t index) const {
+    if (valueId >= values_.size() || values_[valueId].kind != StaticSlotValueKind::List) {
+        return 0;
+    }
+    const auto& value = values_[valueId];
+    if (index >= value.count || value.first + index >= listEntries_.size()) {
+        return 0;
+    }
+    return listEntries_[value.first + index];
+}
+
+std::string StaticSlotTableView::objectStringField(uint32_t valueId, const std::string& fieldName) const {
+    if (valueId >= values_.size() || values_[valueId].kind != StaticSlotValueKind::Object) {
+        return {};
+    }
+    const auto& value = values_[valueId];
+    for (uint32_t i = 0; i < value.count && value.first + i < items_.size(); ++i) {
+        const auto& item = items_[value.first + i];
+        if (stringAt(item.name) == fieldName && item.value < values_.size() && values_[item.value].kind == StaticSlotValueKind::String) {
+            return stringAt(values_[item.value].stringId);
+        }
+    }
+    return {};
+}
+
+uint32_t StaticSlotTableView::declarationValueId(size_t index) const {
+    return index < declarationValueIds_.size() ? declarationValueIds_[index] : 0;
 }
 
 std::string StaticSlotTableView::declarationWord(size_t index) const {
@@ -192,6 +274,29 @@ bool writeStaticSlotTableImage(CPtr<agentc::ListreeValue> declarationImage,
     const uint32_t moduleName = intern(stringValue(namedValue(manifest, "module")));
 
     std::vector<StaticSlotTableDeclaration> declarations;
+    std::vector<uint32_t> declarationValueIds;
+    std::vector<StaticSlotTableValueRecord> values;
+    std::vector<StaticSlotTableItemRecord> items;
+    std::vector<uint32_t> listEntries;
+
+    auto makeStringValue = [&](const std::string& text) -> uint32_t {
+        const uint32_t id = static_cast<uint32_t>(values.size());
+        values.push_back({StaticSlotValueKind::String, intern(text), 0, 0});
+        return id;
+    };
+    auto addStringField = [&](uint32_t nameId, const std::string& text) {
+        items.push_back({nameId, makeStringValue(text)});
+    };
+
+    const uint32_t wordName = intern("word");
+    const uint32_t nativeSymbolName = intern("native_symbol");
+    const uint32_t stackSignatureName = intern("stack_signature");
+    const uint32_t categoryName = intern("category");
+    const uint32_t bindingName = intern("binding");
+    const uint32_t storesNativeHandleName = intern("stores_native_handle");
+    const uint32_t workerAllowedName = intern("worker_allowed");
+    const uint32_t notesName = intern("notes");
+
     auto declarationList = namedValue(declarationImage, "declarations");
     declarationList->forEachList([&](CPtr<agentc::ListreeValueRef>& ref) {
         auto symbol = ref ? ref->getValue() : nullptr;
@@ -208,7 +313,23 @@ bool writeStaticSlotTableImage(CPtr<agentc::ListreeValue> declarationImage,
         declaration.workerAllowed = intern(stringValue(namedValue(symbol, "worker_allowed")));
         declaration.notes = intern(stringValue(namedValue(symbol, "notes")));
         declarations.push_back(declaration);
+
+        const uint32_t firstItem = static_cast<uint32_t>(items.size());
+        addStringField(wordName, stringValue(namedValue(symbol, "word")));
+        addStringField(nativeSymbolName, stringValue(namedValue(symbol, "native_symbol")));
+        addStringField(stackSignatureName, stringValue(namedValue(symbol, "stack_signature")));
+        addStringField(categoryName, stringValue(namedValue(symbol, "category")));
+        addStringField(bindingName, stringValue(namedValue(symbol, "binding")));
+        addStringField(storesNativeHandleName, stringValue(namedValue(symbol, "stores_native_handle")));
+        addStringField(workerAllowedName, stringValue(namedValue(symbol, "worker_allowed")));
+        addStringField(notesName, stringValue(namedValue(symbol, "notes")));
+        const uint32_t objectId = static_cast<uint32_t>(values.size());
+        values.push_back({StaticSlotValueKind::Object, 0, firstItem, 8});
+        declarationValueIds.push_back(objectId);
+        listEntries.push_back(objectId);
     });
+    const uint32_t rootValue = static_cast<uint32_t>(values.size());
+    values.push_back({StaticSlotValueKind::List, 0, 0, static_cast<uint32_t>(listEntries.size())});
 
     std::string stringRecords;
     std::string stringBytes;
@@ -223,17 +344,39 @@ bool writeStaticSlotTableImage(CPtr<agentc::ListreeValue> declarationImage,
         appendDeclarationRecord(declarationRecords, declaration);
     }
 
-    std::string body = stringRecords + declarationRecords + stringBytes;
+    std::string valueRecords;
+    for (const auto& value : values) {
+        appendValueRecord(valueRecords, value);
+    }
+
+    std::string itemRecords;
+    for (const auto& item : items) {
+        appendItemRecord(itemRecords, item);
+    }
+
+    std::string listEntryRecords;
+    for (const auto& entry : listEntries) {
+        appendU32(listEntryRecords, entry);
+    }
+
+    std::string body = stringRecords + declarationRecords + valueRecords + itemRecords + listEntryRecords + stringBytes;
     const std::string hash = fnv1a64(body);
 
     std::string out;
     out.append(kMagic, sizeof(kMagic));
     appendU32(out, kVersion);
     appendU32(out, moduleName);
+    appendU32(out, rootValue);
     appendU32(out, static_cast<uint32_t>(strings.size()));
     appendU32(out, static_cast<uint32_t>(declarations.size()));
+    appendU32(out, static_cast<uint32_t>(values.size()));
+    appendU32(out, static_cast<uint32_t>(items.size()));
+    appendU32(out, static_cast<uint32_t>(listEntries.size()));
     appendU64(out, static_cast<uint64_t>(stringRecords.size()));
     appendU64(out, static_cast<uint64_t>(declarationRecords.size()));
+    appendU64(out, static_cast<uint64_t>(valueRecords.size()));
+    appendU64(out, static_cast<uint64_t>(itemRecords.size()));
+    appendU64(out, static_cast<uint64_t>(listEntryRecords.size()));
     appendU64(out, static_cast<uint64_t>(stringBytes.size()));
     out.append(hash);
     out.append(body);
@@ -301,10 +444,17 @@ StaticSlotTableView readStaticSlotTableImageMmapReadOnly(const std::string& path
     Header header;
     if (!readU32(bytes, size, cursor, header.version) ||
         !readU32(bytes, size, cursor, header.moduleName) ||
+        !readU32(bytes, size, cursor, header.rootValue) ||
         !readU32(bytes, size, cursor, header.stringCount) ||
         !readU32(bytes, size, cursor, header.declarationCount) ||
+        !readU32(bytes, size, cursor, header.valueCount) ||
+        !readU32(bytes, size, cursor, header.itemCount) ||
+        !readU32(bytes, size, cursor, header.listEntryCount) ||
         !readU64(bytes, size, cursor, header.stringRecordBytes) ||
         !readU64(bytes, size, cursor, header.declarationRecordBytes) ||
+        !readU64(bytes, size, cursor, header.valueRecordBytes) ||
+        !readU64(bytes, size, cursor, header.itemRecordBytes) ||
+        !readU64(bytes, size, cursor, header.listEntryBytes) ||
         !readU64(bytes, size, cursor, header.stringBytes)) {
         view.validation_ = fail("truncated_header", "static slot table image header is truncated");
         if (error) {
@@ -332,7 +482,10 @@ StaticSlotTableView readStaticSlotTableImageMmapReadOnly(const std::string& path
     }
     if (header.stringRecordBytes != static_cast<uint64_t>(header.stringCount) * 16ull ||
         header.declarationRecordBytes != static_cast<uint64_t>(header.declarationCount) * 32ull ||
-        cursor + header.stringRecordBytes + header.declarationRecordBytes + header.stringBytes != size) {
+        header.valueRecordBytes != static_cast<uint64_t>(header.valueCount) * 16ull ||
+        header.itemRecordBytes != static_cast<uint64_t>(header.itemCount) * 8ull ||
+        header.listEntryBytes != static_cast<uint64_t>(header.listEntryCount) * 4ull ||
+        cursor + header.stringRecordBytes + header.declarationRecordBytes + header.valueRecordBytes + header.itemRecordBytes + header.listEntryBytes + header.stringBytes != size) {
         view.validation_ = fail("invalid_lengths", "static slot table image section lengths are invalid");
         if (error) {
             *error = view.validation_.message;
@@ -341,7 +494,7 @@ StaticSlotTableView readStaticSlotTableImageMmapReadOnly(const std::string& path
     }
 
     const char* body = bytes + cursor;
-    const size_t bodySize = static_cast<size_t>(header.stringRecordBytes + header.declarationRecordBytes + header.stringBytes);
+    const size_t bodySize = static_cast<size_t>(header.stringRecordBytes + header.declarationRecordBytes + header.valueRecordBytes + header.itemRecordBytes + header.listEntryBytes + header.stringBytes);
     if (fnv1a64(std::string(body, bodySize)) != std::string(header.payloadHash)) {
         view.validation_ = fail("payload_hash_mismatch", "static slot table image payload hash mismatch");
         if (error) {
@@ -367,6 +520,8 @@ StaticSlotTableView readStaticSlotTableImageMmapReadOnly(const std::string& path
         view.stringLengths_.push_back(length);
     }
 
+    auto validStringId = [&](uint32_t id) { return id < header.stringCount; };
+
     view.declarations_.reserve(header.declarationCount);
     for (uint32_t i = 0; i < header.declarationCount; ++i) {
         StaticSlotTableDeclaration declaration;
@@ -377,7 +532,6 @@ StaticSlotTableView readStaticSlotTableImageMmapReadOnly(const std::string& path
             }
             return view;
         }
-        auto validStringId = [&](uint32_t id) { return id < header.stringCount; };
         if (!validStringId(declaration.word) || !validStringId(declaration.nativeSymbol) ||
             !validStringId(declaration.stackSignature) || !validStringId(declaration.category) ||
             !validStringId(declaration.binding) || !validStringId(declaration.storesNativeHandle) ||
@@ -391,10 +545,103 @@ StaticSlotTableView readStaticSlotTableImageMmapReadOnly(const std::string& path
         view.declarations_.push_back(declaration);
     }
 
+    view.values_.reserve(header.valueCount);
+    for (uint32_t i = 0; i < header.valueCount; ++i) {
+        StaticSlotTableValueRecord value;
+        if (!readValueRecord(bytes, size, cursor, value)) {
+            view.validation_ = fail("invalid_value_record", "static slot table image value record is truncated");
+            if (error) {
+                *error = view.validation_.message;
+            }
+            return view;
+        }
+        if (value.kind == StaticSlotValueKind::String && !validStringId(value.stringId)) {
+            view.validation_ = fail("invalid_value_reference", "static slot table string value references an invalid string id");
+            if (error) {
+                *error = view.validation_.message;
+            }
+            return view;
+        }
+        if (value.kind == StaticSlotValueKind::Object && (value.first > header.itemCount || value.count > header.itemCount || value.first + value.count > header.itemCount)) {
+            view.validation_ = fail("invalid_value_reference", "static slot table object value references invalid item range");
+            if (error) {
+                *error = view.validation_.message;
+            }
+            return view;
+        }
+        if (value.kind == StaticSlotValueKind::List && (value.first > header.listEntryCount || value.count > header.listEntryCount || value.first + value.count > header.listEntryCount)) {
+            view.validation_ = fail("invalid_value_reference", "static slot table list value references invalid entry range");
+            if (error) {
+                *error = view.validation_.message;
+            }
+            return view;
+        }
+        if (value.kind != StaticSlotValueKind::String && value.kind != StaticSlotValueKind::Object && value.kind != StaticSlotValueKind::List) {
+            view.validation_ = fail("invalid_value_kind", "static slot table value kind is unsupported");
+            if (error) {
+                *error = view.validation_.message;
+            }
+            return view;
+        }
+        view.values_.push_back(value);
+    }
+
+    view.items_.reserve(header.itemCount);
+    for (uint32_t i = 0; i < header.itemCount; ++i) {
+        StaticSlotTableItemRecord item;
+        if (!readItemRecord(bytes, size, cursor, item) || !validStringId(item.name) || item.value >= header.valueCount) {
+            view.validation_ = fail("invalid_item_record", "static slot table item record is invalid");
+            if (error) {
+                *error = view.validation_.message;
+            }
+            return view;
+        }
+        view.items_.push_back(item);
+    }
+
+    view.listEntries_.reserve(header.listEntryCount);
+    for (uint32_t i = 0; i < header.listEntryCount; ++i) {
+        uint32_t entry = 0;
+        if (!readU32(bytes, size, cursor, entry) || entry >= header.valueCount) {
+            view.validation_ = fail("invalid_list_entry", "static slot table list entry is invalid");
+            if (error) {
+                *error = view.validation_.message;
+            }
+            return view;
+        }
+        view.listEntries_.push_back(entry);
+    }
+
     view.mappedRegion_ = std::move(region);
     view.stringBytes_ = bytes + cursor;
     view.stringBytesSize_ = static_cast<size_t>(header.stringBytes);
     view.moduleName_ = header.moduleName;
+    view.rootValueId_ = header.rootValue;
+    if (view.rootValueId_ >= header.valueCount || view.valueKind(view.rootValueId_) != StaticSlotValueKind::List) {
+        view.validation_ = fail("invalid_root_reference", "static slot table root value is invalid");
+        if (error) {
+            *error = view.validation_.message;
+        }
+        return view;
+    }
+    if (view.listValueCount(view.rootValueId_) != header.declarationCount) {
+        view.validation_ = fail("invalid_root_list", "static slot table root list does not match declaration count");
+        if (error) {
+            *error = view.validation_.message;
+        }
+        return view;
+    }
+    for (uint32_t i = 0; i < header.declarationCount; ++i) {
+        const uint32_t objectId = view.listValueAt(view.rootValueId_, i);
+        if (objectId >= header.valueCount || view.valueKind(objectId) != StaticSlotValueKind::Object) {
+            view.validation_ = fail("invalid_root_list", "static slot table root list entry is not an object");
+            if (error) {
+                *error = view.validation_.message;
+            }
+            return view;
+        }
+        view.declarationValueIds_.push_back(objectId);
+    }
     if (view.moduleName_ >= header.stringCount) {
         view.validation_ = fail("invalid_module_reference", "static slot table image module name references an invalid string id");
         if (error) {

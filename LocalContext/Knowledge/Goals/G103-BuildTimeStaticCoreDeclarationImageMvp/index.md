@@ -46,7 +46,7 @@ The next mount architecture is captured in 🔗[WP — Static Declaration Image 
 
 Stage 2's test-only binary container is now implemented. It preserves the metadata-only/no-native-handle invariant while giving G103 a durable byte-format boundary before raw allocator-backed static slot mounting.
 
-The true static slot-table boundary is specified in 🔗[WP — Static Slot Table Image Boundary](../../WorkProducts/WP-StaticSlotTableImageBoundary-2026-05-19/index.md). The first borrowed static slot-table inspector is now implemented before allocator-mounted static slabs: it uses image-local string/declaration ids, validates section lengths and payload hashes, rejects corrupt images, and inspects declarations directly from read-only mmapped bytes without ordinary `CPtr`/Listree handles.
+The true static slot-table boundary is specified in 🔗[WP — Static Slot Table Image Boundary](../../WorkProducts/WP-StaticSlotTableImageBoundary-2026-05-19/index.md). The first borrowed static slot-table inspector is now implemented before allocator-mounted static slabs: it uses image-local string/declaration/value/list/item ids, validates section lengths and payload hashes, rejects corrupt images, and inspects declarations plus generic object/list/string records directly from read-only mmapped bytes without ordinary `CPtr`/Listree handles.
 
 ## First Declaration Image Schema — 2026-05-19
 
@@ -95,7 +95,7 @@ This slice intentionally does **not** yet generate mmap slab files or mount OS-r
 - Added a durable static mount design work product that defines the staged path from JSON-byte mmap import to binary containers, static slot tables, and eventual Root1 image mount registry integration.
 - Added a test-only static binary declaration-image container with magic/version/manifest-length/payload-length/manifest-json/payload-json bytes. The container is read through `PROT_READ` mmap, validates magic/version/lengths plus manifest payload hash, then mounts through `mountDeclarationImageReadOnly(...)`.
 - Added a static slot-table boundary plan that defines image-local ids, section layout, borrowed static view versus allocator-mounted static slab tradeoffs, validation checklist, and the next concrete `StaticSlotTableImage` prototype step.
-- Added `edict/static_slot_table_image.{h,cpp}` with `writeStaticSlotTableImage(...)` and `readStaticSlotTableImageMmapReadOnly(...)`. The first borrowed view stores compact string records plus declaration records and exposes module/declaration inspection without constructing ordinary Listree values from the mapped bytes.
+- Added `edict/static_slot_table_image.{h,cpp}` with `writeStaticSlotTableImage(...)` and `readStaticSlotTableImageMmapReadOnly(...)`. The first borrowed view stores compact string records, declaration records, generic value records, object item records, and list entry records, exposing module/declaration/object-field inspection without constructing ordinary Listree values from the mapped bytes.
 - Added corrupt-image validation for bad magic and payload hash mismatch.
 - Added `StaticDeclarationImageTest.WorkerPrimitiveImageIsMetadataOnlyAndValidates`, `StaticDeclarationImageTest.WorkerPrimitiveImageRoundTripsThroughFile`, `StaticDeclarationImageTest.BinaryContainerMmapValidatesAndMountsStaticImmortal`, `StaticDeclarationImageTest.BinaryContainerRejectsInvalidMagic`, `StaticDeclarationImageTest.MmapReadOnlyImageCanBeMountedStaticImmortal`, `StaticDeclarationImageTest.ReadOnlyMountMarksDeclarationValueSlotsStaticImmortal`, and `StaticDeclarationImageTest.ValidationRejectsPayloadHashMismatch`.
 

@@ -16,6 +16,13 @@
 
 namespace agentc::edict::static_image {
 
+enum class StaticSlotValueKind : uint32_t {
+    Invalid = 0,
+    String = 1,
+    Object = 2,
+    List = 3,
+};
+
 struct StaticSlotTableDeclaration {
     uint32_t word = 0;
     uint32_t nativeSymbol = 0;
@@ -27,6 +34,18 @@ struct StaticSlotTableDeclaration {
     uint32_t notes = 0;
 };
 
+struct StaticSlotTableValueRecord {
+    StaticSlotValueKind kind = StaticSlotValueKind::Invalid;
+    uint32_t stringId = 0;
+    uint32_t first = 0;
+    uint32_t count = 0;
+};
+
+struct StaticSlotTableItemRecord {
+    uint32_t name = 0;
+    uint32_t value = 0;
+};
+
 class StaticSlotTableView {
 public:
     StaticSlotTableView() = default;
@@ -36,8 +55,15 @@ public:
 
     size_t stringCount() const { return stringOffsets_.size(); }
     size_t declarationCount() const { return declarations_.size(); }
+    size_t valueCount() const { return values_.size(); }
+    uint32_t rootValueId() const { return rootValueId_; }
 
     std::string stringAt(uint32_t id) const;
+    StaticSlotValueKind valueKind(uint32_t valueId) const;
+    size_t listValueCount(uint32_t valueId) const;
+    uint32_t listValueAt(uint32_t valueId, size_t index) const;
+    std::string objectStringField(uint32_t valueId, const std::string& fieldName) const;
+    uint32_t declarationValueId(size_t index) const;
     std::string declarationWord(size_t index) const;
     std::string declarationNativeSymbol(size_t index) const;
     std::string declarationStackSignature(size_t index) const;
@@ -52,9 +78,14 @@ private:
     const char* stringBytes_ = nullptr;
     size_t stringBytesSize_ = 0;
     uint32_t moduleName_ = 0;
+    uint32_t rootValueId_ = 0;
     std::vector<uint64_t> stringOffsets_;
     std::vector<uint64_t> stringLengths_;
     std::vector<StaticSlotTableDeclaration> declarations_;
+    std::vector<uint32_t> declarationValueIds_;
+    std::vector<StaticSlotTableValueRecord> values_;
+    std::vector<StaticSlotTableItemRecord> items_;
+    std::vector<uint32_t> listEntries_;
 };
 
 bool writeStaticSlotTableImage(CPtr<agentc::ListreeValue> declarationImage,
