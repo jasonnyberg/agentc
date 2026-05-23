@@ -47,6 +47,14 @@ size_t listCount(CPtr<agentc::ListreeValue> value) {
     return count;
 }
 
+void resetListreeAllocatorsForStaticDeclarationTests() {
+    Allocator<agentc::ListreeValue>::getAllocator().resetForTests();
+    Allocator<agentc::ListreeValueRef>::getAllocator().resetForTests();
+    Allocator<CLL<agentc::ListreeValueRef>>::getAllocator().resetForTests();
+    Allocator<agentc::ListreeItem>::getAllocator().resetForTests();
+    Allocator<AATree<agentc::ListreeItem>>::getAllocator().resetForTests();
+}
+
 } // namespace
 
 TEST(StaticDeclarationImageTest, WorkerPrimitiveImageIsMetadataOnlyAndValidates) {
@@ -157,6 +165,45 @@ TEST(StaticDeclarationImageTest, MmapReadOnlyImageCanBeMountedStaticImmortal) {
     EXPECT_EQ(mounted.root->getPinnedCount(), pinsBefore);
 
     std::filesystem::remove(path);
+}
+
+TEST(StaticDeclarationImageTest, RegistryBackedMountExposesLogicalMountIdAndRootMetadata) {
+    resetListreeAllocatorsForStaticDeclarationTests();
+
+    auto image = agentc::edict::static_image::buildWorkerPrimitiveDeclarationImage();
+    const SlabId rootSid = image.getSlabId();
+    agentc::ListreeStaticMountRegistry registry;
+    uint64_t mountId = 0;
+
+    {
+        auto mounted = agentc::edict::static_image::mountDeclarationImageReadOnly(image, registry);
+        ASSERT_TRUE(mounted.validation.ok) << mounted.validation.code << ": " << mounted.validation.message;
+        ASSERT_NE(mounted.mountId, 0u);
+        EXPECT_EQ(mounted.rootId, rootSid);
+        EXPECT_TRUE(mounted.root->isReadOnly());
+        EXPECT_TRUE(registry.active(mounted.mountId));
+        EXPECT_EQ(registry.rootId(mounted.mountId), rootSid);
+        mountId = mounted.mountId;
+    }
+
+    image = nullptr;
+    ASSERT_TRUE(Allocator<agentc::ListreeValue>::getAllocator().valid(rootSid));
+    ASSERT_TRUE(Allocator<agentc::ListreeValue>::getAllocator().slotIsStaticImmortal(rootSid));
+
+    {
+        auto root = registry.root(mountId);
+        ASSERT_TRUE(root);
+        EXPECT_EQ(root.getSlabId(), rootSid);
+        const auto validation = agentc::edict::static_image::validateDeclarationImage(root);
+        EXPECT_TRUE(validation.ok) << validation.code << ": " << validation.message;
+    }
+
+    EXPECT_TRUE(registry.unmount(mountId));
+    EXPECT_FALSE(registry.active(mountId));
+    EXPECT_FALSE(bool(registry.root(mountId)));
+    EXPECT_FALSE(Allocator<agentc::ListreeValue>::getAllocator().slotIsStaticImmortal(rootSid));
+
+    resetListreeAllocatorsForStaticDeclarationTests();
 }
 
 TEST(StaticDeclarationImageTest, ReadOnlyMountMarksDeclarationValueSlotsStaticImmortal) {

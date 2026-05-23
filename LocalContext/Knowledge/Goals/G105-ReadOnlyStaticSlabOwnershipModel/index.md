@@ -74,13 +74,14 @@ The first probe implements process-local static-immortal slab metadata without c
 - `ListreeStaticMountLease` is the first explicit static mount/unmount wrapper for the Listree allocator family. It records slab marks made for the mounted image lifetime and releases them in reverse allocator order. Allocator static slab/slot marks are now reference-counted, so lease release does not clear independently-held static ownership marks. `StaticSlabOwnershipTest.StaticMountLeaseReleasesExactMarksWithoutClearingExternalOwners` covers this exact-mark behavior.
 - `StaticSlabOwnershipTest.StaticMountCanBeBackedByOSReadOnlyMmap` proves that when a slab image is mapped `PROT_READ` via the OS, reading the nodes operates safely. The test asserts the node is readable, implicitly confirming no hidden initial metadata writes occur, and comments note that writing to `inUse` or node properties would correctly OS-segfault.
 - `StaticSlabOwnershipTest.StaticMountRegistryExposesLogicalMountIdsAndRoots` covers the first logical image/root registry seam: mounting an active static root returns a process-local mount id, root lookup works after ordinary handles drop, and unmount clears the lease-owned static marks plus registry access.
+- `StaticDeclarationImageTest.RegistryBackedMountExposesLogicalMountIdAndRootMetadata` wires the registry seam into G103 declaration-image metadata: `mountDeclarationImageReadOnly(image, registry)` now returns `mountId` and `rootId`, validates root lookup after ordinary handles drop, and verifies registry unmount clears lease-owned static ownership.
 - G103 now uses the slot-level seam in `mountDeclarationImageReadOnly(...)` so declaration images can be logically frozen and marked static-immortal without marking whole mixed-use dynamic slabs.
 
 This is still a **probe**, not final static slab mounting: static slabs are marked after normal allocation, and the backing memory is not yet protected by OS `PROT_READ`. It is nevertheless the first implementation seam G103 needs before declaration images can become true read-only slab mounts.
 
 ## Recommended Next Implementation Slice
 
-Continue toward true G103/G105 convergence by replacing the test-only dummy mmap file with an actual file-backed G103 static declaration image and wiring `ListreeStaticMountRegistry` to declaration-image/static-slot-table mount metadata.
+Continue toward true G103/G105 convergence by replacing the test-only dummy mmap file with an actual file-backed G103 static declaration image and extending registry metadata from process-local mount ids to image ids, manifest hashes, section/root descriptors, and static-slot-table provenance.
 
 ## Acceptance Criteria
 - [ ] Static/read-only slabs can be mounted and traversed without mutating their `inUse` or node-local pin metadata.

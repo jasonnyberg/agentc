@@ -24,6 +24,8 @@ struct MountedDeclarationImage {
     CPtr<agentc::ListreeValue> root;
     ValidationResult validation;
     std::vector<SlabId> staticValueSlots;
+    SlabId rootId;
+    uint64_t mountId = 0;
 };
 
 // G103 first slice: a deterministic declarative import image for the small
@@ -47,6 +49,8 @@ CPtr<agentc::ListreeValue> readDeclarationImageContainerMmapReadOnly(const std::
                                                                      std::string* error = nullptr);
 ValidationResult validateDeclarationImage(CPtr<agentc::ListreeValue> image);
 MountedDeclarationImage mountDeclarationImageReadOnly(CPtr<agentc::ListreeValue> image);
+MountedDeclarationImage mountDeclarationImageReadOnly(CPtr<agentc::ListreeValue> image,
+                                                     agentc::ListreeStaticMountRegistry& registry);
 
 std::string declarationPayloadHash(CPtr<agentc::ListreeValue> declarations);
 

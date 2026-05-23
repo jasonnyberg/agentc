@@ -409,6 +409,7 @@ ValidationResult validateDeclarationImage(CPtr<agentc::ListreeValue> image) {
 MountedDeclarationImage mountDeclarationImageReadOnly(CPtr<agentc::ListreeValue> image) {
     MountedDeclarationImage mounted;
     mounted.root = image;
+    mounted.rootId = image ? image.getSlabId() : SlabId();
     mounted.validation = validateDeclarationImage(image);
     if (!mounted.validation.ok || !image) {
         return mounted;
@@ -429,7 +430,7 @@ MountedDeclarationImage mountDeclarationImageReadOnly(CPtr<agentc::ListreeValue>
             slots.push_back(sid);
         }
     });
-    const SlabId rootSid = image.getSlabId();
+    const SlabId rootSid = mounted.rootId;
     if (std::find(slots.begin(), slots.end(), rootSid) == slots.end()) {
         slots.push_back(rootSid);
     }
@@ -438,6 +439,28 @@ MountedDeclarationImage mountDeclarationImageReadOnly(CPtr<agentc::ListreeValue>
         if (allocator.markSlotStaticImmortal(sid)) {
             mounted.staticValueSlots.push_back(sid);
         }
+    }
+    return mounted;
+}
+
+MountedDeclarationImage mountDeclarationImageReadOnly(CPtr<agentc::ListreeValue> image,
+                                                     agentc::ListreeStaticMountRegistry& registry) {
+    MountedDeclarationImage mounted;
+    mounted.root = image;
+    mounted.rootId = image ? image.getSlabId() : SlabId();
+    mounted.validation = validateDeclarationImage(image);
+    if (!mounted.validation.ok || !image) {
+        return mounted;
+    }
+
+    // The registry-backed mount keeps logical mount identity separate from the
+    // native/process-local static ownership marks.  Freeze before the registry
+    // lease is created because real static images become OS read-only after this
+    // mutable preparation phase.
+    image->setReadOnly(true);
+    mounted.mountId = registry.mountActiveRoot(image);
+    if (mounted.mountId == 0) {
+        mounted.validation = ValidationResult{false, "mount_failed", "failed to register static declaration image mount"};
     }
     return mounted;
 }
