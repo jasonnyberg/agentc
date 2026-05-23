@@ -46,6 +46,11 @@ struct StaticSlotTableItemRecord {
     uint32_t value = 0;
 };
 
+struct StaticSlotTableTreeRecord {
+    uint32_t firstItem = 0;
+    uint32_t itemCount = 0;
+};
+
 class StaticSlotTableView {
 public:
     StaticSlotTableView() = default;
@@ -84,6 +89,7 @@ private:
     std::vector<StaticSlotTableDeclaration> declarations_;
     std::vector<uint32_t> declarationValueIds_;
     std::vector<StaticSlotTableValueRecord> values_;
+    std::vector<StaticSlotTableTreeRecord> trees_;
     std::vector<StaticSlotTableItemRecord> items_;
     std::vector<uint32_t> listEntries_;
 };

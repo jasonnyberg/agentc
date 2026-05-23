@@ -32,11 +32,13 @@ struct Header {
     uint32_t stringCount = 0;
     uint32_t declarationCount = 0;
     uint32_t valueCount = 0;
+    uint32_t treeCount = 0;
     uint32_t itemCount = 0;
     uint32_t listEntryCount = 0;
     uint64_t stringRecordBytes = 0;
     uint64_t declarationRecordBytes = 0;
     uint64_t valueRecordBytes = 0;
+    uint64_t treeRecordBytes = 0;
     uint64_t itemRecordBytes = 0;
     uint64_t listEntryBytes = 0;
     uint64_t stringBytes = 0;
@@ -134,6 +136,19 @@ bool readValueRecord(const char* data,
     return true;
 }
 
+void appendTreeRecord(std::string& out, const StaticSlotTableTreeRecord& tree) {
+    appendU32(out, tree.firstItem);
+    appendU32(out, tree.itemCount);
+}
+
+bool readTreeRecord(const char* data,
+                    size_t size,
+                    size_t& cursor,
+                    StaticSlotTableTreeRecord& tree) {
+    return readU32(data, size, cursor, tree.firstItem) &&
+           readU32(data, size, cursor, tree.itemCount);
+}
+
 void appendItemRecord(std::string& out, const StaticSlotTableItemRecord& item) {
     appendU32(out, item.name);
     appendU32(out, item.value);
@@ -213,14 +228,29 @@ uint32_t StaticSlotTableView::listValueAt(uint32_t valueId, size_t index) const 
 }
 
 std::string StaticSlotTableView::objectStringField(uint32_t valueId, const std::string& fieldName) const {
-    if (valueId >= values_.size() || values_[valueId].kind != StaticSlotValueKind::Object) {
+    if (valueId >= values_.size() || values_[valueId].kind != StaticSlotValueKind::Object || values_[valueId].first >= trees_.size()) {
         return {};
     }
-    const auto& value = values_[valueId];
-    for (uint32_t i = 0; i < value.count && value.first + i < items_.size(); ++i) {
-        const auto& item = items_[value.first + i];
-        if (stringAt(item.name) == fieldName && item.value < values_.size() && values_[item.value].kind == StaticSlotValueKind::String) {
-            return stringAt(values_[item.value].stringId);
+    const auto& tree = trees_[values_[valueId].first];
+    size_t low = 0;
+    size_t high = tree.itemCount;
+    while (low < high) {
+        const size_t mid = low + ((high - low) / 2);
+        if (tree.firstItem + mid >= items_.size()) {
+            return {};
+        }
+        const auto& item = items_[tree.firstItem + mid];
+        const std::string name = stringAt(item.name);
+        if (name == fieldName) {
+            if (item.value < values_.size() && values_[item.value].kind == StaticSlotValueKind::String) {
+                return stringAt(values_[item.value].stringId);
+            }
+            return {};
+        }
+        if (name < fieldName) {
+            low = mid + 1;
+        } else {
+            high = mid;
         }
     }
     return {};
@@ -276,6 +306,7 @@ bool writeStaticSlotTableImage(CPtr<agentc::ListreeValue> declarationImage,
     std::vector<StaticSlotTableDeclaration> declarations;
     std::vector<uint32_t> declarationValueIds;
     std::vector<StaticSlotTableValueRecord> values;
+    std::vector<StaticSlotTableTreeRecord> trees;
     std::vector<StaticSlotTableItemRecord> items;
     std::vector<uint32_t> listEntries;
 
@@ -284,8 +315,8 @@ bool writeStaticSlotTableImage(CPtr<agentc::ListreeValue> declarationImage,
         values.push_back({StaticSlotValueKind::String, intern(text), 0, 0});
         return id;
     };
-    auto addStringField = [&](uint32_t nameId, const std::string& text) {
-        items.push_back({nameId, makeStringValue(text)});
+    auto makeStringField = [&](uint32_t nameId, const std::string& text) {
+        return StaticSlotTableItemRecord{nameId, makeStringValue(text)};
     };
 
     const uint32_t wordName = intern("word");
@@ -314,17 +345,24 @@ bool writeStaticSlotTableImage(CPtr<agentc::ListreeValue> declarationImage,
         declaration.notes = intern(stringValue(namedValue(symbol, "notes")));
         declarations.push_back(declaration);
 
+        std::vector<StaticSlotTableItemRecord> objectItems;
+        objectItems.push_back(makeStringField(wordName, stringValue(namedValue(symbol, "word"))));
+        objectItems.push_back(makeStringField(nativeSymbolName, stringValue(namedValue(symbol, "native_symbol"))));
+        objectItems.push_back(makeStringField(stackSignatureName, stringValue(namedValue(symbol, "stack_signature"))));
+        objectItems.push_back(makeStringField(categoryName, stringValue(namedValue(symbol, "category"))));
+        objectItems.push_back(makeStringField(bindingName, stringValue(namedValue(symbol, "binding"))));
+        objectItems.push_back(makeStringField(storesNativeHandleName, stringValue(namedValue(symbol, "stores_native_handle"))));
+        objectItems.push_back(makeStringField(workerAllowedName, stringValue(namedValue(symbol, "worker_allowed"))));
+        objectItems.push_back(makeStringField(notesName, stringValue(namedValue(symbol, "notes"))));
+        std::sort(objectItems.begin(), objectItems.end(), [&](const auto& lhs, const auto& rhs) {
+            return strings[lhs.name] < strings[rhs.name];
+        });
         const uint32_t firstItem = static_cast<uint32_t>(items.size());
-        addStringField(wordName, stringValue(namedValue(symbol, "word")));
-        addStringField(nativeSymbolName, stringValue(namedValue(symbol, "native_symbol")));
-        addStringField(stackSignatureName, stringValue(namedValue(symbol, "stack_signature")));
-        addStringField(categoryName, stringValue(namedValue(symbol, "category")));
-        addStringField(bindingName, stringValue(namedValue(symbol, "binding")));
-        addStringField(storesNativeHandleName, stringValue(namedValue(symbol, "stores_native_handle")));
-        addStringField(workerAllowedName, stringValue(namedValue(symbol, "worker_allowed")));
-        addStringField(notesName, stringValue(namedValue(symbol, "notes")));
+        items.insert(items.end(), objectItems.begin(), objectItems.end());
+        const uint32_t treeId = static_cast<uint32_t>(trees.size());
+        trees.push_back({firstItem, static_cast<uint32_t>(objectItems.size())});
         const uint32_t objectId = static_cast<uint32_t>(values.size());
-        values.push_back({StaticSlotValueKind::Object, 0, firstItem, 8});
+        values.push_back({StaticSlotValueKind::Object, 0, treeId, 1});
         declarationValueIds.push_back(objectId);
         listEntries.push_back(objectId);
     });
@@ -349,6 +387,11 @@ bool writeStaticSlotTableImage(CPtr<agentc::ListreeValue> declarationImage,
         appendValueRecord(valueRecords, value);
     }
 
+    std::string treeRecords;
+    for (const auto& tree : trees) {
+        appendTreeRecord(treeRecords, tree);
+    }
+
     std::string itemRecords;
     for (const auto& item : items) {
         appendItemRecord(itemRecords, item);
@@ -359,7 +402,7 @@ bool writeStaticSlotTableImage(CPtr<agentc::ListreeValue> declarationImage,
         appendU32(listEntryRecords, entry);
     }
 
-    std::string body = stringRecords + declarationRecords + valueRecords + itemRecords + listEntryRecords + stringBytes;
+    std::string body = stringRecords + declarationRecords + valueRecords + treeRecords + itemRecords + listEntryRecords + stringBytes;
     const std::string hash = fnv1a64(body);
 
     std::string out;
@@ -370,11 +413,13 @@ bool writeStaticSlotTableImage(CPtr<agentc::ListreeValue> declarationImage,
     appendU32(out, static_cast<uint32_t>(strings.size()));
     appendU32(out, static_cast<uint32_t>(declarations.size()));
     appendU32(out, static_cast<uint32_t>(values.size()));
+    appendU32(out, static_cast<uint32_t>(trees.size()));
     appendU32(out, static_cast<uint32_t>(items.size()));
     appendU32(out, static_cast<uint32_t>(listEntries.size()));
     appendU64(out, static_cast<uint64_t>(stringRecords.size()));
     appendU64(out, static_cast<uint64_t>(declarationRecords.size()));
     appendU64(out, static_cast<uint64_t>(valueRecords.size()));
+    appendU64(out, static_cast<uint64_t>(treeRecords.size()));
     appendU64(out, static_cast<uint64_t>(itemRecords.size()));
     appendU64(out, static_cast<uint64_t>(listEntryRecords.size()));
     appendU64(out, static_cast<uint64_t>(stringBytes.size()));
@@ -448,11 +493,13 @@ StaticSlotTableView readStaticSlotTableImageMmapReadOnly(const std::string& path
         !readU32(bytes, size, cursor, header.stringCount) ||
         !readU32(bytes, size, cursor, header.declarationCount) ||
         !readU32(bytes, size, cursor, header.valueCount) ||
+        !readU32(bytes, size, cursor, header.treeCount) ||
         !readU32(bytes, size, cursor, header.itemCount) ||
         !readU32(bytes, size, cursor, header.listEntryCount) ||
         !readU64(bytes, size, cursor, header.stringRecordBytes) ||
         !readU64(bytes, size, cursor, header.declarationRecordBytes) ||
         !readU64(bytes, size, cursor, header.valueRecordBytes) ||
+        !readU64(bytes, size, cursor, header.treeRecordBytes) ||
         !readU64(bytes, size, cursor, header.itemRecordBytes) ||
         !readU64(bytes, size, cursor, header.listEntryBytes) ||
         !readU64(bytes, size, cursor, header.stringBytes)) {
@@ -483,9 +530,10 @@ StaticSlotTableView readStaticSlotTableImageMmapReadOnly(const std::string& path
     if (header.stringRecordBytes != static_cast<uint64_t>(header.stringCount) * 16ull ||
         header.declarationRecordBytes != static_cast<uint64_t>(header.declarationCount) * 32ull ||
         header.valueRecordBytes != static_cast<uint64_t>(header.valueCount) * 16ull ||
+        header.treeRecordBytes != static_cast<uint64_t>(header.treeCount) * 8ull ||
         header.itemRecordBytes != static_cast<uint64_t>(header.itemCount) * 8ull ||
         header.listEntryBytes != static_cast<uint64_t>(header.listEntryCount) * 4ull ||
-        cursor + header.stringRecordBytes + header.declarationRecordBytes + header.valueRecordBytes + header.itemRecordBytes + header.listEntryBytes + header.stringBytes != size) {
+        cursor + header.stringRecordBytes + header.declarationRecordBytes + header.valueRecordBytes + header.treeRecordBytes + header.itemRecordBytes + header.listEntryBytes + header.stringBytes != size) {
         view.validation_ = fail("invalid_lengths", "static slot table image section lengths are invalid");
         if (error) {
             *error = view.validation_.message;
@@ -494,7 +542,7 @@ StaticSlotTableView readStaticSlotTableImageMmapReadOnly(const std::string& path
     }
 
     const char* body = bytes + cursor;
-    const size_t bodySize = static_cast<size_t>(header.stringRecordBytes + header.declarationRecordBytes + header.valueRecordBytes + header.itemRecordBytes + header.listEntryBytes + header.stringBytes);
+    const size_t bodySize = static_cast<size_t>(header.stringRecordBytes + header.declarationRecordBytes + header.valueRecordBytes + header.treeRecordBytes + header.itemRecordBytes + header.listEntryBytes + header.stringBytes);
     if (fnv1a64(std::string(body, bodySize)) != std::string(header.payloadHash)) {
         view.validation_ = fail("payload_hash_mismatch", "static slot table image payload hash mismatch");
         if (error) {
@@ -562,8 +610,8 @@ StaticSlotTableView readStaticSlotTableImageMmapReadOnly(const std::string& path
             }
             return view;
         }
-        if (value.kind == StaticSlotValueKind::Object && (value.first > header.itemCount || value.count > header.itemCount || value.first + value.count > header.itemCount)) {
-            view.validation_ = fail("invalid_value_reference", "static slot table object value references invalid item range");
+        if (value.kind == StaticSlotValueKind::Object && (value.first >= header.treeCount || value.count != 1)) {
+            view.validation_ = fail("invalid_value_reference", "static slot table object value references invalid tree id");
             if (error) {
                 *error = view.validation_.message;
             }
@@ -586,6 +634,20 @@ StaticSlotTableView readStaticSlotTableImageMmapReadOnly(const std::string& path
         view.values_.push_back(value);
     }
 
+    view.trees_.reserve(header.treeCount);
+    for (uint32_t i = 0; i < header.treeCount; ++i) {
+        StaticSlotTableTreeRecord tree;
+        if (!readTreeRecord(bytes, size, cursor, tree) ||
+            tree.firstItem > header.itemCount || tree.itemCount > header.itemCount || tree.firstItem + tree.itemCount > header.itemCount) {
+            view.validation_ = fail("invalid_tree_record", "static slot table tree record is invalid");
+            if (error) {
+                *error = view.validation_.message;
+            }
+            return view;
+        }
+        view.trees_.push_back(tree);
+    }
+
     view.items_.reserve(header.itemCount);
     for (uint32_t i = 0; i < header.itemCount; ++i) {
         StaticSlotTableItemRecord item;
@@ -597,6 +659,20 @@ StaticSlotTableView readStaticSlotTableImageMmapReadOnly(const std::string& path
             return view;
         }
         view.items_.push_back(item);
+    }
+
+    for (const auto& tree : view.trees_) {
+        for (uint32_t i = 1; i < tree.itemCount; ++i) {
+            const auto& previous = view.items_[tree.firstItem + i - 1];
+            const auto& current = view.items_[tree.firstItem + i];
+            if (view.stringAt(previous.name) > view.stringAt(current.name)) {
+                view.validation_ = fail("unsorted_tree_items", "static slot table tree items must be sorted by field name");
+                if (error) {
+                    *error = view.validation_.message;
+                }
+                return view;
+            }
+        }
     }
 
     view.listEntries_.reserve(header.listEntryCount);
