@@ -72,6 +72,7 @@ public:
     size_t sectionCount() const { return sections_.size(); }
     StaticSlotTableSectionDescriptor section(size_t index) const;
     StaticSlotTableSectionDescriptor sectionById(const std::string& sectionId) const;
+    std::string payloadHash() const { return payloadHash_; }
 
     std::string stringAt(uint32_t id) const;
     StaticSlotValueKind valueKind(uint32_t valueId) const;
@@ -95,6 +96,7 @@ private:
     size_t stringBytesSize_ = 0;
     uint32_t moduleName_ = 0;
     uint32_t rootValueId_ = 0;
+    std::string payloadHash_;
     std::vector<uint64_t> stringOffsets_;
     std::vector<uint64_t> stringLengths_;
     std::vector<StaticSlotTableDeclaration> declarations_;
@@ -112,5 +114,6 @@ bool writeStaticSlotTableImage(CPtr<agentc::ListreeValue> declarationImage,
                                std::string* error = nullptr);
 StaticSlotTableView readStaticSlotTableImageMmapReadOnly(const std::string& path,
                                                          std::string* error = nullptr);
+agentc::ListreeStaticMountMetadata staticSlotTableMountMetadata(const StaticSlotTableView& view);
 
 } // namespace agentc::edict::static_image

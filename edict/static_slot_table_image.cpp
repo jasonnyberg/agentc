@@ -741,6 +741,7 @@ StaticSlotTableView readStaticSlotTableImageMmapReadOnly(const std::string& path
     view.stringBytesSize_ = static_cast<size_t>(header.stringBytes);
     view.moduleName_ = header.moduleName;
     view.rootValueId_ = header.rootValue;
+    view.payloadHash_ = std::string(header.payloadHash);
     if (view.rootValueId_ >= header.valueCount || view.valueKind(view.rootValueId_) != StaticSlotValueKind::List) {
         view.validation_ = fail("invalid_root_reference", "static slot table root value is invalid");
         if (error) {
@@ -798,6 +799,29 @@ StaticSlotTableView readStaticSlotTableImageMmapReadOnly(const std::string& path
 
     view.validation_ = ValidationResult{true, "ok", "static slot table image is valid"};
     return view;
+}
+
+agentc::ListreeStaticMountMetadata staticSlotTableMountMetadata(const StaticSlotTableView& view) {
+    agentc::ListreeStaticMountMetadata metadata;
+    if (!view.ok()) {
+        return metadata;
+    }
+
+    metadata.manifestHash = view.payloadHash();
+    metadata.rootDescriptor = "value:" + std::to_string(view.rootValueId());
+    metadata.sectionDescriptor = "static_slot_table:" + view.moduleName();
+    metadata.provenance = "static_slot_table_image";
+    metadata.imageId = view.moduleName() + ":" + metadata.manifestHash;
+    metadata.root1ResourceDescriptor = "root1.static_slot_table/" + metadata.imageId;
+    for (size_t i = 0; i < view.sectionCount(); ++i) {
+        const auto section = view.section(i);
+        metadata.sections.push_back(agentc::ListreeStaticMountSectionDescriptor{
+            section.sectionId,
+            "static_slot_table_section",
+            section.byteOffset,
+            section.byteSize});
+    }
+    return metadata;
 }
 
 } // namespace agentc::edict::static_image

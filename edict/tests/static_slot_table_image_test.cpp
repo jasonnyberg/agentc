@@ -159,6 +159,19 @@ TEST(StaticSlotTableImageTest, MmapViewInspectsWorkerDeclarationsWithoutListreeH
     EXPECT_GT(stringBytesSection.byteOffset, declarationSection.byteOffset);
     EXPECT_GT(stringBytesSection.byteSize, 0u);
     EXPECT_FALSE(view.sectionById("missing").byteSize);
+    EXPECT_FALSE(view.payloadHash().empty());
+
+    const auto metadata = agentc::edict::static_image::staticSlotTableMountMetadata(view);
+    EXPECT_EQ(metadata.imageId, "worker.edict:" + view.payloadHash());
+    EXPECT_EQ(metadata.manifestHash, view.payloadHash());
+    EXPECT_EQ(metadata.rootDescriptor, "value:" + std::to_string(view.rootValueId()));
+    EXPECT_EQ(metadata.sectionDescriptor, "static_slot_table:worker.edict");
+    EXPECT_EQ(metadata.provenance, "static_slot_table_image");
+    EXPECT_EQ(metadata.root1ResourceDescriptor, "root1.static_slot_table/" + metadata.imageId);
+    ASSERT_EQ(metadata.sections.size(), view.sectionCount());
+    EXPECT_EQ(metadata.sections[1].sectionId, "declaration_records");
+    EXPECT_EQ(metadata.sections[1].first, declarationSection.byteOffset);
+    EXPECT_EQ(metadata.sections[1].count, declarationSection.byteSize);
 
     const int64_t activeCountIndex = view.findDeclarationByWord("worker.edict_active_count");
     ASSERT_GE(activeCountIndex, 0);
