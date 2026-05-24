@@ -493,16 +493,57 @@ MountedDeclarationImage mountDeclarationImageReadOnly(CPtr<agentc::ListreeValue>
     return mounted;
 }
 
+struct AdvertisedMountEntry {
+    agentc::root1::ResourceKey key;
+    std::unique_ptr<agentc::root1::ResourceState> state;
+};
+
+std::unordered_map<uint64_t, AdvertisedMountEntry>& getAdvertisedMountsTable() {
+    static auto* table = new std::unordered_map<uint64_t, AdvertisedMountEntry>();
+    return *table;
+}
+
+static std::mutex g_advertisedMountsMutex;
+
 bool advertiseStaticMount(uint64_t mountId, 
                           const agentc::ListreeStaticMountRegistry& registry,
                           agentc::root1::Root1ResourceBroker& broker) {
     if (!registry.active(mountId)) {
         return false;
     }
-    // Advertisement logic: once a mount is active, it is effectively 
-    // available for Root1-brokered micro-VMs to acquire read-only access.
-    // The handle advertisement is implicit via registry metadata.
-    return true;
+
+    const auto metadata = registry.metadata(mountId);
+    const auto rootId = registry.rootId(mountId);
+
+    agentc::root1::ResourceKey key;
+    key.layerId = static_cast<uint32_t>(mountId);
+    key.slabId = rootId.first;
+    key.offset = rootId.second;
+    key.allocatorKind = 1; // ListreeValue static
+    key.fieldId = 0;
+
+    // Compute a deterministic generation hash from metadata.imageId
+    uint64_t gen = 0;
+    for (char c : metadata.imageId) {
+        gen = gen * 31 + static_cast<uint64_t>(c);
+    }
+    key.generation = gen;
+
+    std::lock_guard<std::mutex> lock(g_advertisedMountsMutex);
+    auto& table = getAdvertisedMountsTable();
+    auto& entry = table[mountId];
+    entry.key = key;
+    if (!entry.state) {
+        entry.state = std::make_unique<agentc::root1::ResourceState>();
+    }
+
+    agentc::root1::ParticipantId systemParticipant = 1;
+    if (!broker.hasParticipant(systemParticipant)) {
+        systemParticipant = broker.registerParticipant();
+    }
+
+    broker.tryAcquire(*entry.state, systemParticipant);
+    return broker.registerLease(key, *entry.state, systemParticipant, -1ull);
 }
 
 } // namespace agentc::edict::static_image

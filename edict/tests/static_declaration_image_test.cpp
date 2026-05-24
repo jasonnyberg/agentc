@@ -258,3 +258,60 @@ TEST(StaticDeclarationImageTest, ValidationRejectsPayloadHashMismatch) {
     EXPECT_FALSE(validation.ok);
     EXPECT_EQ(validation.code, "payload_hash_mismatch");
 }
+
+TEST(StaticDeclarationImageTest, AdvertiseStaticMountRegistersLeaseInRoot1Broker) {
+    resetListreeAllocatorsForStaticDeclarationTests();
+
+    auto image = agentc::edict::static_image::buildWorkerPrimitiveDeclarationImage();
+    agentc::ListreeStaticMountRegistry registry;
+    auto mounted = agentc::edict::static_image::mountDeclarationImageReadOnly(image, registry);
+    ASSERT_TRUE(mounted.validation.ok) << mounted.validation.code << ": " << mounted.validation.message;
+    ASSERT_NE(mounted.mountId, 0u);
+
+    agentc::root1::Root1ResourceBroker broker;
+    EXPECT_TRUE(agentc::edict::static_image::advertiseStaticMount(mounted.mountId, registry, broker));
+
+    // Verify it cannot be advertised again with an inactive mount id
+    EXPECT_FALSE(agentc::edict::static_image::advertiseStaticMount(99999, registry, broker));
+
+    EXPECT_TRUE(registry.unmount(mounted.mountId));
+    resetListreeAllocatorsForStaticDeclarationTests();
+}
+
+TEST(StaticDeclarationImageTest, StaticMountCanBeBackedByOSReadOnlyMmap) {
+    resetListreeAllocatorsForStaticDeclarationTests();
+
+    auto image = agentc::edict::static_image::buildWorkerPrimitiveDeclarationImage();
+    const auto path = std::filesystem::temp_directory_path() /
+                      "agentc-worker-static-mmap-read-only-test.acsdi";
+
+    std::string error;
+    ASSERT_TRUE(agentc::edict::static_image::writeDeclarationImageContainer(image, path.string(), &error)) << error;
+
+    // Map and restore directly via read-only mmap region
+    auto restored = agentc::edict::static_image::readDeclarationImageContainerMmapReadOnly(path.string(), &error);
+    ASSERT_TRUE(restored) << error;
+
+    auto mounted = agentc::edict::static_image::mountDeclarationImageReadOnly(restored);
+    ASSERT_TRUE(mounted.validation.ok) << mounted.validation.code << ": " << mounted.validation.message;
+    ASSERT_TRUE(mounted.root);
+    EXPECT_TRUE(mounted.root->isReadOnly());
+
+    // Traverse the mounted G103 image from the mmapped region to prove it can be read without crashing
+    bool foundActiveCount = false;
+    mounted.root->traverse([&](CPtr<agentc::ListreeValue> val) {
+        if (val && !val->isListMode()) {
+            auto word = val->find("word");
+            if (word) {
+                auto wordVal = word->getValue(false, false);
+                if (wordVal && textValue(wordVal) == "worker.edict_active_count") {
+                    foundActiveCount = true;
+                }
+            }
+        }
+    });
+    EXPECT_TRUE(foundActiveCount);
+
+    std::filesystem::remove(path);
+    resetListreeAllocatorsForStaticDeclarationTests();
+}
