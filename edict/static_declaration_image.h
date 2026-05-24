@@ -9,6 +9,8 @@
 
 #include "../listree/listree.h"
 
+#include "../core/root1_resource_broker.h"
+
 #include <string>
 #include <vector>
 
@@ -51,6 +53,10 @@ ValidationResult validateDeclarationImage(CPtr<agentc::ListreeValue> image);
 MountedDeclarationImage mountDeclarationImageReadOnly(CPtr<agentc::ListreeValue> image);
 MountedDeclarationImage mountDeclarationImageReadOnly(CPtr<agentc::ListreeValue> image,
                                                      agentc::ListreeStaticMountRegistry& registry);
+
+bool advertiseStaticMount(uint64_t mountId, 
+                          const agentc::ListreeStaticMountRegistry& registry,
+                          agentc::root1::Root1ResourceBroker& broker);
 
 std::string declarationPayloadHash(CPtr<agentc::ListreeValue> declarations);
 

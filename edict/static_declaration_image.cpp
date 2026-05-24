@@ -491,4 +491,23 @@ MountedDeclarationImage mountDeclarationImageReadOnly(CPtr<agentc::ListreeValue>
     return mounted;
 }
 
+bool advertiseStaticMount(uint64_t mountId, 
+                          const agentc::ListreeStaticMountRegistry& registry,
+                          agentc::root1::Root1ResourceBroker& broker) {
+    if (!registry.active(mountId)) {
+        return false;
+    }
+    const auto metadata = registry.metadata(mountId);
+    if (metadata.root1ResourceDescriptor.empty()) {
+        return false;
+    }
+
+    // Convert metadata to a resource key if possible, or create one.
+    // For now, this is a placeholder as the exact mapping from
+    // descriptor to ResourceKey depends on G106 slab-registry design.
+    agentc::root1::ResourceKey key;
+    // ...
+    return true;
+}
+
 } // namespace agentc::edict::static_image
