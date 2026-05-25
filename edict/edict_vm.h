@@ -53,6 +53,7 @@ public:
         bool valid = false;
         bool restoreCodeResource = true;
         CPtr<agentc::ListreeValue> resources[VMRES_COUNT];
+        std::vector<int> savedCodeIps;
         std::vector<std::pair<std::vector<std::string>, std::vector<std::string>>> rewriteRules;
         Allocator<agentc::ListreeValue>::Checkpoint listreeValue;
         Allocator<agentc::ListreeItem>::Checkpoint listreeItem;
@@ -156,6 +157,9 @@ private:
     agentc::Cursor cursor;
     // Resources are now a stack of lists (Listree)
     CPtr<agentc::ListreeValue> resources[VMRES_COUNT];
+    // Activation-local instruction pointers for VMRES_CODE frames. The code
+    // objects themselves may be shared/read-only.
+    std::vector<int> code_ips_;
     struct RewriteRule {
         std::vector<std::string> pattern;
         std::vector<std::string> replacement;
@@ -175,6 +179,9 @@ private:
     
     // Exception handling helper
     bool handleException();
+    void rebuildCodeIps();
+    bool isCodeFrame(CPtr<agentc::ListreeValue> frame) const;
+    int findCodeFrameIndex(CPtr<agentc::ListreeValue> frame) const;
 
     // Low-level resource management (enq/deq to the resource stack itself)
     void enq(VMResource res, CPtr<agentc::ListreeValue> v);

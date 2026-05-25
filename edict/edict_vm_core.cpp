@@ -458,6 +458,7 @@ EdictVM::TransactionCheckpoint EdictVM::beginTransaction(bool restoreCodeResourc
     checkpoint.savedCodeSize = code_size;
     checkpoint.savedTailEval = tail_eval;
     checkpoint.savedScanDepth = scan_depth;
+    checkpoint.savedCodeIps = code_ips_;
 
     checkpoint.listreeValue = Allocator<agentc::ListreeValue>::getAllocator().checkpoint();
     if (!checkpoint.listreeValue.valid) {
@@ -532,6 +533,9 @@ bool EdictVM::rollbackTransaction(EdictVM::TransactionCheckpoint& checkpoint) {
     code_size = checkpoint.savedCodeSize;
     tail_eval = checkpoint.savedTailEval;
     scan_depth = checkpoint.savedScanDepth;
+    if (checkpoint.restoreCodeResource) {
+        code_ips_ = checkpoint.savedCodeIps;
+    }
 
     bool ok = true;
     ok = BlobAllocator::getAllocator().rollback(checkpoint.blobAllocator) && ok;
@@ -656,10 +660,19 @@ bool EdictVM::speculate(const BytecodeBuffer& code,
 // Low-level resource management
 void EdictVM::enq(VMResource res, CPtr<agentc::ListreeValue> v) {
     if (resources[res]) agentc::addListItem(resources[res], v);
+    if (res == VMRES_CODE) {
+        code_ips_.insert(code_ips_.begin(), 0);
+    }
 }
 
 CPtr<agentc::ListreeValue> EdictVM::deq(VMResource res, bool pop) {
-    return resources[res] ? resources[res]->get(pop, true) : nullptr;
+    auto val = resources[res] ? resources[res]->get(pop, true) : nullptr;
+    if (res == VMRES_CODE && pop && val) {
+        if (!code_ips_.empty()) {
+            code_ips_.erase(code_ips_.begin());
+        }
+    }
+    return val;
 }
 
 CPtr<agentc::ListreeValue> EdictVM::peek(VMResource res) const {
@@ -705,6 +718,7 @@ void EdictVM::initResources(CPtr<agentc::ListreeValue> root) {
     resources[VMRES_EXCP] = agentc::createListValue();
     startupTrace("initResources-after-excp");
     resources[VMRES_CODE] = agentc::createListValue();
+    code_ips_.clear();
     startupTrace("initResources-after-code");
     resources[VMRES_STATE] = agentc::createListValue();
     startupTrace("initResources-after-state");
@@ -733,6 +747,7 @@ void EdictVM::resetRuntime() {
     auto saved_ip = instruction_ptr;
     initResources(cursor.getValue());
     resources[VMRES_CODE] = code_stack;
+    rebuildCodeIps();
     code_ptr = saved_ptr;
     code_size = saved_size;
     instruction_ptr = saved_ip;
@@ -829,9 +844,13 @@ void EdictVM::op_SPECULATE() {
 
     SpeculativeSnapshot snapshot;
     bool succeeded = false;
+    const size_t parentDepth = getResourceDepth(VMRES_CODE);
     if (!(executeNested(speculativeCode) & VM_ERROR)) {
         snapshot = captureSpeculativeSnapshot(peekData());
         succeeded = true;
+    }
+    while (getResourceDepth(VMRES_CODE) > parentDepth) {
+        deq(VMRES_CODE, true);
     }
 
     rollbackTransaction(checkpoint);
@@ -915,12 +934,11 @@ void EdictVM::op_REWRITE_REMOVE() {
 
 CPtr<agentc::ListreeValue> EdictVM::makeCodeFrame(const BytecodeBuffer& code) {
     const auto& data = code.getData();
-    if (data.empty()) return agentc::createBinaryValue(nullptr, 0);
-    void* buf = std::malloc(data.size());
-    if (!buf) return nullptr;
-    std::memcpy(buf, data.data(), data.size());
+    void* buf = data.empty() ? nullptr : std::malloc(data.size());
+    if (!buf && !data.empty()) return nullptr;
+    if (buf) std::memcpy(buf, data.data(), data.size());
     CPtr<agentc::ListreeValue> frame = agentc::createBinaryValue(buf, data.size());
-    writeFrameIp(frame, 0);
+    agentc::addNamedItem(frame, ".code_frame", agentc::createStringValue("1"));
     return frame;
 }
 
@@ -948,6 +966,14 @@ void EdictVM::op_RESET() {
 
 void EdictVM::writeFrameIp(CPtr<agentc::ListreeValue> frame, int ip) {
     if (!frame) return;
+    int idx = findCodeFrameIndex(frame);
+    if (idx >= 0 && idx < static_cast<int>(code_ips_.size())) {
+        code_ips_[idx] = ip;
+        return;
+    }
+    if (frame->isReadOnly()) {
+        return;
+    }
     auto item = frame->find(".ip", true);
     if (!item) return;
     auto v = item->getValue(false, false);
@@ -972,6 +998,10 @@ void EdictVM::writeFrameIp(CPtr<agentc::ListreeValue> frame, int ip) {
 
 int EdictVM::readFrameIp(CPtr<agentc::ListreeValue> frame) const {
     if (!frame) return 0;
+    int idx = findCodeFrameIndex(frame);
+    if (idx >= 0 && idx < static_cast<int>(code_ips_.size())) {
+        return code_ips_[idx];
+    }
     auto item = frame->find(".ip");
     if (!item) return 0;
     auto v = item->getValue(false, false);
@@ -980,6 +1010,51 @@ int EdictVM::readFrameIp(CPtr<agentc::ListreeValue> frame) const {
     // Recover the IP packed into the data pointer field.
     return static_cast<int>(static_cast<unsigned int>(
         reinterpret_cast<uintptr_t>(v->getData())));
+}
+
+void EdictVM::rebuildCodeIps() {
+    code_ips_.clear();
+    auto stack = resources[VMRES_CODE];
+    if (stack && stack->isListMode()) {
+        stack->forEachList([&](CPtr<agentc::ListreeValueRef>& ref) {
+            if (ref && ref->getValue()) {
+                auto f = ref->getValue();
+                auto item = f->find(".ip");
+                int ip = 0;
+                if (item) {
+                    auto v = item->getValue(false, false);
+                    if (v && v->getLength() == sizeof(int) &&
+                        (v->getFlags() & agentc::LtvFlags::Binary) != agentc::LtvFlags::None) {
+                        ip = static_cast<int>(static_cast<unsigned int>(
+                            reinterpret_cast<uintptr_t>(v->getData())));
+                    }
+                }
+                code_ips_.push_back(ip);
+            }
+        });
+    }
+}
+
+bool EdictVM::isCodeFrame(CPtr<agentc::ListreeValue> frame) const {
+    if (!frame || (frame->getFlags() & agentc::LtvFlags::Binary) == agentc::LtvFlags::None) {
+        return false;
+    }
+    return frame->find(".code_frame") || frame->find(".ip");
+}
+
+int EdictVM::findCodeFrameIndex(CPtr<agentc::ListreeValue> frame) const {
+    if (!frame) return -1;
+    auto stack = resources[VMRES_CODE];
+    if (!stack || !stack->isListMode()) return -1;
+    int index = 0;
+    int foundIndex = -1;
+    stack->forEachList([&](CPtr<agentc::ListreeValueRef>& ref) {
+        if (ref && ref->getValue() == frame) {
+            foundIndex = index;
+        }
+        index++;
+    });
+    return foundIndex;
 }
 
 size_t EdictVM::getStackSize() const {
@@ -1563,22 +1638,16 @@ bool EdictVM::evalDispatchIterator(CPtr<agentc::ListreeValue> v) {
 }
 
 // Phase 2: Binary thunk dispatch.
-// Binary Listree nodes that carry a ".ip" field are compiled code frames.
+// Binary Listree nodes marked as code frames are immutable code objects. Their
+// active instruction pointer lives in EdictVM::code_ips_ after enqueue.
 bool EdictVM::evalDispatchThunk(CPtr<agentc::ListreeValue> v) {
-    if ((v->getFlags() & agentc::LtvFlags::Binary) == agentc::LtvFlags::None) return false;
+    if (!isCodeFrame(v)) return false;
 
-    auto ipItem = v->find(".ip");
-    if (ipItem) {
-        writeFrameIp(v, 0);
-        if (tail_eval) {
-            popCodeFrame();
-            tail_eval = false;
-        }
-        enq(VMRES_CODE, v);
-        return true;
+    if (tail_eval) {
+        popCodeFrame();
+        tail_eval = false;
     }
-    tail_eval = false;
-    writeFrameIp(peek(VMRES_CODE), static_cast<int>(instruction_ptr));
+    enq(VMRES_CODE, v);
     return true;
 }
 
@@ -2238,6 +2307,7 @@ int EdictVM::execute(const BytecodeBuffer& code) {
     scan_mode = ScanMode::None;
     scan_depth = 0;
     resources[VMRES_CODE] = agentc::createListValue();
+    code_ips_.clear();
     CPtr<agentc::ListreeValue> frame = makeCodeFrame(code);
     if (!frame) { setError("Code frame alloc"); return state; }
     enq(VMRES_CODE, frame);

@@ -72,6 +72,29 @@ TEST(EdictVM, YieldedExecutionCanResumeCurrentCodeFrame) {
     EXPECT_EQ(valueToString(vm.getStackTop()), "after");
 }
 
+TEST(EdictVM, FrozenThunkUsesPrivateInstructionPointerAcrossResumeAndReuse) {
+    EdictVM vm;
+    EdictCompiler compiler;
+
+    int res = vm.execute(compiler.compile("[ 'before yield! 'after ] freeze! @t t!"));
+    ASSERT_TRUE(res & VM_YIELD) << vm.getError();
+    EXPECT_EQ(valueToString(vm.getStackTop()), "before");
+
+    res = vm.resume();
+    ASSERT_FALSE(res & VM_YIELD) << vm.getError();
+    ASSERT_TRUE(res & VM_COMPLETE) << vm.getError();
+    EXPECT_EQ(valueToString(vm.getStackTop()), "after");
+
+    res = vm.execute(compiler.compile("t!"));
+    ASSERT_TRUE(res & VM_YIELD) << vm.getError();
+    EXPECT_EQ(valueToString(vm.getStackTop()), "before");
+
+    res = vm.resume();
+    ASSERT_FALSE(res & VM_YIELD) << vm.getError();
+    ASSERT_TRUE(res & VM_COMPLETE) << vm.getError();
+    EXPECT_EQ(valueToString(vm.getStackTop()), "after");
+}
+
 TEST(EdictVM, UndefinedSymbolFallsBack) {
     EdictVM vm;
     int res = runCode(vm, "not_defined");
