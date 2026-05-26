@@ -448,9 +448,9 @@ TEST(ReadOnlyTest, RecursiveFreezeMarksDescendants) {
     EXPECT_TRUE(grandchild->isReadOnly());
 }
 
-TEST(ReadOnlyTest, RecursiveFreezeSKipsBinaryNodes) {
-    // Binary nodes (bytecode/thunk frames) must NOT be frozen — the VM
-    // writes .ip into them.
+TEST(ReadOnlyTest, RecursiveFreezeMarksBinaryNodes) {
+    // Binary code objects no longer carry mutable VM instruction pointers, so
+    // they can be frozen with the rest of a shared subtree.
     const char data[] = {0x01, 0x02, 0x03};
     CPtr<ListreeValue> bin = createBinaryValue(data, sizeof(data));
 
@@ -460,8 +460,7 @@ TEST(ReadOnlyTest, RecursiveFreezeSKipsBinaryNodes) {
     parent->setReadOnly(true);      // recursive
 
     EXPECT_TRUE(parent->isReadOnly());
-    // Binary child must remain mutable
-    EXPECT_FALSE(bin->isReadOnly());
+    EXPECT_TRUE(bin->isReadOnly());
 }
 
 TEST(ReadOnlyTest, CopyOfReadOnlyNodeReturnsSameSlabId) {

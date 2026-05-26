@@ -380,7 +380,7 @@ High-level goal sequence for the micro-VM vision:
 4. **G099 — Intern task quality/event contracts**: define bounded task schemas plus event kinds, cancellation, timeout, backpressure, progress, and ownership/error states.
 5. **G092 — Capability metadata**: classify imports by thread/process safety, reentrancy, worker allowance, side effects, credentials, and static-shareable declarations.
 6. **G103 — Build-time Root0 static declaration image**: generate a tiny reproducible read-only declaration/import slab image at build time.
-7. **G104 — Immutable code object / activation frame split**: move mutable `.ip`/activation state out of static-shareable bytecode objects.
+7. **G104 — Immutable code object / activation frame split**: first VM slice moved mutable instruction pointers into private `EdictVM::code_ips_` activation state; continue integrating the documented static-shareable code object boundary into static core/session-resume work.
 8. **G105 — ReadOnly static slab ownership model**: make static/core slabs immortal or sidecar-owned for refcount/pin semantics, separate from mutable coordination slabs.
 9. **G108 — Traversal visit bitmaps**: replace set-based traversal bookkeeping with traversal-scoped, layer-aware per-slab bitmaps.
 10. **G096 — Authoritative layered mmap session resume**: mount static core, private overlays, mutable coordination descriptors, and published slabs with clear rehydration rules.

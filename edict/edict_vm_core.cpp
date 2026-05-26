@@ -1977,9 +1977,8 @@ void EdictVM::op_PRINT() {
 
 void EdictVM::op_FREEZE() {
     // Pop top of data stack, freeze it (read-only, recursive), push it back.
-    // After freeze the node and all non-Binary descendants are permanently immutable
-    // and safe to share across VMs/threads without synchronisation.
-    // Binary nodes (bytecode/thunk frames) are intentionally skipped by setReadOnly.
+    // After freeze the node and all descendants are permanently immutable and
+    // safe to share across VMs/threads without synchronisation.
     auto v = popData();
     if (v && !v->isReadOnly()) v->setReadOnly(true);
     pushData(v);

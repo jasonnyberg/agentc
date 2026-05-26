@@ -291,6 +291,18 @@ TEST(FreezeBuiltin, FreezeIsIdempotentOnAlreadyFrozen) {
     EXPECT_TRUE(top->isReadOnly());
 }
 
+TEST(FreezeBuiltin, FreezeMarksBracketThunkReadOnly) {
+    EdictVM vm;
+    EdictCompiler compiler;
+
+    int state = vm.execute(compiler.compile("[ 'x ] freeze!"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+
+    auto top = vm.getStackTop();
+    ASSERT_TRUE(bool(top));
+    EXPECT_TRUE(top->isReadOnly());
+}
+
 TEST(FreezeBuiltin, CopyOfFrozenValueReturnsSameSlab) {
     EdictVM vm;
     EdictCompiler compiler;

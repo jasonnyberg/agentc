@@ -133,7 +133,7 @@ The following current mutation sources matter for parallel read-only traversal, 
 | Cursor pinning | `ListreeValue::pinnedCount` | Cursor navigation/copy/destruction writes node-local atomics; incompatible with read-only mapped static slabs. |
 | `ReadOnly` flag | `ListreeValue::flags` | Runtime freeze mutates nodes; fine for private dynamic slabs, but static images should be immutable by layer/manifest/OS mapping. |
 | `List` / `Null` flags | e.g. `op_SPLICE` uses `setFlags(List)` and `clearFlags(Null)` | Value kind can mutate during normal Edict operation; static/shared values must reject or copy-on-write this. |
-| code-frame `.ip` | `EdictVM::writeFrameIp(...)` writes `.ip` under binary frame nodes | Static bytecode sharing requires immutable code objects split from private activation frames. |
+| code-frame `.ip` | Resolved by G104 first slice: new code frames use `.code_frame`, with live IPs in `EdictVM::code_ips_`; legacy `.ip` fallback remains only for old/foreign non-read-only frames | Static bytecode can now be frozen/shared without embedding execution progress. |
 | `ListreeItem` value history | `ListreeItem::addValue(...)`, `getValue(pop=true)` | Can mutate tree history independent of parent `ReadOnly`; current safety gap. |
 | CLL/AATree links | `store`, `splice`, `remove`, `add` | Normal structural mutation; must remain private/owner-only for shared slabs. |
 | `Iterator` payload | `LtvFlags::Iterator` stores live `Cursor*` | Process/thread-local runtime object; must not enter static shared slabs. |
@@ -170,7 +170,7 @@ Caveat: `List` and `Null` are currently mutated in some runtime paths, so static
 The audit refines the full-send slab plan:
 
 - G091 async workers can still use JSON/event handoff first, but shared context safety needs stronger `ReadOnly` enforcement.
-- G104 must split immutable code objects from mutable activation frames because `.ip` is currently stored under binary code frames.
+- G104 first slice splits immutable code objects from mutable activation frames: new binary code frames use `.code_frame`, and live IPs stay in VM-private `code_ips_`.
 - G105 must define static slab ownership, including no-write retain/release and cursor pin semantics for read-only slabs.
 - G108 should replace traversal set state with per-slab bitmaps and make traversal state layer-aware.
 - G109 should close the concrete `ReadOnly` mutation surface gap before shared read-only context is trusted for untrusted/parallel worker code.
@@ -180,7 +180,7 @@ The audit refines the full-send slab plan:
 1. **G109 — Listree ReadOnly Mutation Surface Hardening**: fix/remove bypasses around `Cursor::remove()`, `Cursor::removeHeadOnly()`, and direct `ListreeItem` history mutation.
 2. **G108 — Cursor-Scoped Traversal Visit Bitmaps**: replace set-based traversal context with operation-scoped slab bitmaps, designed for future layer-aware traversal.
 3. **G105 — ReadOnly Static Slab Ownership Model**: make static slab retain/release and cursor pinning safe without writes to read-only mappings.
-4. **G104 — Immutable Code Object / Activation Frame Split**: move `.ip` and activation-local metadata out of static-shareable bytecode objects.
+4. **G104 — Immutable Code Object / Activation Frame Split**: first slice complete; continue integrating the documented static-shareable code object vs activation-local VM state boundary.
 
 ## Open Questions
 

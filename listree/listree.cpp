@@ -149,14 +149,11 @@ void ListreeValue::unpin() {
 }
 
 void ListreeValue::setReadOnly(bool recursive) {
-    // Never freeze bytecode/thunk nodes.  The VM stores the instruction pointer
-    // directly inside these nodes via find(".ip", insert=true) (writeFrameIp).
-    // Freezing them would refuse that write and break all compiled thunk dispatch.
-    if ((flags & LtvFlags::Binary) != LtvFlags::None) return;
     flags = flags | LtvFlags::ReadOnly;
     if (!recursive) return;
     // Walk all reachable ListreeValue descendants breadth-first and mark each
-    // read-only, skipping Binary (thunk/bytecode) nodes for the same reason.
+    // read-only. Compiled code objects keep execution state in VM-private
+    // activation frames, so binary thunk nodes can be immutable too.
     try {
         SlabId sid = Allocator<ListreeValue>::getAllocator().getSlabId(this);
         CPtr<ListreeValue> self(sid);
@@ -164,7 +161,7 @@ void ListreeValue::setReadOnly(bool recursive) {
         opts.from = self;
         opts.order = TraversalOrder::BreadthFirst;
         traverse([](CPtr<ListreeValue> node) {
-            if (node && (node->getFlags() & LtvFlags::Binary) == LtvFlags::None)
+            if (node)
                 node->flags = node->flags | LtvFlags::ReadOnly;
         }, opts, std::make_shared<TraversalContext>());
     } catch (...) {
