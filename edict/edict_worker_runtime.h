@@ -22,6 +22,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <vector>
 
 namespace agentc::edict::worker {
 
@@ -34,6 +35,8 @@ struct InternWorkerInput {
     CPtr<agentc::ListreeValue> staticMountsReadOnly;
     std::string staticProgramMount;
     std::string staticProgramWord;
+    bool hasStaticProgramBytecode = false;
+    std::vector<uint8_t> staticProgramBytecode;
     bool allowUnsafeFfiCalls = false;
     bool runInChildProcess = false;
     bool runWithExec = false;

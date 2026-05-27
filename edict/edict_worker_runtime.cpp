@@ -101,6 +101,31 @@ bool readString(int fd, std::string& value) {
     return length == 0 || readAll(fd, value.data(), value.size());
 }
 
+int hexNibble(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
+bool decodeHexBytes(const std::string& hex, std::vector<uint8_t>& bytes) {
+    if (hex.empty() || (hex.size() % 2) != 0) {
+        return false;
+    }
+    std::vector<uint8_t> decoded;
+    decoded.reserve(hex.size() / 2);
+    for (size_t i = 0; i < hex.size(); i += 2) {
+        const int hi = hexNibble(hex[i]);
+        const int lo = hexNibble(hex[i + 1]);
+        if (hi < 0 || lo < 0) {
+            return false;
+        }
+        decoded.push_back(static_cast<uint8_t>((hi << 4) | lo));
+    }
+    bytes = std::move(decoded);
+    return true;
+}
+
 bool writeOutcome(int fd, const InternWorkerOutcome& outcome) {
     const uint8_t ok = outcome.ok ? 1 : 0;
     const int32_t vmState = static_cast<int32_t>(outcome.vmState);
@@ -138,7 +163,7 @@ bool writeWorkerInput(int fd, const InternWorkerInput& input) {
 }
 
 bool resolveStaticProgram(InternWorkerInput& input, std::string& error) {
-    if (!input.program.empty()) {
+    if (!input.program.empty() || input.hasStaticProgramBytecode) {
         return true;
     }
     if (input.staticProgramMount.empty() || input.staticProgramWord.empty()) {
@@ -155,17 +180,36 @@ bool resolveStaticProgram(InternWorkerInput& input, std::string& error) {
     }
 
     std::string program;
+    std::vector<uint8_t> bytecode;
+    bool foundBytecode = false;
     declarations->forEachList([&](CPtr<agentc::ListreeValueRef>& ref) {
-        if (!program.empty() || !ref || !ref->getValue()) {
+        if (!program.empty() || foundBytecode || !ref || !ref->getValue()) {
             return;
         }
         auto declaration = ref->getValue();
         if (textValue(namedValue(declaration, "word")) == input.staticProgramWord) {
+            const std::string bytecodeHex = textValue(namedValue(declaration, "bytecode_hex"));
+            if (!bytecodeHex.empty()) {
+                if (!decodeHexBytes(bytecodeHex, bytecode)) {
+                    error = "static program entry has invalid bytecode_hex";
+                    return;
+                }
+                foundBytecode = true;
+                return;
+            }
             program = textValue(namedValue(declaration, "program_source"));
         }
     });
+    if (!error.empty()) {
+        return false;
+    }
+    if (foundBytecode) {
+        input.staticProgramBytecode = std::move(bytecode);
+        input.hasStaticProgramBytecode = true;
+        return true;
+    }
     if (program.empty()) {
-        error = "static program entry not found or has no program_source";
+        error = "static program entry not found or has no bytecode_hex/program_source";
         return false;
     }
     input.program = program;
@@ -293,8 +337,13 @@ void runInternWorker(InternWorkerInput input, InternJoinSlot& slot) {
         EdictVM worker(root);
         worker.setAllowUnsafeFfiCalls(input.allowUnsafeFfiCalls);
 
-        EdictCompiler compiler;
-        const auto bytecode = compiler.compile(input.program);
+        BytecodeBuffer bytecode;
+        if (input.hasStaticProgramBytecode) {
+            bytecode.getData() = input.staticProgramBytecode;
+        } else {
+            EdictCompiler compiler;
+            bytecode = compiler.compile(input.program);
+        }
         outcome.vmState = worker.execute(bytecode);
         while ((outcome.vmState & VM_YIELD) && !(outcome.vmState & VM_ERROR)) {
             if (input.cancelRequested && input.cancelRequested->load()) {

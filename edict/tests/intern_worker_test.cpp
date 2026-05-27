@@ -94,6 +94,18 @@ CPtr<ListreeValue> stringList(std::initializer_list<std::string> values) {
     return list;
 }
 
+std::string bytecodeHex(const BytecodeBuffer& bytecode) {
+    static constexpr char kHex[] = "0123456789abcdef";
+    const auto& data = bytecode.getData();
+    std::string out;
+    out.reserve(data.size() * 2);
+    for (uint8_t byte : data) {
+        out.push_back(kHex[(byte >> 4) & 0x0f]);
+        out.push_back(kHex[byte & 0x0f]);
+    }
+    return out;
+}
+
 void addInternStartContract(CPtr<ListreeValue> task) {
     auto expect = agentc::createNullValue();
     agentc::addNamedItem(expect, "success_field", agentc::createStringValue("ok"));
@@ -839,6 +851,118 @@ TEST(InternWorkerTest, InternStartCanDispatchExecedStaticProgramFromMountedImage
     EXPECT_EQ(textValue(namedValue(result, "image_id")), "task.static_code:" + payloadHash);
     EXPECT_EQ(textValue(namedValue(result, "root_descriptor")), "task.static_code/declarations");
     EXPECT_EQ(textValue(namedValue(result, "root_manifest_id")), "task.static_code/declarations");
+    EXPECT_TRUE(staticMounts->isReadOnly());
+    std::filesystem::remove(path);
+}
+
+TEST(InternWorkerTest, InternStartCanDispatchExecedStaticBytecodeFromMountedImage) {
+    auto coordinatorRoot = agentc::createNullValue();
+    EdictVM vm(coordinatorRoot);
+    EdictCompiler compiler;
+    loadModuleBackedIntern(vm, compiler);
+
+    const std::string entryWord = "task.static_bytecode.entry";
+    const BytecodeBuffer entryBytecode = compiler.compile(
+        "input.label @result.label "
+        "context.fact @result.fact "
+        "static_mounts.base.source @result.mount_source "
+        "static_mounts.base.image_id @result.image_id "
+        "static_mounts.base.root_descriptor @result.root_descriptor "
+        "static_mounts.base.root.manifest.root_id @result.root_manifest_id "
+        "'static-bytecode-entry @result.mode");
+
+    auto declarations = agentc::createListValue();
+    auto entry = agentc::createNullValue();
+    agentc::addNamedItem(entry, "word", agentc::createStringValue(entryWord));
+    agentc::addNamedItem(entry, "native_symbol", agentc::createStringValue("static_bytecode_object"));
+    agentc::addNamedItem(entry, "stack_signature", agentc::createStringValue("() -> result"));
+    agentc::addNamedItem(entry, "category", agentc::createStringValue("static_code"));
+    agentc::addNamedItem(entry, "binding", agentc::createStringValue("static_bytecode_hex"));
+    agentc::addNamedItem(entry, "bytecode_encoding", agentc::createStringValue("agentc.edict.bytecode.v1.hex"));
+    agentc::addNamedItem(entry, "stores_native_handle", agentc::createStringValue("false"));
+    agentc::addNamedItem(entry, "worker_allowed", agentc::createStringValue("true"));
+    agentc::addNamedItem(entry, "bytecode_hex", agentc::createStringValue(bytecodeHex(entryBytecode)));
+    agentc::addListItem(declarations, entry);
+
+    auto manifest = agentc::createNullValue();
+    agentc::addNamedItem(manifest, "format", agentc::createStringValue("agentc.static_declaration_image"));
+    agentc::addNamedItem(manifest, "format_version", agentc::createStringValue("1"));
+    agentc::addNamedItem(manifest, "image_kind", agentc::createStringValue("static_worker_bytecode"));
+    agentc::addNamedItem(manifest, "module", agentc::createStringValue("task.static_bytecode"));
+    agentc::addNamedItem(manifest, "root_id", agentc::createStringValue("task.static_bytecode/declarations"));
+    agentc::addNamedItem(manifest, "hash_algorithm", agentc::createStringValue("fnv1a64"));
+    const std::string payloadHash = agentc::edict::static_image::declarationPayloadHash(declarations);
+    agentc::addNamedItem(manifest, "payload_hash", agentc::createStringValue(payloadHash));
+    agentc::addNamedItem(manifest, "contains_native_handles", agentc::createStringValue("false"));
+    agentc::addNamedItem(manifest, "native_binding_policy", agentc::createStringValue("lazy_process_local_sidecar"));
+    agentc::addNamedItem(manifest, "forbidden_payloads", stringList({
+        "dlopen_handle", "dlsym_pointer", "function_pointer", "eventfd", "epoll_fd",
+        "pidfd", "edict_vm_pointer", "activation_frame", "credential", "provider_handle"
+    }));
+
+    auto image = agentc::createNullValue();
+    agentc::addNamedItem(image, "manifest", manifest);
+    agentc::addNamedItem(image, "declarations", declarations);
+
+    const auto path = std::filesystem::temp_directory_path() /
+                      "agentc-worker-async-exec-static-bytecode-test.acsdi";
+    std::string error;
+    ASSERT_TRUE(agentc::edict::static_image::writeDeclarationImageContainer(image, path.string(), &error)) << error;
+
+    auto staticMounts = agentc::createNullValue();
+    auto baseMount = agentc::createNullValue();
+    agentc::addNamedItem(baseMount, "container_path", agentc::createStringValue(path.string()));
+    agentc::addNamedItem(staticMounts, "base", baseMount);
+    staticMounts->setReadOnly(true);
+
+    auto task = agentc::createNullValue();
+    agentc::addNamedItem(task, "task_id", agentc::createStringValue("async-exec-static-bytecode-demo"));
+    agentc::addNamedItem(task, "worker", agentc::createStringValue("edict-exec-async"));
+    agentc::addNamedItem(task, "worker_exec_path", agentc::createStringValue(
+        (std::filesystem::path(TEST_EDICT_BIN_DIR) / "edict_worker_exec").string()));
+    agentc::addNamedItem(task, "static_program_mount", agentc::createStringValue("base"));
+    agentc::addNamedItem(task, "static_program_word", agentc::createStringValue(entryWord));
+    agentc::addNamedItem(task, "input", agentc::fromJson(R"({"label":"worker-input"})"));
+    agentc::addNamedItem(task, "context", agentc::fromJson(R"({"fact":"exec-context"})"));
+    agentc::addNamedItem(task, "static_mounts", staticMounts);
+    addInternStartContract(task);
+
+    vm.pushData(task);
+    int state = vm.execute(compiler.compile("intern_start! @job"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    auto job = namedValue(coordinatorRoot, "job");
+    ASSERT_TRUE(job);
+    EXPECT_EQ(textValue(namedValue(job, "state")), "started");
+    EXPECT_EQ(textValue(namedValue(job, "worker")), "edict-exec-async");
+    const std::string jobId = textValue(namedValue(job, "job_id"));
+    ASSERT_FALSE(jobId.empty());
+
+    CPtr<ListreeValue> status;
+    for (int i = 0; i < 100; ++i) {
+        vm.pushData(agentc::createStringValue(jobId));
+        state = vm.execute(compiler.compile("intern_sync! @async_exec_static_bytecode_status"));
+        ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+        status = namedValue(coordinatorRoot, "async_exec_static_bytecode_status");
+        ASSERT_TRUE(status);
+        if (textValue(namedValue(status, "state")) == "complete") {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+
+    ASSERT_TRUE(status);
+    EXPECT_EQ(textValue(namedValue(status, "state")), "complete");
+    EXPECT_EQ(textValue(namedValue(status, "worker")), "edict-exec-async");
+    EXPECT_GT(sizeText(namedValue(status, "process_pid")), 0u);
+    auto result = namedValue(status, "result");
+    ASSERT_TRUE(result);
+    EXPECT_EQ(textValue(namedValue(result, "label")), "worker-input");
+    EXPECT_EQ(textValue(namedValue(result, "fact")), "exec-context");
+    EXPECT_EQ(textValue(namedValue(result, "mode")), "static-bytecode-entry");
+    EXPECT_EQ(textValue(namedValue(result, "mount_source")), "g103-exec-mounted-mmap-container");
+    EXPECT_EQ(textValue(namedValue(result, "image_id")), "task.static_bytecode:" + payloadHash);
+    EXPECT_EQ(textValue(namedValue(result, "root_descriptor")), "task.static_bytecode/declarations");
+    EXPECT_EQ(textValue(namedValue(result, "root_manifest_id")), "task.static_bytecode/declarations");
     EXPECT_TRUE(staticMounts->isReadOnly());
     std::filesystem::remove(path);
 }
