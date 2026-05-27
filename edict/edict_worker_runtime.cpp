@@ -128,11 +128,48 @@ bool writeWorkerInput(int fd, const InternWorkerInput& input) {
     const uint8_t allowUnsafe = input.allowUnsafeFfiCalls ? 1 : 0;
     return writeString(fd, input.taskId) &&
            writeString(fd, input.program) &&
+           writeString(fd, input.staticProgramMount) &&
+           writeString(fd, input.staticProgramWord) &&
            writeString(fd, agentc::toJson(input.inputSnapshot ? input.inputSnapshot : agentc::createNullValue())) &&
            writeString(fd, agentc::toJson(input.contextSharedReadOnly ? input.contextSharedReadOnly : agentc::createNullValue())) &&
            writeString(fd, agentc::toJson(input.importsSharedReadOnly ? input.importsSharedReadOnly : agentc::createNullValue())) &&
            writeString(fd, agentc::toJson(input.staticMountsReadOnly ? input.staticMountsReadOnly : agentc::createNullValue())) &&
            writeAll(fd, &allowUnsafe, sizeof(allowUnsafe));
+}
+
+bool resolveStaticProgram(InternWorkerInput& input, std::string& error) {
+    if (!input.program.empty()) {
+        return true;
+    }
+    if (input.staticProgramMount.empty() || input.staticProgramWord.empty()) {
+        error = "worker task has no program or static program entry";
+        return false;
+    }
+
+    auto mount = namedValue(input.staticMountsReadOnly, input.staticProgramMount);
+    auto root = namedValue(mount, "root");
+    auto declarations = namedValue(root, "declarations");
+    if (!declarations || !declarations->isListMode()) {
+        error = "static program mount does not expose declarations";
+        return false;
+    }
+
+    std::string program;
+    declarations->forEachList([&](CPtr<agentc::ListreeValueRef>& ref) {
+        if (!program.empty() || !ref || !ref->getValue()) {
+            return;
+        }
+        auto declaration = ref->getValue();
+        if (textValue(namedValue(declaration, "word")) == input.staticProgramWord) {
+            program = textValue(namedValue(declaration, "program_source"));
+        }
+    });
+    if (program.empty()) {
+        error = "static program entry not found or has no program_source";
+        return false;
+    }
+    input.program = program;
+    return true;
 }
 
 bool hydrateStaticMounts(CPtr<agentc::ListreeValue> staticMounts, std::string& error) {
@@ -177,6 +214,8 @@ bool readWorkerInput(int fd, InternWorkerInput& input, std::string& error) {
     uint8_t allowUnsafe = 0;
     if (!readString(fd, input.taskId) ||
         !readString(fd, input.program) ||
+        !readString(fd, input.staticProgramMount) ||
+        !readString(fd, input.staticProgramWord) ||
         !readString(fd, inputJson) ||
         !readString(fd, contextJson) ||
         !readString(fd, importsJson) ||
@@ -195,6 +234,9 @@ bool readWorkerInput(int fd, InternWorkerInput& input, std::string& error) {
         return false;
     }
     if (!hydrateStaticMounts(input.staticMountsReadOnly, error)) {
+        return false;
+    }
+    if (!resolveStaticProgram(input, error)) {
         return false;
     }
     input.contextSharedReadOnly->setReadOnly(true);
@@ -231,6 +273,15 @@ bool InternJoinSlot::ready() const {
 void runInternWorker(InternWorkerInput input, InternJoinSlot& slot) {
     InternWorkerOutcome outcome;
     try {
+        std::string staticProgramError;
+        if (!resolveStaticProgram(input, staticProgramError)) {
+            outcome.ok = false;
+            outcome.errorCode = "worker_static_program_error";
+            outcome.errorMessage = staticProgramError;
+            slot.store(std::move(outcome));
+            return;
+        }
+
         auto root = agentc::createNullValue();
         agentc::addNamedItem(root, "task_id", agentc::createStringValue(input.taskId));
         agentc::addNamedItem(root, "input", input.inputSnapshot ? input.inputSnapshot : agentc::createNullValue());

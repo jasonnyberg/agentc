@@ -234,6 +234,8 @@ bool parseInternTask(CPtr<agentc::ListreeValue> task,
         input.taskId = stringField(task, "id");
     }
     input.program = stringField(task, "program");
+    input.staticProgramMount = stringField(task, "static_program_mount");
+    input.staticProgramWord = stringField(task, "static_program_word");
     input.allowUnsafeFfiCalls = allowUnsafeFfiCalls;
     const std::string worker = stringField(task, "worker");
     const std::string isolation = stringField(task, "isolation");
@@ -255,10 +257,11 @@ bool parseInternTask(CPtr<agentc::ListreeValue> task,
         input.taskId = "intern-task";
     }
 
-    if (input.program.empty()) {
+    if (input.program.empty() &&
+        (input.staticProgramMount.empty() || input.staticProgramWord.empty())) {
         errorEnvelope = buildPrepareErrorStatus(input,
                                                 "missing_program",
-                                                "intern task is missing a non-empty program string");
+                                                "intern task is missing a non-empty program string or static program entry");
         return false;
     }
 
@@ -297,6 +300,12 @@ CPtr<agentc::ListreeValue> buildPreparedTaskSpec(const InternWorkerInput& input)
     agentc::addNamedItem(spec, "state", agentc::createStringValue("prepared"));
     agentc::addNamedItem(spec, "task_id", agentc::createStringValue(input.taskId));
     agentc::addNamedItem(spec, "program", agentc::createStringValue(input.program));
+    if (!input.staticProgramMount.empty()) {
+        agentc::addNamedItem(spec, "static_program_mount", agentc::createStringValue(input.staticProgramMount));
+    }
+    if (!input.staticProgramWord.empty()) {
+        agentc::addNamedItem(spec, "static_program_word", agentc::createStringValue(input.staticProgramWord));
+    }
     agentc::addNamedItem(spec, "input", input.inputSnapshot ? input.inputSnapshot : agentc::createNullValue());
     agentc::addNamedItem(spec, "context", input.contextSharedReadOnly ? input.contextSharedReadOnly : agentc::createNullValue());
     agentc::addNamedItem(spec, "imports", input.importsSharedReadOnly ? input.importsSharedReadOnly : agentc::createNullValue());
@@ -605,9 +614,11 @@ bool validateStartContract(CPtr<agentc::ListreeValue> task,
         message = "intern_start requires a task object";
         return false;
     }
-    if (stringField(task, "program").empty()) {
+    if (stringField(task, "program").empty() &&
+        (stringField(task, "static_program_mount").empty() ||
+         stringField(task, "static_program_word").empty())) {
         code = "missing_program";
-        message = "intern task contract requires a non-empty program";
+        message = "intern task contract requires a non-empty program or static program entry";
         return false;
     }
     auto expect = namedValue(task, "expect");

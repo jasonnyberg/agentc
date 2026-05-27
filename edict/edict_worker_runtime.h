@@ -32,6 +32,8 @@ struct InternWorkerInput {
     CPtr<agentc::ListreeValue> contextSharedReadOnly;
     CPtr<agentc::ListreeValue> importsSharedReadOnly;
     CPtr<agentc::ListreeValue> staticMountsReadOnly;
+    std::string staticProgramMount;
+    std::string staticProgramWord;
     bool allowUnsafeFfiCalls = false;
     bool runInChildProcess = false;
     bool runWithExec = false;
