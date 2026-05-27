@@ -59,6 +59,7 @@ void runInternWorker(InternWorkerInput input, InternJoinSlot& slot) {
         agentc::addNamedItem(root, "input", input.inputSnapshot ? input.inputSnapshot : agentc::createNullValue());
         agentc::addNamedItem(root, "context", input.contextSharedReadOnly ? input.contextSharedReadOnly : agentc::createNullValue());
         agentc::addNamedItem(root, "imports", input.importsSharedReadOnly ? input.importsSharedReadOnly : agentc::createNullValue());
+        agentc::addNamedItem(root, "static_mounts", input.staticMountsReadOnly ? input.staticMountsReadOnly : agentc::createNullValue());
         agentc::addNamedItem(root, "workspace", agentc::createNullValue());
 
         EdictVM worker(root);

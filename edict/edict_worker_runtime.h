@@ -31,6 +31,7 @@ struct InternWorkerInput {
     CPtr<agentc::ListreeValue> inputSnapshot;
     CPtr<agentc::ListreeValue> contextSharedReadOnly;
     CPtr<agentc::ListreeValue> importsSharedReadOnly;
+    CPtr<agentc::ListreeValue> staticMountsReadOnly;
     bool allowUnsafeFfiCalls = false;
     std::shared_ptr<std::atomic<bool>> cancelRequested;
     bool hasMaxActiveJobs = false;

@@ -249,6 +249,14 @@ bool parseInternTask(CPtr<agentc::ListreeValue> task,
         input.importsSharedReadOnly->setReadOnly(true);
     }
 
+    input.staticMountsReadOnly = namedValue(task, "static_mounts");
+    if (!input.staticMountsReadOnly) {
+        input.staticMountsReadOnly = agentc::createNullValue();
+    }
+    if (!input.staticMountsReadOnly->isReadOnly()) {
+        input.staticMountsReadOnly->setReadOnly(true);
+    }
+
     return true;
 }
 
@@ -261,6 +269,7 @@ CPtr<agentc::ListreeValue> buildPreparedTaskSpec(const InternWorkerInput& input)
     agentc::addNamedItem(spec, "input", input.inputSnapshot ? input.inputSnapshot : agentc::createNullValue());
     agentc::addNamedItem(spec, "context", input.contextSharedReadOnly ? input.contextSharedReadOnly : agentc::createNullValue());
     agentc::addNamedItem(spec, "imports", input.importsSharedReadOnly ? input.importsSharedReadOnly : agentc::createNullValue());
+    agentc::addNamedItem(spec, "static_mounts", input.staticMountsReadOnly ? input.staticMountsReadOnly : agentc::createNullValue());
     if (input.hasMaxActiveJobs) {
         agentc::addNamedItem(spec, "max_active_jobs", agentc::createStringValue(std::to_string(input.maxActiveJobs)));
     } else {
@@ -393,6 +402,8 @@ CPtr<agentc::ListreeValue> buildSafetyStatus(const InternWorkerInput& input) {
                          agentc::createStringValue(input.contextSharedReadOnly && input.contextSharedReadOnly->isReadOnly() ? "true" : "false"));
     agentc::addNamedItem(safety, "imports_read_only",
                          agentc::createStringValue(input.importsSharedReadOnly && input.importsSharedReadOnly->isReadOnly() ? "true" : "false"));
+    agentc::addNamedItem(safety, "static_mounts_read_only",
+                         agentc::createStringValue(input.staticMountsReadOnly && input.staticMountsReadOnly->isReadOnly() ? "true" : "false"));
     agentc::addNamedItem(safety, "input_snapshot", agentc::createStringValue("json"));
     agentc::addNamedItem(safety, "result_merge_thread", agentc::createStringValue("coordinator"));
     return safety;

@@ -25,6 +25,7 @@
 
 #include "../edict_compiler.h"
 #include "../edict_vm.h"
+#include "../static_declaration_image.h"
 #include "../../listree/listree.h"
 
 using agentc::ListreeValue;
@@ -283,6 +284,116 @@ TEST(InternWorkerTest, WorkerExecutesSharedStaticBaseCodeThunk) {
     EXPECT_TRUE(Allocator<agentc::ListreeValue>::getAllocator().unmarkSlotStaticImmortal(contextSid));
     EXPECT_FALSE(Allocator<agentc::ListreeValue>::getAllocator().slotIsStaticImmortal(contextSid));
     EXPECT_FALSE(Allocator<agentc::ListreeValue>::getAllocator().slotIsStaticImmortal(baseSid));
+}
+
+TEST(InternWorkerTest, WorkerExecutesSharedBaseWithMmapStaticMountContract) {
+    auto coordinatorRoot = agentc::createNullValue();
+    EdictVM vm(coordinatorRoot);
+    EdictCompiler compiler;
+    loadModuleBackedIntern(vm, compiler);
+
+    auto image = agentc::edict::static_image::buildWorkerPrimitiveDeclarationImage();
+    const auto path = std::filesystem::temp_directory_path() /
+                      "agentc-worker-static-mount-contract-test.acsdi";
+    std::string error;
+    ASSERT_TRUE(agentc::edict::static_image::writeDeclarationImageContainer(image, path.string(), &error)) << error;
+    auto restored = agentc::edict::static_image::readDeclarationImageContainerMmapReadOnly(path.string(), &error);
+    ASSERT_TRUE(restored) << error;
+    auto mounted = agentc::edict::static_image::mountDeclarationImageReadOnly(restored);
+    ASSERT_TRUE(mounted.validation.ok) << mounted.validation.code << ": " << mounted.validation.message;
+    ASSERT_TRUE(mounted.root);
+    EXPECT_TRUE(mounted.root->isReadOnly());
+    EXPECT_TRUE(Allocator<agentc::ListreeValue>::getAllocator().slotIsStaticImmortal(mounted.rootId));
+
+    auto manifest = namedValue(mounted.root, "manifest");
+    ASSERT_TRUE(manifest);
+    auto staticMounts = agentc::createNullValue();
+    auto baseMount = agentc::createNullValue();
+    const std::string module = textValue(namedValue(manifest, "module"));
+    const std::string payloadHash = textValue(namedValue(manifest, "payload_hash"));
+    agentc::addNamedItem(baseMount, "source", agentc::createStringValue("g103-read-only-mmap-container"));
+    agentc::addNamedItem(baseMount, "image_id", agentc::createStringValue(module + ":" + payloadHash));
+    agentc::addNamedItem(baseMount, "manifest_hash", agentc::createStringValue(payloadHash));
+    agentc::addNamedItem(baseMount, "root_descriptor", agentc::createStringValue(textValue(namedValue(manifest, "root_id"))));
+    agentc::addNamedItem(baseMount, "root_slot", agentc::createStringValue(
+        std::to_string(mounted.rootId.first) + ":" + std::to_string(mounted.rootId.second)));
+    agentc::addNamedItem(baseMount, "contains_native_handles", agentc::createStringValue(
+        textValue(namedValue(manifest, "contains_native_handles"))));
+    agentc::addNamedItem(staticMounts, "base", baseMount);
+
+    auto context = agentc::createNullValue();
+    EdictVM contextVm(context);
+    int state = contextVm.execute(compiler.compile(
+        "'shared-fact @fact "
+        "[ input.label @result.label context.fact @result.fact 'shared-base @result.mode ] freeze! @base"));
+    ASSERT_FALSE(state & VM_ERROR) << contextVm.getError();
+    auto base = namedValue(context, "base");
+    ASSERT_TRUE(base);
+    ASSERT_TRUE(base->isReadOnly());
+    context->setReadOnly(true);
+    const SlabId contextSid = context.getSlabId();
+    const SlabId baseSid = base.getSlabId();
+    ASSERT_TRUE(Allocator<agentc::ListreeValue>::getAllocator().markSlotStaticImmortal(contextSid));
+    ASSERT_TRUE(Allocator<agentc::ListreeValue>::getAllocator().markSlotStaticImmortal(baseSid));
+
+    auto task = agentc::createNullValue();
+    agentc::addNamedItem(task, "task_id", agentc::createStringValue("mmap-static-mount-contract-demo"));
+    agentc::addNamedItem(task, "program", agentc::createStringValue(
+        "context.base! "
+        "static_mounts.base.source @result.mount_source "
+        "static_mounts.base.image_id @result.image_id "
+        "static_mounts.base.root_descriptor @result.root_descriptor "
+        "static_mounts.base.contains_native_handles @result.contains_native_handles"));
+    agentc::addNamedItem(task, "context", context);
+    agentc::addNamedItem(task, "static_mounts", staticMounts);
+    agentc::addNamedItem(task, "input", agentc::fromJson(R"({"label":"worker-input"})"));
+    addInternStartContract(task);
+
+    vm.pushData(task);
+    state = vm.execute(compiler.compile("intern_start! @job"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    auto job = namedValue(coordinatorRoot, "job");
+    ASSERT_TRUE(job);
+    EXPECT_EQ(textValue(namedValue(job, "state")), "started");
+    const std::string jobId = textValue(namedValue(job, "job_id"));
+    ASSERT_FALSE(jobId.empty());
+
+    CPtr<ListreeValue> status;
+    for (int i = 0; i < 100; ++i) {
+        vm.pushData(agentc::createStringValue(jobId));
+        state = vm.execute(compiler.compile("intern_sync! @mmap_static_status"));
+        ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+        status = namedValue(coordinatorRoot, "mmap_static_status");
+        ASSERT_TRUE(status);
+        if (textValue(namedValue(status, "state")) == "complete") {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+
+    ASSERT_TRUE(status);
+    EXPECT_EQ(textValue(namedValue(status, "state")), "complete");
+    EXPECT_EQ(listStrings(namedValue(status, "ok")), std::vector<std::string>({"ok"}));
+    auto safety = namedValue(status, "safety");
+    ASSERT_TRUE(safety);
+    EXPECT_EQ(textValue(namedValue(safety, "static_mounts_read_only")), "true");
+    auto result = namedValue(status, "result");
+    ASSERT_TRUE(result);
+    EXPECT_EQ(textValue(namedValue(result, "label")), "worker-input");
+    EXPECT_EQ(textValue(namedValue(result, "fact")), "shared-fact");
+    EXPECT_EQ(textValue(namedValue(result, "mode")), "shared-base");
+    EXPECT_EQ(textValue(namedValue(result, "mount_source")), "g103-read-only-mmap-container");
+    EXPECT_EQ(textValue(namedValue(result, "image_id")), module + ":" + payloadHash);
+    EXPECT_EQ(textValue(namedValue(result, "root_descriptor")), "worker.edict/declarations");
+    EXPECT_EQ(textValue(namedValue(result, "contains_native_handles")), "false");
+
+    EXPECT_TRUE(staticMounts->isReadOnly());
+    EXPECT_TRUE(Allocator<agentc::ListreeValue>::getAllocator().unmarkSlotStaticImmortal(baseSid));
+    EXPECT_TRUE(Allocator<agentc::ListreeValue>::getAllocator().unmarkSlotStaticImmortal(contextSid));
+    for (const auto& sid : mounted.staticValueSlots) {
+        (void)Allocator<agentc::ListreeValue>::getAllocator().unmarkSlotStaticImmortal(sid);
+    }
+    std::filesystem::remove(path);
 }
 
 TEST(InternWorkerTest, ModuleBackedInternWordsUseImportedWorkerPrimitives) {
