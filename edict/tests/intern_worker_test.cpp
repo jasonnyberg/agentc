@@ -589,6 +589,62 @@ TEST(InternWorkerTest, InternStartCanDispatchForkedWorkerProcess) {
     std::filesystem::remove(path);
 }
 
+TEST(InternWorkerTest, ExecedWorkerIndependentlyMountsStaticDeclarationImage) {
+    auto image = agentc::edict::static_image::buildWorkerPrimitiveDeclarationImage();
+    auto manifest = namedValue(image, "manifest");
+    ASSERT_TRUE(manifest);
+    const std::string module = textValue(namedValue(manifest, "module"));
+    const std::string payloadHash = textValue(namedValue(manifest, "payload_hash"));
+
+    const auto path = std::filesystem::temp_directory_path() /
+                      "agentc-worker-exec-static-mount-test.acsdi";
+    std::string error;
+    ASSERT_TRUE(agentc::edict::static_image::writeDeclarationImageContainer(image, path.string(), &error)) << error;
+
+    auto staticMounts = agentc::createNullValue();
+    auto baseMount = agentc::createNullValue();
+    agentc::addNamedItem(baseMount, "container_path", agentc::createStringValue(path.string()));
+    agentc::addNamedItem(staticMounts, "base", baseMount);
+    staticMounts->setReadOnly(true);
+
+    agentc::edict::worker::InternWorkerInput input;
+    input.taskId = "exec-static-image-demo";
+    input.program =
+        "input.label @result.label "
+        "context.fact @result.fact "
+        "static_mounts.base.source @result.mount_source "
+        "static_mounts.base.image_id @result.image_id "
+        "static_mounts.base.root_descriptor @result.root_descriptor "
+        "static_mounts.base.mounted_in_exec @result.mounted_in_exec "
+        "static_mounts.base.root.manifest.root_id @result.root_manifest_id";
+    input.inputSnapshot = agentc::fromJson(R"({"label":"worker-input"})");
+    input.contextSharedReadOnly = agentc::fromJson(R"({"fact":"exec-context"})");
+    input.importsSharedReadOnly = agentc::createNullValue();
+    input.staticMountsReadOnly = staticMounts;
+
+    const auto execPath = std::filesystem::path(TEST_EDICT_BIN_DIR) / "edict_worker_exec";
+    agentc::edict::worker::InternJoinSlot slot;
+    int childPid = 0;
+    ASSERT_TRUE(agentc::edict::worker::runInternWorkerExeced(execPath.string(), input, slot, &error, &childPid)) << error;
+    EXPECT_GT(childPid, 0);
+    EXPECT_NE(childPid, static_cast<int>(::getpid()));
+    ASSERT_TRUE(slot.ready());
+    const auto outcome = slot.load();
+    ASSERT_TRUE(outcome.ok) << outcome.errorCode << ": " << outcome.errorMessage;
+
+    auto result = agentc::fromJson(outcome.resultJson);
+    ASSERT_TRUE(result);
+    EXPECT_EQ(textValue(namedValue(result, "label")), "worker-input");
+    EXPECT_EQ(textValue(namedValue(result, "fact")), "exec-context");
+    EXPECT_EQ(textValue(namedValue(result, "mount_source")), "g103-exec-mounted-mmap-container");
+    EXPECT_EQ(textValue(namedValue(result, "image_id")), module + ":" + payloadHash);
+    EXPECT_EQ(textValue(namedValue(result, "root_descriptor")), "worker.edict/declarations");
+    EXPECT_EQ(textValue(namedValue(result, "mounted_in_exec")), "true");
+    EXPECT_EQ(textValue(namedValue(result, "root_manifest_id")), "worker.edict/declarations");
+    EXPECT_TRUE(staticMounts->isReadOnly());
+    std::filesystem::remove(path);
+}
+
 TEST(InternWorkerTest, ModuleBackedInternWordsUseImportedWorkerPrimitives) {
     auto coordinatorRoot = agentc::createNullValue();
     EdictVM vm(coordinatorRoot);

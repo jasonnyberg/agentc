@@ -1,6 +1,6 @@
 # Goal: G107 — Process-Isolated Micro-VM Interns
 
-**Status**: ACTIVE / ASYNC FORKED WORKER
+**Status**: ACTIVE / FORK/EXEC STATIC IMAGE SMOKE
 **Created**: 2026-05-14  
 **Parent**: 🔗[G091 — Intern Worker Concurrency MVP](../G091-InternWorkerConcurrencyMvp/index.md)  
 **Related Concept**: 🔗[Layered mmap Micro-VM Architecture](../../Concepts/LayeredMmapMicroVmArchitecture/index.md)
@@ -16,15 +16,16 @@ Threaded workers prove the control plane, but process isolation is the stronger 
 - [x] Define the first pre-process launch contract seam for static mount descriptors in the task envelope.
 - [x] Add the first forked worker process smoke over the same shared-code/static-mount contract.
 - [x] Preserve `intern_start!` / `intern_sync!` semantics across the first forked process-worker backend.
+- [x] Add the first fork/exec worker smoke that independently mounts a G103 static declaration image.
 - [ ] Define the full micro-VM launch contract: image manifest, task envelope, leased slab range/layer, and output channel.
-- [ ] Support launching a worker process that mounts the static core declaration image or a test image.
+- [x] Support launching a worker process that mounts the static core declaration image or a test image.
 - [ ] Ensure stateful provider/runtime handles are not inherited or are explicitly rehydrated only when allowed.
 - [ ] Add tests/smokes for a deterministic process-isolated worker returning a structured result.
 - [ ] Consider a Root1 forkserver mode as an intermediate only if inherited handle/thread risks are controlled.
 
 ## Acceptance Criteria
 - [x] A deterministic intern task can run in a separate process and return a structured result to Root1/coordinator.
-- [ ] The worker maps shared static/core slabs read-only and uses private dynamic state for execution.
+- [x] The worker maps shared static/core slabs read-only and uses private dynamic state for execution.
 - [x] Worker publication or result transfer does not require mutable coordinator-owned Listree access from the worker.
 - [ ] Documentation states which handles/capabilities may be inherited, rehydrated, or blocked.
 
@@ -37,6 +38,8 @@ Threaded workers prove the control plane, but process isolation is the stronger 
 - 2026-05-27: Validation passed: `cmake --build build --target edict_tests -j2`; focused forked smoke `InternWorkerTest.ForkedWorkerExecutesInheritedSharedBaseAndStaticMounts` 1/1; focused G107 static/process slice `InternWorkerTest.ForkedWorkerExecutesInheritedSharedBaseAndStaticMounts:InternWorkerTest.WorkerExecutesSharedBaseWithMmapStaticMountContract:InternWorkerTest.WorkerExecutesSharedStaticBaseCodeThunk:StaticDeclarationImageTest.*` 13/13; `git diff --check` passed.
 - 2026-05-27: Wired the forked worker seam into the broker-compatible async intern path. Task envelopes can opt into the process backend with `worker = "edict-fork-async"` or `isolation = "process"`; `InternJobManager` forks on the coordinator thread, stores the child PID as private C++ job state, and uses a detached supervisor only to read the native pipe, wait for the child, store `InternWorkerOutcome`, and publish the existing Root1-compatible completion/error descriptor. `intern.edict` now propagates the native status `worker` label and optional `process_pid` into public start/sync envelopes. `InternWorkerTest.InternStartCanDispatchForkedWorkerProcess` launches through public `intern_start!`, syncs through public `intern_sync!`, and proves a child process executes inherited frozen/static-immortal shared base code plus read-only `static_mounts` descriptors and returns structured JSON. Raw fds remain private native state and are not durable Edict values; this is still fork, not fork/exec or independent static-core remount.
 - 2026-05-27: Validation passed: `cmake --build build --target edict_tests -j2`; focused async forked worker regression `InternWorkerTest.InternStartCanDispatchForkedWorkerProcess` 1/1; focused G107 process/static slice `InternWorkerTest.InternStartCanDispatchForkedWorkerProcess:InternWorkerTest.ForkedWorkerExecutesInheritedSharedBaseAndStaticMounts:InternWorkerTest.WorkerExecutesSharedBaseWithMmapStaticMountContract:InternWorkerTest.WorkerExecutesSharedStaticBaseCodeThunk:StaticDeclarationImageTest.*` 14/14; `git diff --check` passed.
+- 2026-05-27: Added the first fork/exec worker launch path. New `edict_worker_exec` starts as a separate executable, receives a JSON-safe task envelope over a private native pipe, reconstructs worker `input`/`context`/`imports`/`static_mounts`, independently reads a `task.static_mounts.base.container_path` G103 declaration-image container through read-only mmap, mounts it in the execed process, exposes the mounted root under `static_mounts.base.root`, runs a fresh worker VM, and returns only `InternWorkerOutcome` over the private outcome pipe. `InternWorkerTest.ExecedWorkerIndependentlyMountsStaticDeclarationImage` proves the child PID differs from the coordinator, the worker sees private JSON input/context, independently mounted `static_mounts` metadata, and `static_mounts.base.root.manifest.root_id`. This is a direct synchronous C++ fork/exec smoke and a JSON-safe launch path; public async `intern_start!` still uses the fork backend, and raw fds remain private native process state.
+- 2026-05-27: Validation passed: `cmake --build build --target edict_tests -j2`; focused exec static-image smoke `InternWorkerTest.ExecedWorkerIndependentlyMountsStaticDeclarationImage` 1/1; focused G107 exec/process/static slice `InternWorkerTest.ExecedWorkerIndependentlyMountsStaticDeclarationImage:InternWorkerTest.InternStartCanDispatchForkedWorkerProcess:InternWorkerTest.ForkedWorkerExecutesInheritedSharedBaseAndStaticMounts:InternWorkerTest.WorkerExecutesSharedBaseWithMmapStaticMountContract:StaticDeclarationImageTest.*` 14/14; `git diff --check` passed.
 
 ## Dependencies
 - Requires the async control-plane slice of 🔗[G091](../G091-InternWorkerConcurrencyMvp/index.md).

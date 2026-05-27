@@ -16,11 +16,13 @@
 #include "edict_worker_runtime.h"
 #include "edict_vm.h"
 #include "edict_compiler.h"
+#include "static_declaration_image.h"
 
 #include <cerrno>
 #include <exception>
 #include <cstdint>
 #include <cstring>
+#include <cstdlib>
 #include <sys/wait.h>
 #include <mutex>
 #include <unistd.h>
@@ -36,6 +38,26 @@ CPtr<agentc::ListreeValue> namedValue(CPtr<agentc::ListreeValue> value,
     }
     auto item = value->find(name);
     return item ? item->getValue(false, false) : nullptr;
+}
+
+std::string textValue(CPtr<agentc::ListreeValue> value) {
+    if (!value || !value->getData()) {
+        return {};
+    }
+    return std::string(static_cast<const char*>(value->getData()), value->getLength());
+}
+
+bool parseFd(const char* text, int& out) {
+    if (!text || !*text) {
+        return false;
+    }
+    char* end = nullptr;
+    const long value = std::strtol(text, &end, 10);
+    if (!end || *end != '\0' || value < 0) {
+        return false;
+    }
+    out = static_cast<int>(value);
+    return true;
 }
 
 bool writeAll(int fd, const void* data, size_t size) {
@@ -100,6 +122,86 @@ bool readOutcome(int fd, InternWorkerOutcome& outcome) {
     return readString(fd, outcome.resultJson) &&
            readString(fd, outcome.errorCode) &&
            readString(fd, outcome.errorMessage);
+}
+
+bool writeWorkerInput(int fd, const InternWorkerInput& input) {
+    const uint8_t allowUnsafe = input.allowUnsafeFfiCalls ? 1 : 0;
+    return writeString(fd, input.taskId) &&
+           writeString(fd, input.program) &&
+           writeString(fd, agentc::toJson(input.inputSnapshot ? input.inputSnapshot : agentc::createNullValue())) &&
+           writeString(fd, agentc::toJson(input.contextSharedReadOnly ? input.contextSharedReadOnly : agentc::createNullValue())) &&
+           writeString(fd, agentc::toJson(input.importsSharedReadOnly ? input.importsSharedReadOnly : agentc::createNullValue())) &&
+           writeString(fd, agentc::toJson(input.staticMountsReadOnly ? input.staticMountsReadOnly : agentc::createNullValue())) &&
+           writeAll(fd, &allowUnsafe, sizeof(allowUnsafe));
+}
+
+bool hydrateStaticMounts(CPtr<agentc::ListreeValue> staticMounts, std::string& error) {
+    if (!staticMounts || staticMounts->isListMode()) {
+        return true;
+    }
+    auto base = namedValue(staticMounts, "base");
+    if (!base || base->isListMode()) {
+        return true;
+    }
+    const std::string path = textValue(namedValue(base, "container_path"));
+    if (path.empty()) {
+        return true;
+    }
+
+    auto image = agentc::edict::static_image::readDeclarationImageContainerMmapReadOnly(path, &error);
+    if (!image) {
+        return false;
+    }
+    auto mounted = agentc::edict::static_image::mountDeclarationImageReadOnly(image);
+    if (!mounted.validation.ok || !mounted.root) {
+        error = mounted.validation.code + ": " + mounted.validation.message;
+        return false;
+    }
+    auto manifest = namedValue(mounted.root, "manifest");
+    const std::string module = textValue(namedValue(manifest, "module"));
+    const std::string payloadHash = textValue(namedValue(manifest, "payload_hash"));
+    agentc::addNamedItem(base, "source", agentc::createStringValue("g103-exec-mounted-mmap-container"));
+    agentc::addNamedItem(base, "image_id", agentc::createStringValue(module + ":" + payloadHash));
+    agentc::addNamedItem(base, "manifest_hash", agentc::createStringValue(payloadHash));
+    agentc::addNamedItem(base, "root_descriptor", agentc::createStringValue(textValue(namedValue(manifest, "root_id"))));
+    agentc::addNamedItem(base, "mounted_in_exec", agentc::createStringValue("true"));
+    agentc::addNamedItem(base, "root", mounted.root);
+    return true;
+}
+
+bool readWorkerInput(int fd, InternWorkerInput& input, std::string& error) {
+    std::string inputJson;
+    std::string contextJson;
+    std::string importsJson;
+    std::string staticMountsJson;
+    uint8_t allowUnsafe = 0;
+    if (!readString(fd, input.taskId) ||
+        !readString(fd, input.program) ||
+        !readString(fd, inputJson) ||
+        !readString(fd, contextJson) ||
+        !readString(fd, importsJson) ||
+        !readString(fd, staticMountsJson) ||
+        !readAll(fd, &allowUnsafe, sizeof(allowUnsafe))) {
+        error = "worker exec input pipe did not contain a complete task";
+        return false;
+    }
+
+    input.inputSnapshot = agentc::fromJson(inputJson);
+    input.contextSharedReadOnly = agentc::fromJson(contextJson);
+    input.importsSharedReadOnly = agentc::fromJson(importsJson);
+    input.staticMountsReadOnly = agentc::fromJson(staticMountsJson);
+    if (!input.inputSnapshot || !input.contextSharedReadOnly || !input.importsSharedReadOnly || !input.staticMountsReadOnly) {
+        error = "worker exec input contained invalid JSON";
+        return false;
+    }
+    if (!hydrateStaticMounts(input.staticMountsReadOnly, error)) {
+        return false;
+    }
+    input.contextSharedReadOnly->setReadOnly(true);
+    input.importsSharedReadOnly->setReadOnly(true);
+    input.staticMountsReadOnly->setReadOnly(true);
+    input.allowUnsafeFfiCalls = allowUnsafe != 0;
+    return true;
 }
 
 void setLaunchError(std::string* launchError, const std::string& message) {
@@ -254,6 +356,111 @@ bool runInternWorkerForked(InternWorkerInput input,
         *childPid = handle.childPid;
     }
     return collectInternWorkerForked(handle, slot, launchError);
+}
+
+bool runInternWorkerExeced(const std::string& executablePath,
+                           InternWorkerInput input,
+                           InternJoinSlot& slot,
+                           std::string* launchError,
+                           int* childPid) {
+    int inputPipe[2] = {-1, -1};
+    int outputPipe[2] = {-1, -1};
+    if (::pipe(inputPipe) != 0) {
+        setLaunchError(launchError, std::string("input pipe failed: ") + std::strerror(errno));
+        return false;
+    }
+    if (::pipe(outputPipe) != 0) {
+        const std::string error = std::string("output pipe failed: ") + std::strerror(errno);
+        ::close(inputPipe[0]);
+        ::close(inputPipe[1]);
+        setLaunchError(launchError, error);
+        return false;
+    }
+
+    const pid_t pid = ::fork();
+    if (pid < 0) {
+        const std::string error = std::string("fork for exec failed: ") + std::strerror(errno);
+        ::close(inputPipe[0]);
+        ::close(inputPipe[1]);
+        ::close(outputPipe[0]);
+        ::close(outputPipe[1]);
+        setLaunchError(launchError, error);
+        return false;
+    }
+
+    if (pid == 0) {
+        ::close(inputPipe[1]);
+        ::close(outputPipe[0]);
+        const std::string inputFd = std::to_string(inputPipe[0]);
+        const std::string outputFd = std::to_string(outputPipe[1]);
+        ::execl(executablePath.c_str(), executablePath.c_str(), inputFd.c_str(), outputFd.c_str(), static_cast<char*>(nullptr));
+        _exit(127);
+    }
+
+    ::close(inputPipe[0]);
+    ::close(outputPipe[1]);
+    if (childPid) {
+        *childPid = static_cast<int>(pid);
+    }
+
+    const bool wrote = writeWorkerInput(inputPipe[1], input);
+    ::close(inputPipe[1]);
+
+    InternWorkerOutcome outcome;
+    const bool readOk = readOutcome(outputPipe[0], outcome);
+    ::close(outputPipe[0]);
+
+    int status = 0;
+    const bool waited = ::waitpid(pid, &status, 0) == pid;
+    if (!wrote) {
+        setLaunchError(launchError, "worker exec input pipe write failed");
+        return false;
+    }
+    if (!waited) {
+        setLaunchError(launchError, std::string("worker exec waitpid failed: ") + std::strerror(errno));
+        return false;
+    }
+    if (!readOk) {
+        setLaunchError(launchError, "worker exec process did not return a complete outcome");
+        return false;
+    }
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+        setLaunchError(launchError, "worker exec process exited before clean completion");
+        return false;
+    }
+    slot.store(std::move(outcome));
+    return true;
+}
+
+int runInternWorkerExecChildMain(int argc, char** argv) {
+    if (argc != 3) {
+        return 2;
+    }
+    int inputFd = -1;
+    int outputFd = -1;
+    if (!parseFd(argv[1], inputFd) || !parseFd(argv[2], outputFd)) {
+        return 2;
+    }
+
+    InternWorkerInput input;
+    std::string error;
+    InternJoinSlot slot;
+    if (readWorkerInput(inputFd, input, error)) {
+        ::close(inputFd);
+        runInternWorker(std::move(input), slot);
+    } else {
+        ::close(inputFd);
+        InternWorkerOutcome outcome;
+        outcome.ok = false;
+        outcome.errorCode = "worker_exec_input_error";
+        outcome.errorMessage = error;
+        slot.store(std::move(outcome));
+    }
+
+    const InternWorkerOutcome outcome = slot.load();
+    const bool written = writeOutcome(outputFd, outcome);
+    ::close(outputFd);
+    return written ? 0 : 1;
 }
 
 } // namespace agentc::edict::worker

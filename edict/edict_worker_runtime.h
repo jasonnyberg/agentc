@@ -75,5 +75,11 @@ bool runInternWorkerForked(InternWorkerInput input,
                            InternJoinSlot& slot,
                            std::string* launchError = nullptr,
                            int* childPid = nullptr);
+bool runInternWorkerExeced(const std::string& executablePath,
+                           InternWorkerInput input,
+                           InternJoinSlot& slot,
+                           std::string* launchError = nullptr,
+                           int* childPid = nullptr);
+int runInternWorkerExecChildMain(int argc, char** argv);
 
 } // namespace agentc::edict::worker

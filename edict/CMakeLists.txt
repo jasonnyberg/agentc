@@ -46,6 +46,9 @@ add_executable(edict
 target_include_directories(edict PRIVATE ${nlohmann_json_SOURCE_DIR})
 target_link_libraries(edict libedict)
 
+add_executable(edict_worker_exec worker_exec_main.cpp)
+target_link_libraries(edict_worker_exec libedict)
+
 # Add tests
 enable_testing()
 add_executable(edict_tests
@@ -77,7 +80,7 @@ target_compile_definitions(edict_tests PRIVATE
     TEST_EDICT_BIN_DIR="${CMAKE_CURRENT_BINARY_DIR}"
 )
 target_link_libraries(edict_tests libedict cartographer kanren gtest gtest_main pthread)
-add_dependencies(edict_tests edict agentmath_poc agentthreads_poc)
+add_dependencies(edict_tests edict edict_worker_exec agentmath_poc agentthreads_poc)
 add_test(NAME edict_tests COMMAND edict_tests)
 
 add_executable(splice_test tests/splice_test.cpp)
