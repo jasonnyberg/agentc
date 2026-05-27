@@ -17,8 +17,13 @@
 #include "edict_vm.h"
 #include "edict_compiler.h"
 
+#include <cerrno>
 #include <exception>
+#include <cstdint>
+#include <cstring>
+#include <sys/wait.h>
 #include <mutex>
+#include <unistd.h>
 #include <utility>
 
 namespace agentc::edict::worker {
@@ -31,6 +36,76 @@ CPtr<agentc::ListreeValue> namedValue(CPtr<agentc::ListreeValue> value,
     }
     auto item = value->find(name);
     return item ? item->getValue(false, false) : nullptr;
+}
+
+bool writeAll(int fd, const void* data, size_t size) {
+    const auto* bytes = static_cast<const char*>(data);
+    while (size > 0) {
+        const ssize_t written = ::write(fd, bytes, size);
+        if (written <= 0) {
+            return false;
+        }
+        bytes += written;
+        size -= static_cast<size_t>(written);
+    }
+    return true;
+}
+
+bool readAll(int fd, void* data, size_t size) {
+    auto* bytes = static_cast<char*>(data);
+    while (size > 0) {
+        const ssize_t count = ::read(fd, bytes, size);
+        if (count <= 0) {
+            return false;
+        }
+        bytes += count;
+        size -= static_cast<size_t>(count);
+    }
+    return true;
+}
+
+bool writeString(int fd, const std::string& value) {
+    const uint64_t length = static_cast<uint64_t>(value.size());
+    return writeAll(fd, &length, sizeof(length)) &&
+           (value.empty() || writeAll(fd, value.data(), value.size()));
+}
+
+bool readString(int fd, std::string& value) {
+    uint64_t length = 0;
+    if (!readAll(fd, &length, sizeof(length))) {
+        return false;
+    }
+    value.assign(static_cast<size_t>(length), '\0');
+    return length == 0 || readAll(fd, value.data(), value.size());
+}
+
+bool writeOutcome(int fd, const InternWorkerOutcome& outcome) {
+    const uint8_t ok = outcome.ok ? 1 : 0;
+    const int32_t vmState = static_cast<int32_t>(outcome.vmState);
+    return writeAll(fd, &ok, sizeof(ok)) &&
+           writeAll(fd, &vmState, sizeof(vmState)) &&
+           writeString(fd, outcome.resultJson) &&
+           writeString(fd, outcome.errorCode) &&
+           writeString(fd, outcome.errorMessage);
+}
+
+bool readOutcome(int fd, InternWorkerOutcome& outcome) {
+    uint8_t ok = 0;
+    int32_t vmState = 0;
+    if (!readAll(fd, &ok, sizeof(ok)) || !readAll(fd, &vmState, sizeof(vmState))) {
+        return false;
+    }
+    outcome.ok = ok != 0;
+    outcome.vmState = static_cast<int>(vmState);
+    return readString(fd, outcome.resultJson) &&
+           readString(fd, outcome.errorCode) &&
+           readString(fd, outcome.errorMessage);
+}
+
+void setLaunchError(std::string* launchError, const std::string& message) {
+    if (launchError) {
+        *launchError = message;
+    }
 }
 
 } // namespace
@@ -100,6 +175,62 @@ void runInternWorker(InternWorkerInput input, InternJoinSlot& slot) {
         outcome.errorMessage = "unknown intern worker exception";
     }
     slot.store(std::move(outcome));
+}
+
+bool runInternWorkerForked(InternWorkerInput input,
+                           InternJoinSlot& slot,
+                           std::string* launchError,
+                           int* childPid) {
+    int pipeFds[2] = {-1, -1};
+    if (::pipe(pipeFds) != 0) {
+        setLaunchError(launchError, std::string("pipe failed: ") + std::strerror(errno));
+        return false;
+    }
+
+    const pid_t pid = ::fork();
+    if (pid < 0) {
+        const std::string error = std::string("fork failed: ") + std::strerror(errno);
+        ::close(pipeFds[0]);
+        ::close(pipeFds[1]);
+        setLaunchError(launchError, error);
+        return false;
+    }
+
+    if (pid == 0) {
+        ::close(pipeFds[0]);
+        InternJoinSlot childSlot;
+        runInternWorker(std::move(input), childSlot);
+        const InternWorkerOutcome outcome = childSlot.load();
+        const bool written = writeOutcome(pipeFds[1], outcome);
+        ::close(pipeFds[1]);
+        _exit(written ? 0 : 1);
+    }
+
+    if (childPid) {
+        *childPid = static_cast<int>(pid);
+    }
+    ::close(pipeFds[1]);
+
+    InternWorkerOutcome outcome;
+    const bool readOk = readOutcome(pipeFds[0], outcome);
+    ::close(pipeFds[0]);
+
+    int status = 0;
+    if (::waitpid(pid, &status, 0) != pid) {
+        setLaunchError(launchError, std::string("waitpid failed: ") + std::strerror(errno));
+        return false;
+    }
+    if (!readOk) {
+        setLaunchError(launchError, "worker process did not return a complete outcome");
+        return false;
+    }
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+        setLaunchError(launchError, "worker process exited before clean completion");
+        return false;
+    }
+
+    slot.store(std::move(outcome));
+    return true;
 }
 
 } // namespace agentc::edict::worker

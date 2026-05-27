@@ -59,5 +59,9 @@ private:
 };
 
 void runInternWorker(InternWorkerInput input, InternJoinSlot& slot);
+bool runInternWorkerForked(InternWorkerInput input,
+                           InternJoinSlot& slot,
+                           std::string* launchError = nullptr,
+                           int* childPid = nullptr);
 
 } // namespace agentc::edict::worker
