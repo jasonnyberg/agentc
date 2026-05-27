@@ -1,6 +1,6 @@
 # Goal: G107 — Process-Isolated Micro-VM Interns
 
-**Status**: PLANNED  
+**Status**: ACTIVE / FIRST IN-PROCESS SHARED-CODE SMOKE
 **Created**: 2026-05-14  
 **Parent**: 🔗[G091 — Intern Worker Concurrency MVP](../G091-InternWorkerConcurrencyMvp/index.md)  
 **Related Concept**: 🔗[Layered mmap Micro-VM Architecture](../../Concepts/LayeredMmapMicroVmArchitecture/index.md)
@@ -12,6 +12,7 @@ Run intern workers as process-isolated micro-VMs that mmap the static core image
 Threaded workers prove the control plane, but process isolation is the stronger safety and sharing model. Separate worker processes can map core slabs read-only at the OS level, use tiny private writable overlays, and publish immutable results without sharing mutable VM/Listree state. 🔗[G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design](../G110-EventfdEpollMicroVmIpcDesign/index.md) records the likely Linux waitable/ownership-broker substrate for process-isolated mailbox IPC.
 
 ## Implementation Plan
+- [x] Add a pre-isolation end-to-end smoke where a launched worker executes a shared frozen/static-immortal base code thunk.
 - [ ] Define the micro-VM launch contract: image manifest, task envelope, leased slab range/layer, and output channel.
 - [ ] Support launching a worker process that mounts the static core declaration image or a test image.
 - [ ] Preserve `intern_start!` / `intern_sync!` semantics across the process boundary.
@@ -24,6 +25,10 @@ Threaded workers prove the control plane, but process isolation is the stronger 
 - [ ] The worker maps shared static/core slabs read-only and uses private dynamic state for execution.
 - [ ] Worker publication or result transfer does not require mutable coordinator-owned Listree access from the worker.
 - [ ] Documentation states which handles/capabilities may be inherited, rehydrated, or blocked.
+
+## Progress
+- 2026-05-27: Added the first pre-isolation shared-code worker smoke in `InternWorkerTest.WorkerExecutesSharedStaticBaseCodeThunk`. The coordinator builds a frozen base thunk in a shared context, marks the context root and thunk slots static-immortal, launches an async intern worker through `intern_start!`, and the worker executes `context.base!` to populate its private result from shared code plus private input. This is intentionally still the thread-worker backend, not the final process-isolated OS-mmap worker.
+- 2026-05-27: Validation passed: `cmake --build build --target edict_tests -j2`; focused smoke `InternWorkerTest.WorkerExecutesSharedStaticBaseCodeThunk` 1/1; focused intern/shared-code slice `InternWorkerTest.WorkerExecutesSharedStaticBaseCodeThunk:InternWorkerTest.InternRunDispatchesWorkerAndCollectsStructuredResult:InternWorkerTest.InternStartAndSyncCollectsStructuredResultAsynchronously` 3/3; broader worker/G104 slice `InternWorkerTest.*:EdictVM.FrozenThunkUsesPrivateInstructionPointerAcrossResumeAndReuse:FreezeBuiltin.*:SharingTest.*` 27/27.
 
 ## Dependencies
 - Requires the async control-plane slice of 🔗[G091](../G091-InternWorkerConcurrencyMvp/index.md).

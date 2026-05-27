@@ -212,6 +212,79 @@ TEST(InternWorkerTest, InternRunDispatchesWorkerAndCollectsStructuredResult) {
     EXPECT_EQ(textValue(namedValue(input, "label")), "beta");
 }
 
+TEST(InternWorkerTest, WorkerExecutesSharedStaticBaseCodeThunk) {
+    auto coordinatorRoot = agentc::createNullValue();
+    EdictVM vm(coordinatorRoot);
+    EdictCompiler compiler;
+    loadModuleBackedIntern(vm, compiler);
+
+    auto context = agentc::createNullValue();
+    EdictVM contextVm(context);
+    int state = contextVm.execute(compiler.compile(
+        "'shared-fact @fact "
+        "[ input.label @result.label context.fact @result.fact 'shared-base @result.mode ] freeze! @base"));
+    ASSERT_FALSE(state & VM_ERROR) << contextVm.getError();
+
+    auto base = namedValue(context, "base");
+    ASSERT_TRUE(base);
+    ASSERT_TRUE(base->isReadOnly());
+    context->setReadOnly(true);
+
+    const SlabId contextSid = context.getSlabId();
+    const SlabId baseSid = base.getSlabId();
+    ASSERT_TRUE(Allocator<agentc::ListreeValue>::getAllocator().markSlotStaticImmortal(contextSid));
+    ASSERT_TRUE(Allocator<agentc::ListreeValue>::getAllocator().markSlotStaticImmortal(baseSid));
+    ASSERT_TRUE(Allocator<agentc::ListreeValue>::getAllocator().slotIsStaticImmortal(contextSid));
+    ASSERT_TRUE(Allocator<agentc::ListreeValue>::getAllocator().slotIsStaticImmortal(baseSid));
+
+    auto task = agentc::createNullValue();
+    agentc::addNamedItem(task, "task_id", agentc::createStringValue("shared-base-code-demo"));
+    agentc::addNamedItem(task, "program", agentc::createStringValue("context.base!"));
+    agentc::addNamedItem(task, "context", context);
+    agentc::addNamedItem(task, "input", agentc::fromJson(R"({"label":"worker-input"})"));
+    addInternStartContract(task);
+
+    vm.pushData(task);
+    state = vm.execute(compiler.compile("intern_start! @job"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    auto job = namedValue(coordinatorRoot, "job");
+    ASSERT_TRUE(job);
+    EXPECT_EQ(textValue(namedValue(job, "state")), "started");
+    const std::string jobId = textValue(namedValue(job, "job_id"));
+    ASSERT_FALSE(jobId.empty());
+
+    CPtr<ListreeValue> status;
+    for (int i = 0; i < 100; ++i) {
+        vm.pushData(agentc::createStringValue(jobId));
+        state = vm.execute(compiler.compile("intern_sync! @shared_base_status"));
+        ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+        status = namedValue(coordinatorRoot, "shared_base_status");
+        ASSERT_TRUE(status);
+        if (textValue(namedValue(status, "state")) == "complete") {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+
+    ASSERT_TRUE(status);
+    EXPECT_EQ(textValue(namedValue(status, "state")), "complete");
+    EXPECT_EQ(listStrings(namedValue(status, "ok")), std::vector<std::string>({"ok"}));
+    auto result = namedValue(status, "result");
+    ASSERT_TRUE(result);
+    EXPECT_EQ(textValue(namedValue(result, "label")), "worker-input");
+    EXPECT_EQ(textValue(namedValue(result, "fact")), "shared-fact");
+    EXPECT_EQ(textValue(namedValue(result, "mode")), "shared-base");
+    EXPECT_TRUE(context->isReadOnly());
+    EXPECT_TRUE(base->isReadOnly());
+    EXPECT_TRUE(Allocator<agentc::ListreeValue>::getAllocator().slotIsStaticImmortal(contextSid));
+    EXPECT_TRUE(Allocator<agentc::ListreeValue>::getAllocator().slotIsStaticImmortal(baseSid));
+
+    EXPECT_TRUE(Allocator<agentc::ListreeValue>::getAllocator().unmarkSlotStaticImmortal(baseSid));
+    EXPECT_TRUE(Allocator<agentc::ListreeValue>::getAllocator().unmarkSlotStaticImmortal(contextSid));
+    EXPECT_FALSE(Allocator<agentc::ListreeValue>::getAllocator().slotIsStaticImmortal(contextSid));
+    EXPECT_FALSE(Allocator<agentc::ListreeValue>::getAllocator().slotIsStaticImmortal(baseSid));
+}
+
 TEST(InternWorkerTest, ModuleBackedInternWordsUseImportedWorkerPrimitives) {
     auto coordinatorRoot = agentc::createNullValue();
     EdictVM vm(coordinatorRoot);
