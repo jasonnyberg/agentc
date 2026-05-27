@@ -177,10 +177,9 @@ void runInternWorker(InternWorkerInput input, InternJoinSlot& slot) {
     slot.store(std::move(outcome));
 }
 
-bool runInternWorkerForked(InternWorkerInput input,
-                           InternJoinSlot& slot,
-                           std::string* launchError,
-                           int* childPid) {
+bool launchInternWorkerForked(InternWorkerInput input,
+                              InternForkedWorkerHandle& handle,
+                              std::string* launchError) {
     int pipeFds[2] = {-1, -1};
     if (::pipe(pipeFds) != 0) {
         setLaunchError(launchError, std::string("pipe failed: ") + std::strerror(errno));
@@ -206,17 +205,27 @@ bool runInternWorkerForked(InternWorkerInput input,
         _exit(written ? 0 : 1);
     }
 
-    if (childPid) {
-        *childPid = static_cast<int>(pid);
-    }
     ::close(pipeFds[1]);
 
+    handle.childPid = static_cast<int>(pid);
+    handle.readFd = pipeFds[0];
+    return true;
+}
+
+bool collectInternWorkerForked(InternForkedWorkerHandle handle,
+                               InternJoinSlot& slot,
+                               std::string* launchError) {
+    if (handle.childPid <= 0 || handle.readFd < 0) {
+        setLaunchError(launchError, "invalid forked worker handle");
+        return false;
+    }
+
     InternWorkerOutcome outcome;
-    const bool readOk = readOutcome(pipeFds[0], outcome);
-    ::close(pipeFds[0]);
+    const bool readOk = readOutcome(handle.readFd, outcome);
+    ::close(handle.readFd);
 
     int status = 0;
-    if (::waitpid(pid, &status, 0) != pid) {
+    if (::waitpid(static_cast<pid_t>(handle.childPid), &status, 0) != handle.childPid) {
         setLaunchError(launchError, std::string("waitpid failed: ") + std::strerror(errno));
         return false;
     }
@@ -231,6 +240,20 @@ bool runInternWorkerForked(InternWorkerInput input,
 
     slot.store(std::move(outcome));
     return true;
+}
+
+bool runInternWorkerForked(InternWorkerInput input,
+                           InternJoinSlot& slot,
+                           std::string* launchError,
+                           int* childPid) {
+    InternForkedWorkerHandle handle;
+    if (!launchInternWorkerForked(std::move(input), handle, launchError)) {
+        return false;
+    }
+    if (childPid) {
+        *childPid = handle.childPid;
+    }
+    return collectInternWorkerForked(handle, slot, launchError);
 }
 
 } // namespace agentc::edict::worker

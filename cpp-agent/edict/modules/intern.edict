@@ -123,9 +123,11 @@
     @status
     status.terminal test & status.cancelled test &
         {"ok": [], "state": "cancelled", "worker": "edict-thread-async"} @envelope
+        status.worker @envelope.worker
         status.job_id @envelope.job_id
         status.task_id @envelope.task_id
         status.waitable @envelope.waitable
+        status.process_pid @envelope.process_pid
         status.result @envelope.result
         status.safety @envelope.safety
         status.publication @envelope.publication
@@ -137,9 +139,11 @@
         envelope
     | status.worker_ok test &
         {"ok": ["ok"], "state": "complete", "worker": "edict-thread-async"} @envelope
+        status.worker @envelope.worker
         status.job_id @envelope.job_id
         status.task_id @envelope.task_id
         status.waitable @envelope.waitable
+        status.process_pid @envelope.process_pid
         status.result @envelope.result
         status.safety @envelope.safety
         status.publication @envelope.publication
@@ -148,9 +152,11 @@
         envelope
     |
         {"ok": [], "state": "error", "worker": "edict-thread-async"} @envelope
+        status.worker @envelope.worker
         status.job_id @envelope.job_id
         status.task_id @envelope.task_id
         status.waitable @envelope.waitable
+        status.process_pid @envelope.process_pid
         status.result @envelope.result
         status.safety @envelope.safety
         status.publication @envelope.publication
@@ -162,17 +168,21 @@
         envelope
     | status.cancel_requested test &
         {"ok": ["ok"], "state": "cancel_requested", "worker": "edict-thread-async", "complete": []} @envelope
+        status.worker @envelope.worker
         status.job_id @envelope.job_id
         status.task_id @envelope.task_id
         status.waitable @envelope.waitable
+        status.process_pid @envelope.process_pid
         status.events @envelope.events
         status.publication @envelope.publication
         envelope
     |
         {"ok": ["ok"], "state": "running", "worker": "edict-thread-async", "complete": []} @envelope
+        status.worker @envelope.worker
         status.job_id @envelope.job_id
         status.task_id @envelope.task_id
         status.waitable @envelope.waitable
+        status.process_pid @envelope.process_pid
         status.events @envelope.events
         status.publication @envelope.publication
         envelope
@@ -230,17 +240,21 @@
     @status
     status.started test &
         {"ok": ["ok"], "state": "started", "worker": "edict-thread-async"} @envelope
+        status.worker @envelope.worker
         status.job_id @envelope.job_id
         status.task_id @envelope.task_id
         status.waitable @envelope.waitable
+        status.process_pid @envelope.process_pid
         status.publication @envelope.publication
         envelope
     |
         {"ok": [], "state": "error", "worker": "edict-thread-async"} @envelope
+        status.worker @envelope.worker
         status.state @envelope.state
         status.task_id @envelope.task_id
         status.job_id @envelope.job_id
         status.waitable @envelope.waitable
+        status.process_pid @envelope.process_pid
         status.publication @envelope.publication
         {} @error
         status.error_code @error.code

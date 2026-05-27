@@ -488,6 +488,107 @@ TEST(InternWorkerTest, ForkedWorkerExecutesInheritedSharedBaseAndStaticMounts) {
     std::filesystem::remove(path);
 }
 
+TEST(InternWorkerTest, InternStartCanDispatchForkedWorkerProcess) {
+    auto coordinatorRoot = agentc::createNullValue();
+    EdictVM vm(coordinatorRoot);
+    EdictCompiler compiler;
+    loadModuleBackedIntern(vm, compiler);
+
+    auto image = agentc::edict::static_image::buildWorkerPrimitiveDeclarationImage();
+    const auto path = std::filesystem::temp_directory_path() /
+                      "agentc-worker-async-fork-static-mount-test.acsdi";
+    std::string error;
+    ASSERT_TRUE(agentc::edict::static_image::writeDeclarationImageContainer(image, path.string(), &error)) << error;
+    auto restored = agentc::edict::static_image::readDeclarationImageContainerMmapReadOnly(path.string(), &error);
+    ASSERT_TRUE(restored) << error;
+    auto mounted = agentc::edict::static_image::mountDeclarationImageReadOnly(restored);
+    ASSERT_TRUE(mounted.validation.ok) << mounted.validation.code << ": " << mounted.validation.message;
+    ASSERT_TRUE(mounted.root);
+    ASSERT_TRUE(mounted.root->isReadOnly());
+
+    auto manifest = namedValue(mounted.root, "manifest");
+    ASSERT_TRUE(manifest);
+    const std::string module = textValue(namedValue(manifest, "module"));
+    const std::string payloadHash = textValue(namedValue(manifest, "payload_hash"));
+
+    auto staticMounts = agentc::createNullValue();
+    auto baseMount = agentc::createNullValue();
+    agentc::addNamedItem(baseMount, "source", agentc::createStringValue("g103-read-only-mmap-container"));
+    agentc::addNamedItem(baseMount, "image_id", agentc::createStringValue(module + ":" + payloadHash));
+    agentc::addNamedItem(staticMounts, "base", baseMount);
+    staticMounts->setReadOnly(true);
+
+    auto context = agentc::createNullValue();
+    EdictVM contextVm(context);
+    int state = contextVm.execute(compiler.compile(
+        "'shared-fact @fact "
+        "[ input.label @result.label context.fact @result.fact 'async-forked-base @result.mode ] freeze! @base"));
+    ASSERT_FALSE(state & VM_ERROR) << contextVm.getError();
+    auto base = namedValue(context, "base");
+    ASSERT_TRUE(base);
+    ASSERT_TRUE(base->isReadOnly());
+    context->setReadOnly(true);
+
+    const SlabId contextSid = context.getSlabId();
+    const SlabId baseSid = base.getSlabId();
+    ASSERT_TRUE(Allocator<agentc::ListreeValue>::getAllocator().markSlotStaticImmortal(contextSid));
+    ASSERT_TRUE(Allocator<agentc::ListreeValue>::getAllocator().markSlotStaticImmortal(baseSid));
+
+    auto task = agentc::createNullValue();
+    agentc::addNamedItem(task, "task_id", agentc::createStringValue("async-forked-worker-demo"));
+    agentc::addNamedItem(task, "worker", agentc::createStringValue("edict-fork-async"));
+    agentc::addNamedItem(task, "program", agentc::createStringValue(
+        "context.base! "
+        "static_mounts.base.source @result.mount_source "
+        "static_mounts.base.image_id @result.image_id"));
+    agentc::addNamedItem(task, "context", context);
+    agentc::addNamedItem(task, "static_mounts", staticMounts);
+    agentc::addNamedItem(task, "input", agentc::fromJson(R"({"label":"worker-input"})"));
+    addInternStartContract(task);
+
+    vm.pushData(task);
+    state = vm.execute(compiler.compile("intern_start! @job"));
+    ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+    auto job = namedValue(coordinatorRoot, "job");
+    ASSERT_TRUE(job);
+    EXPECT_EQ(textValue(namedValue(job, "state")), "started");
+    EXPECT_EQ(textValue(namedValue(job, "worker")), "edict-fork-async");
+    const std::string jobId = textValue(namedValue(job, "job_id"));
+    ASSERT_FALSE(jobId.empty());
+
+    CPtr<ListreeValue> status;
+    for (int i = 0; i < 100; ++i) {
+        vm.pushData(agentc::createStringValue(jobId));
+        state = vm.execute(compiler.compile("intern_sync! @async_fork_status"));
+        ASSERT_FALSE(state & VM_ERROR) << vm.getError();
+        status = namedValue(coordinatorRoot, "async_fork_status");
+        ASSERT_TRUE(status);
+        if (textValue(namedValue(status, "state")) == "complete") {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+
+    ASSERT_TRUE(status);
+    EXPECT_EQ(textValue(namedValue(status, "state")), "complete");
+    EXPECT_EQ(textValue(namedValue(status, "worker")), "edict-fork-async");
+    EXPECT_GT(sizeText(namedValue(status, "process_pid")), 0u);
+    auto result = namedValue(status, "result");
+    ASSERT_TRUE(result);
+    EXPECT_EQ(textValue(namedValue(result, "label")), "worker-input");
+    EXPECT_EQ(textValue(namedValue(result, "fact")), "shared-fact");
+    EXPECT_EQ(textValue(namedValue(result, "mode")), "async-forked-base");
+    EXPECT_EQ(textValue(namedValue(result, "mount_source")), "g103-read-only-mmap-container");
+    EXPECT_EQ(textValue(namedValue(result, "image_id")), module + ":" + payloadHash);
+
+    EXPECT_TRUE(Allocator<agentc::ListreeValue>::getAllocator().unmarkSlotStaticImmortal(baseSid));
+    EXPECT_TRUE(Allocator<agentc::ListreeValue>::getAllocator().unmarkSlotStaticImmortal(contextSid));
+    for (const auto& sid : mounted.staticValueSlots) {
+        (void)Allocator<agentc::ListreeValue>::getAllocator().unmarkSlotStaticImmortal(sid);
+    }
+    std::filesystem::remove(path);
+}
+
 TEST(InternWorkerTest, ModuleBackedInternWordsUseImportedWorkerPrimitives) {
     auto coordinatorRoot = agentc::createNullValue();
     EdictVM vm(coordinatorRoot);

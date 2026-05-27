@@ -1,6 +1,6 @@
 # Goal: G107 — Process-Isolated Micro-VM Interns
 
-**Status**: ACTIVE / FORKED WORKER SMOKE
+**Status**: ACTIVE / ASYNC FORKED WORKER
 **Created**: 2026-05-14  
 **Parent**: 🔗[G091 — Intern Worker Concurrency MVP](../G091-InternWorkerConcurrencyMvp/index.md)  
 **Related Concept**: 🔗[Layered mmap Micro-VM Architecture](../../Concepts/LayeredMmapMicroVmArchitecture/index.md)
@@ -15,17 +15,17 @@ Threaded workers prove the control plane, but process isolation is the stronger 
 - [x] Add a pre-isolation end-to-end smoke where a launched worker executes a shared frozen/static-immortal base code thunk.
 - [x] Define the first pre-process launch contract seam for static mount descriptors in the task envelope.
 - [x] Add the first forked worker process smoke over the same shared-code/static-mount contract.
+- [x] Preserve `intern_start!` / `intern_sync!` semantics across the first forked process-worker backend.
 - [ ] Define the full micro-VM launch contract: image manifest, task envelope, leased slab range/layer, and output channel.
 - [ ] Support launching a worker process that mounts the static core declaration image or a test image.
-- [ ] Preserve `intern_start!` / `intern_sync!` semantics across the process boundary.
 - [ ] Ensure stateful provider/runtime handles are not inherited or are explicitly rehydrated only when allowed.
 - [ ] Add tests/smokes for a deterministic process-isolated worker returning a structured result.
 - [ ] Consider a Root1 forkserver mode as an intermediate only if inherited handle/thread risks are controlled.
 
 ## Acceptance Criteria
-- [ ] A deterministic intern task can run in a separate process and return a structured result to Root1/coordinator.
+- [x] A deterministic intern task can run in a separate process and return a structured result to Root1/coordinator.
 - [ ] The worker maps shared static/core slabs read-only and uses private dynamic state for execution.
-- [ ] Worker publication or result transfer does not require mutable coordinator-owned Listree access from the worker.
+- [x] Worker publication or result transfer does not require mutable coordinator-owned Listree access from the worker.
 - [ ] Documentation states which handles/capabilities may be inherited, rehydrated, or blocked.
 
 ## Progress
@@ -35,6 +35,8 @@ Threaded workers prove the control plane, but process isolation is the stronger 
 - 2026-05-27: Validation passed: `cmake --build build --target edict_tests -j2`; focused mmap-contract smoke `InternWorkerTest.WorkerExecutesSharedBaseWithMmapStaticMountContract` 1/1; focused worker/static-image slice `InternWorkerTest.WorkerExecutesSharedStaticBaseCodeThunk:InternWorkerTest.WorkerExecutesSharedBaseWithMmapStaticMountContract:InternWorkerTest.InternRunDispatchesWorkerAndCollectsStructuredResult:InternWorkerTest.InternStartAndSyncCollectsStructuredResultAsynchronously:StaticDeclarationImageTest.*` 14/14. Broader worker/G104 slice printed 28/28 passed but the shell metadata reported a timeout after output, matching the existing async intern test-runner quirk, so the focused slices are the relied-on validation.
 - 2026-05-27: Added the first native forked worker-process seam. `runInternWorkerForked(...)` forks a child process, runs the existing `InternWorkerInput` in that child, and returns only the structured `InternWorkerOutcome` to the coordinator through an anonymous native pipe. `InternWorkerTest.ForkedWorkerExecutesInheritedSharedBaseAndStaticMounts` builds a G103 declaration-image container from read-only mmap, mounts it static-immortal, builds a frozen/static-immortal shared `context.base` thunk, passes handle-free `static_mounts` descriptors, verifies the worker PID differs from the coordinator PID, and proves the child executes inherited shared base code plus private input/result state. This is a direct synchronous C++ fork smoke, not yet the public async `intern_start!`/`intern_sync!` process backend, not fork/exec, and not a durable raw-fd Edict state surface.
 - 2026-05-27: Validation passed: `cmake --build build --target edict_tests -j2`; focused forked smoke `InternWorkerTest.ForkedWorkerExecutesInheritedSharedBaseAndStaticMounts` 1/1; focused G107 static/process slice `InternWorkerTest.ForkedWorkerExecutesInheritedSharedBaseAndStaticMounts:InternWorkerTest.WorkerExecutesSharedBaseWithMmapStaticMountContract:InternWorkerTest.WorkerExecutesSharedStaticBaseCodeThunk:StaticDeclarationImageTest.*` 13/13; `git diff --check` passed.
+- 2026-05-27: Wired the forked worker seam into the broker-compatible async intern path. Task envelopes can opt into the process backend with `worker = "edict-fork-async"` or `isolation = "process"`; `InternJobManager` forks on the coordinator thread, stores the child PID as private C++ job state, and uses a detached supervisor only to read the native pipe, wait for the child, store `InternWorkerOutcome`, and publish the existing Root1-compatible completion/error descriptor. `intern.edict` now propagates the native status `worker` label and optional `process_pid` into public start/sync envelopes. `InternWorkerTest.InternStartCanDispatchForkedWorkerProcess` launches through public `intern_start!`, syncs through public `intern_sync!`, and proves a child process executes inherited frozen/static-immortal shared base code plus read-only `static_mounts` descriptors and returns structured JSON. Raw fds remain private native state and are not durable Edict values; this is still fork, not fork/exec or independent static-core remount.
+- 2026-05-27: Validation passed: `cmake --build build --target edict_tests -j2`; focused async forked worker regression `InternWorkerTest.InternStartCanDispatchForkedWorkerProcess` 1/1; focused G107 process/static slice `InternWorkerTest.InternStartCanDispatchForkedWorkerProcess:InternWorkerTest.ForkedWorkerExecutesInheritedSharedBaseAndStaticMounts:InternWorkerTest.WorkerExecutesSharedBaseWithMmapStaticMountContract:InternWorkerTest.WorkerExecutesSharedStaticBaseCodeThunk:StaticDeclarationImageTest.*` 14/14; `git diff --check` passed.
 
 ## Dependencies
 - Requires the async control-plane slice of 🔗[G091](../G091-InternWorkerConcurrencyMvp/index.md).

@@ -33,6 +33,7 @@ struct InternWorkerInput {
     CPtr<agentc::ListreeValue> importsSharedReadOnly;
     CPtr<agentc::ListreeValue> staticMountsReadOnly;
     bool allowUnsafeFfiCalls = false;
+    bool runInChildProcess = false;
     std::shared_ptr<std::atomic<bool>> cancelRequested;
     bool hasMaxActiveJobs = false;
     size_t maxActiveJobs = 0;
@@ -44,6 +45,11 @@ struct InternWorkerOutcome {
     std::string resultJson = "null";
     std::string errorCode;
     std::string errorMessage;
+};
+
+struct InternForkedWorkerHandle {
+    int childPid = -1;
+    int readFd = -1;
 };
 
 class InternJoinSlot {
@@ -59,6 +65,12 @@ private:
 };
 
 void runInternWorker(InternWorkerInput input, InternJoinSlot& slot);
+bool launchInternWorkerForked(InternWorkerInput input,
+                              InternForkedWorkerHandle& handle,
+                              std::string* launchError = nullptr);
+bool collectInternWorkerForked(InternForkedWorkerHandle handle,
+                               InternJoinSlot& slot,
+                               std::string* launchError = nullptr);
 bool runInternWorkerForked(InternWorkerInput input,
                            InternJoinSlot& slot,
                            std::string* launchError = nullptr,
