@@ -358,11 +358,15 @@ bool runInternWorkerForked(InternWorkerInput input,
     return collectInternWorkerForked(handle, slot, launchError);
 }
 
-bool runInternWorkerExeced(const std::string& executablePath,
-                           InternWorkerInput input,
-                           InternJoinSlot& slot,
-                           std::string* launchError,
-                           int* childPid) {
+bool launchInternWorkerExeced(const std::string& executablePath,
+                              InternWorkerInput input,
+                              InternForkedWorkerHandle& handle,
+                              std::string* launchError) {
+    if (executablePath.empty()) {
+        setLaunchError(launchError, "worker exec path is empty");
+        return false;
+    }
+
     int inputPipe[2] = {-1, -1};
     int outputPipe[2] = {-1, -1};
     if (::pipe(inputPipe) != 0) {
@@ -399,23 +403,36 @@ bool runInternWorkerExeced(const std::string& executablePath,
 
     ::close(inputPipe[0]);
     ::close(outputPipe[1]);
-    if (childPid) {
-        *childPid = static_cast<int>(pid);
-    }
 
     const bool wrote = writeWorkerInput(inputPipe[1], input);
     ::close(inputPipe[1]);
-
-    InternWorkerOutcome outcome;
-    const bool readOk = readOutcome(outputPipe[0], outcome);
-    ::close(outputPipe[0]);
-
-    int status = 0;
-    const bool waited = ::waitpid(pid, &status, 0) == pid;
     if (!wrote) {
+        ::close(outputPipe[0]);
+        int status = 0;
+        (void)::waitpid(pid, &status, 0);
         setLaunchError(launchError, "worker exec input pipe write failed");
         return false;
     }
+
+    handle.childPid = static_cast<int>(pid);
+    handle.readFd = outputPipe[0];
+    return true;
+}
+
+bool collectInternWorkerExeced(InternForkedWorkerHandle handle,
+                               InternJoinSlot& slot,
+                               std::string* launchError) {
+    if (handle.childPid <= 0 || handle.readFd < 0) {
+        setLaunchError(launchError, "invalid execed worker handle");
+        return false;
+    }
+
+    InternWorkerOutcome outcome;
+    const bool readOk = readOutcome(handle.readFd, outcome);
+    ::close(handle.readFd);
+
+    int status = 0;
+    const bool waited = ::waitpid(static_cast<pid_t>(handle.childPid), &status, 0) == handle.childPid;
     if (!waited) {
         setLaunchError(launchError, std::string("worker exec waitpid failed: ") + std::strerror(errno));
         return false;
@@ -430,6 +447,21 @@ bool runInternWorkerExeced(const std::string& executablePath,
     }
     slot.store(std::move(outcome));
     return true;
+}
+
+bool runInternWorkerExeced(const std::string& executablePath,
+                           InternWorkerInput input,
+                           InternJoinSlot& slot,
+                           std::string* launchError,
+                           int* childPid) {
+    InternForkedWorkerHandle handle;
+    if (!launchInternWorkerExeced(executablePath, std::move(input), handle, launchError)) {
+        return false;
+    }
+    if (childPid) {
+        *childPid = handle.childPid;
+    }
+    return collectInternWorkerExeced(handle, slot, launchError);
 }
 
 int runInternWorkerExecChildMain(int argc, char** argv) {

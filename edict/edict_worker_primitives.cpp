@@ -174,15 +174,24 @@ using worker::InternForkedWorkerHandle;
 using worker::InternWorkerInput;
 using worker::InternWorkerOutcome;
 using worker::collectInternWorkerForked;
+using worker::collectInternWorkerExeced;
 using worker::launchInternWorkerForked;
+using worker::launchInternWorkerExeced;
 using worker::runInternWorker;
 using worker::runInternWorkerForked;
+using worker::runInternWorkerExeced;
 
 std::string asyncWorkerLabel(const InternWorkerInput& input) {
+    if (input.runWithExec) {
+        return "edict-exec-async";
+    }
     return input.runInChildProcess ? "edict-fork-async" : "edict-thread-async";
 }
 
 std::string blockingWorkerLabel(const InternWorkerInput& input) {
+    if (input.runWithExec) {
+        return "edict-exec";
+    }
     return input.runInChildProcess ? "edict-fork" : "edict-thread";
 }
 
@@ -228,9 +237,14 @@ bool parseInternTask(CPtr<agentc::ListreeValue> task,
     input.allowUnsafeFfiCalls = allowUnsafeFfiCalls;
     const std::string worker = stringField(task, "worker");
     const std::string isolation = stringField(task, "isolation");
+    input.runWithExec = (worker == "edict-exec" ||
+                         worker == "edict-exec-async" ||
+                         isolation == "exec");
     input.runInChildProcess = (worker == "edict-fork" ||
                                worker == "edict-fork-async" ||
+                               input.runWithExec ||
                                isolation == "process");
+    input.workerExecPath = stringField(task, "worker_exec_path");
     size_t maxActiveJobs = 0;
     if (sizeField(task, "max_active_jobs", maxActiveJobs)) {
         input.hasMaxActiveJobs = true;
@@ -296,6 +310,12 @@ CPtr<agentc::ListreeValue> buildPreparedTaskSpec(const InternWorkerInput& input)
     agentc::addNamedItem(spec, "worker", agentc::createStringValue(asyncWorkerLabel(input)));
     if (input.runInChildProcess) {
         agentc::addNamedItem(spec, "isolation", agentc::createStringValue("process"));
+    }
+    if (input.runWithExec) {
+        agentc::addNamedItem(spec, "exec", agentc::createStringValue("true"));
+    }
+    if (!input.workerExecPath.empty()) {
+        agentc::addNamedItem(spec, "worker_exec_path", agentc::createStringValue(input.workerExecPath));
     }
     agentc::addNamedItem(spec, "publication", agentc::createNullValue());
     return spec;
@@ -553,8 +573,12 @@ CPtr<agentc::ListreeValue> buildWorkerStartContractErrorStatus(CPtr<agentc::List
     }
     const std::string worker = stringField(task, "worker");
     const std::string isolation = stringField(task, "isolation");
+    input.runWithExec = (worker == "edict-exec" ||
+                         worker == "edict-exec-async" ||
+                         isolation == "exec");
     input.runInChildProcess = (worker == "edict-fork" ||
                                worker == "edict-fork-async" ||
+                               input.runWithExec ||
                                isolation == "process");
 
     auto status = agentc::createNullValue();
@@ -563,7 +587,7 @@ CPtr<agentc::ListreeValue> buildWorkerStartContractErrorStatus(CPtr<agentc::List
     agentc::addNamedItem(status, "state", agentc::createStringValue("error"));
     agentc::addNamedItem(status, "started", statusList(false));
     agentc::addNamedItem(status, "task_id", agentc::createStringValue(input.taskId));
-    agentc::addNamedItem(status, "worker", agentc::createStringValue("edict-thread-async"));
+    agentc::addNamedItem(status, "worker", agentc::createStringValue(asyncWorkerLabel(input)));
     agentc::addNamedItem(status, "job_id", agentc::createNullValue());
     agentc::addNamedItem(status, "waitable", agentc::createNullValue());
     agentc::addNamedItem(status, "publication", agentc::createNullValue());
@@ -766,7 +790,51 @@ public:
             ++totalStartedJobs_;
         }
 
-        if (job->input.runInChildProcess) {
+        if (job->input.runWithExec) {
+            InternForkedWorkerHandle handle;
+            std::string launchError;
+            if (!launchInternWorkerExeced(job->input.workerExecPath, job->input, handle, &launchError)) {
+                InternWorkerOutcome outcome;
+                outcome.ok = false;
+                outcome.vmState = 0;
+                outcome.errorCode = "worker_exec_launch_failed";
+                outcome.errorMessage = launchError.empty() ? "execed intern worker failed" : launchError;
+                job->slot->store(std::move(outcome));
+            } else {
+                job->childPid.store(handle.childPid);
+                std::thread([this, job, handle]() {
+                    std::string collectError;
+                    if (!collectInternWorkerExeced(handle, *job->slot, &collectError)) {
+                        InternWorkerOutcome outcome;
+                        outcome.ok = false;
+                        outcome.vmState = 0;
+                        outcome.errorCode = "worker_exec_collect_failed";
+                        outcome.errorMessage = collectError.empty() ? "execed intern worker collection failed" : collectError;
+                        job->slot->store(std::move(outcome));
+                    }
+                    const bool abandoned = job->abandoned.load();
+                    {
+                        std::lock_guard<std::mutex> lock(mutex_);
+                        ++totalFinishedJobs_;
+                        if (abandoned && abandonedRunningJobs_ > 0) {
+                            --abandonedRunningJobs_;
+                        }
+                    }
+                    if (abandoned) {
+                        return;
+                    }
+                    const auto outcome = job->slot->load();
+                    auto descriptor = makeDescriptor(
+                        outcome.ok
+                            ? agentc::root1::MailboxEventKind::Complete
+                            : agentc::root1::MailboxEventKind::Error,
+                        job->numericId,
+                        outcome.ok ? "complete" : "error");
+                    broker_.sendMailboxDescriptor(job->participant, descriptor);
+                }).detach();
+                return job;
+            }
+        } else if (job->input.runInChildProcess) {
             InternForkedWorkerHandle handle;
             std::string launchError;
             if (!launchInternWorkerForked(job->input, handle, &launchError)) {
@@ -1087,7 +1155,16 @@ CPtr<agentc::ListreeValue> runStatusPrepared(CPtr<agentc::ListreeValue> prepared
     }
 
     InternJoinSlot slot;
-    if (input.runInChildProcess) {
+    if (input.runWithExec) {
+        std::string launchError;
+        if (!runInternWorkerExeced(input.workerExecPath, input, slot, &launchError)) {
+            InternWorkerOutcome outcome;
+            outcome.ok = false;
+            outcome.errorCode = "worker_exec_launch_failed";
+            outcome.errorMessage = launchError.empty() ? "execed intern worker failed" : launchError;
+            slot.store(std::move(outcome));
+        }
+    } else if (input.runInChildProcess) {
         std::string launchError;
         if (!runInternWorkerForked(input, slot, &launchError)) {
             InternWorkerOutcome outcome;
@@ -1114,7 +1191,16 @@ CPtr<agentc::ListreeValue> runStatus(CPtr<agentc::ListreeValue> task,
     }
 
     InternJoinSlot slot;
-    if (input.runInChildProcess) {
+    if (input.runWithExec) {
+        std::string launchError;
+        if (!runInternWorkerExeced(input.workerExecPath, input, slot, &launchError)) {
+            InternWorkerOutcome outcome;
+            outcome.ok = false;
+            outcome.errorCode = "worker_exec_launch_failed";
+            outcome.errorMessage = launchError.empty() ? "execed intern worker failed" : launchError;
+            slot.store(std::move(outcome));
+        }
+    } else if (input.runInChildProcess) {
         std::string launchError;
         if (!runInternWorkerForked(input, slot, &launchError)) {
             InternWorkerOutcome outcome;

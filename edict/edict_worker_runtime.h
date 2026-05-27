@@ -34,6 +34,8 @@ struct InternWorkerInput {
     CPtr<agentc::ListreeValue> staticMountsReadOnly;
     bool allowUnsafeFfiCalls = false;
     bool runInChildProcess = false;
+    bool runWithExec = false;
+    std::string workerExecPath;
     std::shared_ptr<std::atomic<bool>> cancelRequested;
     bool hasMaxActiveJobs = false;
     size_t maxActiveJobs = 0;
@@ -75,6 +77,13 @@ bool runInternWorkerForked(InternWorkerInput input,
                            InternJoinSlot& slot,
                            std::string* launchError = nullptr,
                            int* childPid = nullptr);
+bool launchInternWorkerExeced(const std::string& executablePath,
+                              InternWorkerInput input,
+                              InternForkedWorkerHandle& handle,
+                              std::string* launchError = nullptr);
+bool collectInternWorkerExeced(InternForkedWorkerHandle handle,
+                               InternJoinSlot& slot,
+                               std::string* launchError = nullptr);
 bool runInternWorkerExeced(const std::string& executablePath,
                            InternWorkerInput input,
                            InternJoinSlot& slot,
