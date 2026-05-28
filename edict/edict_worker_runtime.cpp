@@ -23,6 +23,11 @@
 #include <cstdint>
 #include <cstring>
 #include <cstdlib>
+#include <fcntl.h>
+#include <iomanip>
+#include <sstream>
+#include <sys/mman.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <mutex>
 #include <unistd.h>
@@ -126,6 +131,80 @@ bool decodeHexBytes(const std::string& hex, std::vector<uint8_t>& bytes) {
     return true;
 }
 
+std::string fnv1a64Bytes(const uint8_t* data, size_t size) {
+    uint64_t hash = 14695981039346656037ull;
+    for (size_t i = 0; i < size; ++i) {
+        hash ^= static_cast<uint64_t>(data[i]);
+        hash *= 1099511628211ull;
+    }
+    std::ostringstream out;
+    out << std::hex << std::setfill('0') << std::setw(16) << hash;
+    return out.str();
+}
+
+bool parseSizeText(const std::string& text, size_t& out) {
+    if (text.empty()) {
+        return false;
+    }
+    char* end = nullptr;
+    const unsigned long long value = std::strtoull(text.c_str(), &end, 10);
+    if (!end || *end != '\0') {
+        return false;
+    }
+    out = static_cast<size_t>(value);
+    return true;
+}
+
+bool mapBorrowedBytecodeSlab(const std::string& path,
+                             size_t offset,
+                             size_t size,
+                             const std::string& expectedHash,
+                             InternWorkerInput& input,
+                             std::string& error) {
+    if (path.empty() || size == 0) {
+        error = "static program entry has invalid bytecode_slab_path/size";
+        return false;
+    }
+    const int fd = ::open(path.c_str(), O_RDONLY);
+    if (fd < 0) {
+        error = "failed to open static bytecode slab read-only: " + path;
+        return false;
+    }
+    struct stat st {};
+    if (::fstat(fd, &st) != 0 || st.st_size <= 0) {
+        error = "failed to stat static bytecode slab: " + path;
+        ::close(fd);
+        return false;
+    }
+    const size_t fileSize = static_cast<size_t>(st.st_size);
+    if (offset > fileSize || size > fileSize - offset) {
+        error = "static bytecode slab range is out of bounds";
+        ::close(fd);
+        return false;
+    }
+    void* mapped = ::mmap(nullptr, fileSize, PROT_READ, MAP_PRIVATE, fd, 0);
+    ::close(fd);
+    if (mapped == MAP_FAILED) {
+        error = std::string("failed to mmap static bytecode slab read-only: ") + std::strerror(errno);
+        return false;
+    }
+    auto owner = std::shared_ptr<void>(mapped, [fileSize](void* p) {
+        if (p) {
+            ::munmap(p, fileSize);
+        }
+    });
+    const auto* bytes = static_cast<const uint8_t*>(mapped) + offset;
+    if (!expectedHash.empty() && fnv1a64Bytes(bytes, size) != expectedHash) {
+        error = "static bytecode slab hash mismatch";
+        owner.reset();
+        return false;
+    }
+    input.staticProgramBorrowedBytecode = bytes;
+    input.staticProgramBorrowedBytecodeSize = size;
+    input.staticProgramBorrowedBytecodeMapping = std::move(owner);
+    return true;
+}
+
 bool writeOutcome(int fd, const InternWorkerOutcome& outcome) {
     const uint8_t ok = outcome.ok ? 1 : 0;
     const int32_t vmState = static_cast<int32_t>(outcome.vmState);
@@ -163,7 +242,8 @@ bool writeWorkerInput(int fd, const InternWorkerInput& input) {
 }
 
 bool resolveStaticProgram(InternWorkerInput& input, std::string& error) {
-    if (!input.program.empty() || input.hasStaticProgramBytecode) {
+    if (!input.program.empty() || input.hasStaticProgramBytecode ||
+        input.staticProgramBorrowedBytecode || input.staticProgramBorrowedBytecodeSize > 0) {
         return true;
     }
     if (input.staticProgramMount.empty() || input.staticProgramWord.empty()) {
@@ -188,6 +268,25 @@ bool resolveStaticProgram(InternWorkerInput& input, std::string& error) {
         }
         auto declaration = ref->getValue();
         if (textValue(namedValue(declaration, "word")) == input.staticProgramWord) {
+            const std::string slabPath = textValue(namedValue(declaration, "bytecode_slab_path"));
+            if (!slabPath.empty()) {
+                size_t offset = 0;
+                size_t size = 0;
+                if (!parseSizeText(textValue(namedValue(declaration, "bytecode_slab_offset")), offset) ||
+                    !parseSizeText(textValue(namedValue(declaration, "bytecode_slab_size")), size)) {
+                    error = "static program entry has invalid bytecode slab range metadata";
+                    return;
+                }
+                if (!mapBorrowedBytecodeSlab(slabPath,
+                                             offset,
+                                             size,
+                                             textValue(namedValue(declaration, "bytecode_slab_hash")),
+                                             input,
+                                             error)) {
+                    return;
+                }
+                return;
+            }
             const std::string bytecodeHex = textValue(namedValue(declaration, "bytecode_hex"));
             if (!bytecodeHex.empty()) {
                 if (!decodeHexBytes(bytecodeHex, bytecode)) {
@@ -203,13 +302,16 @@ bool resolveStaticProgram(InternWorkerInput& input, std::string& error) {
     if (!error.empty()) {
         return false;
     }
+    if (input.staticProgramBorrowedBytecode || input.staticProgramBorrowedBytecodeSize > 0) {
+        return true;
+    }
     if (foundBytecode) {
         input.staticProgramBytecode = std::move(bytecode);
         input.hasStaticProgramBytecode = true;
         return true;
     }
     if (program.empty()) {
-        error = "static program entry not found or has no bytecode_hex/program_source";
+        error = "static program entry not found or has no bytecode_slab/bytecode_hex/program_source";
         return false;
     }
     input.program = program;
@@ -338,13 +440,17 @@ void runInternWorker(InternWorkerInput input, InternJoinSlot& slot) {
         worker.setAllowUnsafeFfiCalls(input.allowUnsafeFfiCalls);
 
         BytecodeBuffer bytecode;
-        if (input.hasStaticProgramBytecode) {
+        if (input.staticProgramBorrowedBytecode || input.staticProgramBorrowedBytecodeSize > 0) {
+            outcome.vmState = worker.executeBorrowedStaticCode(input.staticProgramBorrowedBytecode,
+                                                               input.staticProgramBorrowedBytecodeSize);
+        } else if (input.hasStaticProgramBytecode) {
             bytecode.getData() = input.staticProgramBytecode;
+            outcome.vmState = worker.execute(bytecode);
         } else {
             EdictCompiler compiler;
             bytecode = compiler.compile(input.program);
+            outcome.vmState = worker.execute(bytecode);
         }
-        outcome.vmState = worker.execute(bytecode);
         while ((outcome.vmState & VM_YIELD) && !(outcome.vmState & VM_ERROR)) {
             if (input.cancelRequested && input.cancelRequested->load()) {
                 outcome.ok = false;

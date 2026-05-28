@@ -75,6 +75,7 @@ public:
     
     // Execute bytecode
     int execute(const BytecodeBuffer& code);
+    int executeBorrowedStaticCode(const uint8_t* code, size_t size);
     int resume();
     
     // Error handling
@@ -321,6 +322,7 @@ private:
 
     // Code frame helpers
     CPtr<agentc::ListreeValue> makeCodeFrame(const BytecodeBuffer& code);
+    CPtr<agentc::ListreeValue> makeBorrowedCodeFrame(const uint8_t* code, size_t size);
     void writeFrameIp(CPtr<agentc::ListreeValue> frame, int ip);
     int readFrameIp(CPtr<agentc::ListreeValue> frame) const;
     void pushCodeFrame(const BytecodeBuffer& code);

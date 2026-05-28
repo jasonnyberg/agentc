@@ -37,6 +37,9 @@ struct InternWorkerInput {
     std::string staticProgramWord;
     bool hasStaticProgramBytecode = false;
     std::vector<uint8_t> staticProgramBytecode;
+    const uint8_t* staticProgramBorrowedBytecode = nullptr;
+    size_t staticProgramBorrowedBytecodeSize = 0;
+    std::shared_ptr<void> staticProgramBorrowedBytecodeMapping;
     bool allowUnsafeFfiCalls = false;
     bool runInChildProcess = false;
     bool runWithExec = false;

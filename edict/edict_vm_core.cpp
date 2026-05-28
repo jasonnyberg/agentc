@@ -942,6 +942,17 @@ CPtr<agentc::ListreeValue> EdictVM::makeCodeFrame(const BytecodeBuffer& code) {
     return frame;
 }
 
+CPtr<agentc::ListreeValue> EdictVM::makeBorrowedCodeFrame(const uint8_t* code, size_t size) {
+    if (!code && size > 0) return nullptr;
+    SlabId sid = Allocator<agentc::ListreeValue>::getAllocator().allocate(
+        const_cast<uint8_t*>(code), size, agentc::LtvFlags::Binary);
+    CPtr<agentc::ListreeValue> frame(sid);
+    agentc::addNamedItem(frame, ".code_frame", agentc::createStringValue("1"));
+    agentc::addNamedItem(frame, ".borrowed_static_code", agentc::createStringValue("1"));
+    frame->setReadOnly(true);
+    return frame;
+}
+
 void EdictVM::pushCodeFrame(const BytecodeBuffer& code) {
     auto frame = makeCodeFrame(code);
     if (frame) enq(VMRES_CODE, frame);
@@ -2309,6 +2320,21 @@ int EdictVM::execute(const BytecodeBuffer& code) {
     code_ips_.clear();
     CPtr<agentc::ListreeValue> frame = makeCodeFrame(code);
     if (!frame) { setError("Code frame alloc"); return state; }
+    enq(VMRES_CODE, frame);
+    return runCodeLoop(0, true);
+}
+
+int EdictVM::executeBorrowedStaticCode(const uint8_t* code, size_t size) {
+    state &= ~(VM_ERROR | VM_YIELD | VM_COMPLETE | VM_SCANNING);
+    error_message.clear();
+    instruction_ptr = 0;
+    tail_eval = false;
+    scan_mode = ScanMode::None;
+    scan_depth = 0;
+    resources[VMRES_CODE] = agentc::createListValue();
+    code_ips_.clear();
+    CPtr<agentc::ListreeValue> frame = makeBorrowedCodeFrame(code, size);
+    if (!frame) { setError("Borrowed static code frame alloc"); return state; }
     enq(VMRES_CODE, frame);
     return runCodeLoop(0, true);
 }
