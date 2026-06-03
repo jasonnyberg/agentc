@@ -21,17 +21,16 @@ Threaded workers prove the control plane, but process isolation is the stronger 
 - [x] Add the first static program-entry launch contract resolved from an independently mounted static image.
 - [x] Add the first static bytecode-entry launch contract resolved from an independently mounted static image.
 - [x] Add the first OS-backed borrowed bytecode-slab launch contract resolved from an independently mounted static image.
-- [ ] Define the full micro-VM launch contract: image manifest, task envelope, leased slab range/layer, and output channel.
-- [x] Support launching a worker process that mounts the static core declaration image or a test image.
-- [ ] Ensure stateful provider/runtime handles are not inherited or are explicitly rehydrated only when allowed.
-- [ ] Add tests/smokes for a deterministic process-isolated worker returning a structured result.
+- [x] Define the full micro-VM launch contract: image manifest, task envelope, leased slab range/layer, and output channel.
+- [x] Ensure stateful provider/runtime handles are not inherited or are explicitly rehydrated only when allowed.
+- [x] Add tests/smokes for a deterministic process-isolated worker returning a structured result.
 - [ ] Consider a Root1 forkserver mode as an intermediate only if inherited handle/thread risks are controlled.
 
 ## Acceptance Criteria
 - [x] A deterministic intern task can run in a separate process and return a structured result to Root1/coordinator.
 - [x] The worker maps shared static/core slabs read-only and uses private dynamic state for execution.
 - [x] Worker publication or result transfer does not require mutable coordinator-owned Listree access from the worker.
-- [ ] Documentation states which handles/capabilities may be inherited, rehydrated, or blocked.
+- [x] Documentation states which handles/capabilities may be inherited, rehydrated, or blocked.
 
 ## Progress
 - 2026-05-27: Added the first pre-isolation shared-code worker smoke in `InternWorkerTest.WorkerExecutesSharedStaticBaseCodeThunk`. The coordinator builds a frozen base thunk in a shared context, marks the context root and thunk slots static-immortal, launches an async intern worker through `intern_start!`, and the worker executes `context.base!` to populate its private result from shared code plus private input. This is intentionally still the thread-worker backend, not the final process-isolated OS-mmap worker.
