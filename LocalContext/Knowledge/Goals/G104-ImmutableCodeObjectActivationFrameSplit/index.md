@@ -1,6 +1,6 @@
 # Goal: G104 — Immutable Code Object / Activation Frame Split
 
-**Status**: ACTIVE / BOUNDARY DOCUMENTED
+|**Status**: COMPLETE
 **Created**: 2026-05-14  
 **Parent**: 🔗[G103 — Build-Time Static Core Declaration Image MVP](../G103-BuildTimeStaticCoreDeclarationImageMvp/index.md)  
 **Related Concept**: 🔗[Layered mmap Micro-VM Architecture](../../Concepts/LayeredMmapMicroVmArchitecture/index.md)
@@ -26,6 +26,17 @@ Related audit: 🔗[WP — Listree Traversal State and ReadOnly Slab Audit](../.
 - [x] Instruction pointer and frame metadata are stored only in private VM-owned dynamic state.
 - [x] Existing thunk/eval tests continue to pass.
 - [x] Documentation states which VM data is static-shareable and which is activation-local.
+
+## Summary
+G104 delivered the immutable code object / activation frame split as specified:
+- `makeCodeFrame(...)` creates binary code objects marked with `.code_frame` instead of mutable `.ip` fields
+- `EdictVM::code_ips_` stores activation-local instruction pointers as a private `std::vector<int>`, aligned top-first with `VMRES_CODE`
+- Enqueue/dequeue, transaction checkpoint/rollback, runtime reset, thunk dispatch, and read/write frame IP paths all use activation-local IP state in private VM memory while retaining legacy `.ip` fallback for old/foreign non-read-only frames
+- Recursive freeze now marks binary thunk/code objects read-only
+- 🔗[WP — Code Object / Activation State Boundary](../../WorkProducts/WP-CodeObjectActivationBoundary-2026-05-25/index.md) documents static-shareable code object contents, activation-local VM state, legacy `.ip` compatibility, and invariants
+- Validation: focused frame tests 3/3, broader focused VM regression 48/48, intern/root1 focused slice 20/20
+
+Remaining static core / session-resume integration is deferred to G103, G096, and downstream goals.
 
 ## Progress
 - 2026-05-25: Landed the first VM implementation slice. `makeCodeFrame(...)` now creates binary code objects marked with `.code_frame` instead of writing mutable `.ip` fields; live instruction pointers are tracked in `EdictVM::code_ips_` aligned top-first with `VMRES_CODE`. Enqueue/dequeue, transaction checkpoint/rollback, runtime reset, thunk dispatch, and read/write frame IP paths now keep activation-local IP state in private VM memory while retaining legacy `.ip` fallback for old/foreign non-read-only frames.
