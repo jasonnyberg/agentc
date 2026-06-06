@@ -12,6 +12,8 @@ Edict is a tiny concatenative language.
 
 The most important habit is: think in terms of stack effects, not expression trees.
 
+Data flows through the **data stack**, not through named dictionary entries. A word that needs an argument pops it from the stack; a word that produces a result pushes it onto the stack. Relying on pre-set dictionary bindings (e.g. storing a value in `task` then calling `intern_run!` via lookup) breaks the concatenative property — words no longer compose freely because their behavior depends on ambient dictionary state rather than explicit stack input.
+
 Style note: write eval adjacent to the word being evaluated (`word!`, `module.word!`, `thunk!!`). The VM still accepts `!` as a standalone token for compatibility, but adjacent spelling is the preferred form for new examples and scripts.
 
 ## 2. What Terms Compile To
@@ -474,6 +476,7 @@ or:
 - `CTX_POP` returns the context object back onto the stack; callers often need bare `/` to discard it.
 - Isolated calls are great for local computation, but they are the wrong default tool for mutating owner objects.
 - Rebinding with `@name` adds a new history head; it does not erase prior values.
+- Arguments must flow through the data stack, not through pre-set dictionary entries. Writing `value @name word!` instead of `value word!` steals the argument from the stack before `word!` can pop it, and couples execution order to a specific dictionary binding. Module-defined thunks always declare their own stack arguments internally via patterns like `[@name name body]`.
 
 ## 15. Working Heuristic
 When designing Edict code, ask three questions:
