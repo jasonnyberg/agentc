@@ -27,6 +27,7 @@
 #include "edict_repl.h"
 #include "edict_compiler.h"
 #include "edict_vm.h"
+#include "root1_await_scheduler.h"
 #include "../core/alloc.h"
 #include "../core/debug.h"
 #include "../cpp-agent/runtime/persistence/session_state_store.h"
@@ -61,6 +62,9 @@ struct StartupSession {
     std::string sessionId;
     std::string sessionBase;
     std::unique_ptr<agentc::runtime::SessionStateStore> store;
+    // Root1 await scheduler — persisted alongside the session root.
+    // Continuations parked here survive clean session restarts.
+    agentc::edict::Root1AwaitScheduler awaitScheduler;
 };
 
 std::string envOrDefault(const char* name, const std::string& fallback) {
@@ -162,6 +166,16 @@ StartupSession prepareSession(const StartupOptions& options,
                                      "': " + error);
         }
         stripVolatileStartupBindings(root);
+
+        // Restore await scheduler state if present in the saved root.
+        auto scItem = root->find("__root1_scheduler");
+        if (scItem) {
+            auto scValue = scItem->getValue();
+            if (scValue) {
+                session.awaitScheduler.loadState(scValue);
+            }
+        }
+
         session.restored = true;
     }
 
@@ -182,6 +196,18 @@ bool saveSession(const StartupSession& session, agentc::edict::EdictVM& vm) {
         return false;
     }
     stripVolatileStartupBindings(root);
+
+    // Persist await scheduler state as a child of the session root so
+    // parked continuations survive a clean restart.
+    {
+        auto sc = root->find("__root1_scheduler");
+        if (sc) root->remove("__root1_scheduler");
+    }
+    auto schedulerState = session.awaitScheduler.saveState();
+    if (schedulerState) {
+        agentc::addNamedItem(root, "__root1_scheduler", schedulerState);
+    }
+
     std::string error;
     if (!session.store->saveRoot(root, &error)) {
         std::cerr << "Error: failed to persist Edict session '" << session.sessionId
