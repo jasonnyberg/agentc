@@ -56,7 +56,7 @@ The compiler is very direct.
   - On the next scheduler pump, if a descriptor has arrived for that participant, the scheduler calls the callback: events are pushed to the stack and the VM resumes at the next opcode.
   - Usage with an explicit waitable:
     ```edict
-    {"program": "...", "task_id": "t1"} @task intern_start! @job
+    {"program": "...", "task_id": "t1"} intern_start! @job
     job.waitable await! @events events
     ```
   - Usage with the coordinator default:
@@ -316,7 +316,7 @@ provider < context_reset! > / /
 G091 adds the first substrate-level intern-worker primitive, `intern_run!`. The coordinator passes a bounded task envelope; Edict freezes `context` and `imports`, snapshots `input`, runs the `program` in a fresh worker VM with private `workspace`, joins the worker, and returns a structured result on the coordinator stack.
 
 ```edict
-{"program": "1 2 + @result", "task_id": "t1"} @task intern_run! @worker_result
+{"program": "1 2 + @result", "task_id": "t1"} intern_run! @worker_result
 worker_result.result to_json! print
 ```
 
@@ -339,7 +339,7 @@ Execution: `'before` pushes the string `"before"` onto the stack, then `yield!` 
 `intern_start!` launches a worker asynchronously and returns an envelope with fields including `waitable`, an opaque participant ID string. Pass `job.waitable` to `await!` to park the VM on that specific worker's mailbox:
 
 ```edict
-{"program": "1 2 + @result", "task_id": "my_task"} @task intern_start! @job
+{"program": "1 2 + @result", "task_id": "my_task"} intern_start! @job
 job.waitable await! @events events
 ```
 
@@ -356,8 +356,8 @@ await! @events events
 Each `intern_start!` creates a separate participant mailbox. By passing each job's `waitable` to its own `await!`, the waits are independent and do not wake each other:
 
 ```edict
-{"program": "...", "task_id": "ta"} @task intern_start! @job_a
-{"program": "...", "task_id": "tb"} @task intern_start! @job_b
+{"program": "...", "task_id": "ta"} intern_start! @job_a
+{"program": "...", "task_id": "tb"} intern_start! @job_b
 
 job_a.waitable await! @events_a events_a
 
