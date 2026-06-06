@@ -30,6 +30,7 @@
 #include "root1_await_scheduler.h"
 #include "../core/alloc.h"
 #include "../core/debug.h"
+#include "../core/root1_resource_broker.h"
 #include "../cpp-agent/runtime/persistence/session_state_store.h"
 
 namespace {
@@ -62,9 +63,12 @@ struct StartupSession {
     std::string sessionId;
     std::string sessionBase;
     std::unique_ptr<agentc::runtime::SessionStateStore> store;
-    // Root1 await scheduler — persisted alongside the session root.
-    // Continuations parked here survive clean session restarts.
+    // Root1 resource broker and await scheduler — paired for eventfd-based
+    // continuation management.  The coordinator participant is registered
+    // at startup so the REPL loop can pump scheduler events between turns.
+    std::unique_ptr<agentc::root1::Root1ResourceBroker> broker;
     agentc::edict::Root1AwaitScheduler awaitScheduler;
+    agentc::root1::ParticipantId coordinatorParticipant = 0;
 };
 
 std::string envOrDefault(const char* name, const std::string& fallback) {
@@ -182,10 +186,31 @@ StartupSession prepareSession(const StartupOptions& options,
     if (!root) {
         root = agentc::createNullValue();
     }
+
+    // Register the coordinator as a Root1 participant so the await
+    // scheduler can poll mailbox descriptors at save time.
+    session.broker = std::make_unique<agentc::root1::Root1ResourceBroker>();
+    session.coordinatorParticipant = session.broker->registerParticipant();
+
     return session;
 }
 
-bool saveSession(const StartupSession& session, agentc::edict::EdictVM& vm) {
+void pumpScheduler(agentc::root1::Root1ResourceBroker& broker,
+                   agentc::edict::Root1AwaitScheduler& scheduler,
+                   agentc::root1::ParticipantId coordinatorParticipant) {
+    if (coordinatorParticipant == 0) {
+        return;
+    }
+    auto result = scheduler.pollAndResume(broker, 0);
+    if (result.readyContinuations > 0 || result.resumedContinuations > 0 ||
+        result.timedOutContinuations > 0) {
+        startupTrace("scheduler pumped: ready=" + std::to_string(result.readyContinuations) +
+                     " resumed=" + std::to_string(result.resumedContinuations) +
+                     " timedout=" + std::to_string(result.timedOutContinuations));
+    }
+}
+
+bool saveSession(StartupSession& session, agentc::edict::EdictVM& vm) {
     if (!session.enabled) {
         return true;
     }
@@ -196,6 +221,12 @@ bool saveSession(const StartupSession& session, agentc::edict::EdictVM& vm) {
         return false;
     }
     stripVolatileStartupBindings(root);
+
+    // Pump the scheduler before persisting so any pending mailbox
+    // descriptors are delivered to parked continuations and their
+    // states are updated before the save cycle.
+    pumpScheduler(*session.broker, session.awaitScheduler,
+                  session.coordinatorParticipant);
 
     // Persist await scheduler state as a child of the session root so
     // parked continuations survive a clean restart.
