@@ -6,6 +6,7 @@
 #include "../runtime/persistence/session_state_store.h"
 #include "../../core/alloc.h"
 #include "../../edict/edict_vm.h"
+#include "../../edict/root1_await_scheduler.h"
 
 #include <cstdio>
 #include <filesystem>
@@ -752,4 +753,63 @@ TEST(SessionStateStoreTest, SavesNativeSnapshotWithoutDestroyingLiveAmbientState
               "native prompt");
 
     store.clear();
+}
+
+// Root1AwaitScheduler continuation state survives a session save/load cycle
+// when stored as a named child of the session root.
+TEST(SessionStateStoreTest, SchedulerContinuationStateSurvivesSessionSaveLoad) {
+    const auto base = (std::filesystem::temp_directory_path() / "agentc_scheduler_session_test").string();
+    agentc::runtime::SessionStateStore store(base);
+    store.clear();
+
+    // Build a session root
+    auto rootJson = agentc::runtime::make_default_agent_root("scheduler test", "google", "gemini-3.1-pro-preview");
+    rootJson["conversation"]["assistant_text"] = "save me";
+    auto root = agentc::fromJson(rootJson.dump());
+
+    // Park continuations on the scheduler
+    agentc::edict::Root1AwaitScheduler scheduler;
+    auto h1 = scheduler.park(5);
+    auto h2 = scheduler.park(7);
+    ASSERT_EQ(scheduler.parkedCount(), 2u);
+
+    // Store scheduler state as a child of the session root
+    auto schedulerState = scheduler.saveState();
+    agentc::addNamedItem(root, "__root1_scheduler", schedulerState);
+
+    // Save session
+    std::string error;
+    ASSERT_TRUE(store.saveRoot(root, &error)) << error;
+    ASSERT_TRUE(store.exists());
+
+    // Load session into a fresh root
+    CPtr<agentc::ListreeValue> restoredRoot;
+    ASSERT_TRUE(store.loadRoot(restoredRoot, &error)) << error;
+    ASSERT_TRUE(restoredRoot);
+
+    // Extract scheduler state from the restored root
+    auto scItem = restoredRoot->find("__root1_scheduler");
+    ASSERT_TRUE(scItem) << "scheduler state missing from restored root";
+    auto restoredSchedulerState = scItem->getValue();
+    ASSERT_TRUE(restoredSchedulerState);
+
+    // Load into a fresh scheduler
+    agentc::edict::Root1AwaitScheduler restoredScheduler;
+    ASSERT_TRUE(restoredScheduler.loadState(restoredSchedulerState));
+
+    // Verify continuation handles survived the session save/load
+    EXPECT_EQ(restoredScheduler.parkedCount(), 2u);
+    EXPECT_EQ(restoredScheduler.status(h1).state, agentc::edict::Root1ContinuationState::Parked);
+    EXPECT_EQ(restoredScheduler.status(h1).participant, 5u);
+    EXPECT_EQ(restoredScheduler.status(h2).state, agentc::edict::Root1ContinuationState::Parked);
+    EXPECT_EQ(restoredScheduler.status(h2).participant, 7u);
+
+    // Verify nextId survived: next park doesn't collide
+    auto h3 = restoredScheduler.park(9);
+    EXPECT_NE(h3, h1);
+    EXPECT_NE(h3, h2);
+    EXPECT_EQ(restoredScheduler.parkedCount(), 3u);
+
+    store.clear();
+    EXPECT_FALSE(store.exists());
 }
