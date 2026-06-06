@@ -1,6 +1,6 @@
 # Goal: G108 — Cursor-Scoped Traversal Visit Bitmaps
 
-**Status**: PLANNED  
+**Status**: ACTIVE / IMPLEMENTATION READY  
 **Created**: 2026-05-14  
 **Parent**: 🔗[G105 — ReadOnly Static Slab Ownership Model](../G105-ReadOnlyStaticSlabOwnershipModel/index.md)  
 **Related WorkProduct**: 🔗[WP — Listree Traversal State and ReadOnly Slab Audit](../../WorkProducts/WP-ListreeTraversalStateReadOnlySlabAudit-2026-05-14/index.md)  
@@ -11,6 +11,8 @@ Replace set-based traversal visit tracking with operation-scoped per-slab bitmap
 
 ## Rationale
 Current traversal state is already external to `ListreeValue` flags, but it uses `std::unordered_set<SlabId>` for `absolute_visited` and `recursive_visited`. A bitmap design is more slab-native, deterministic, efficient, and ready for layered mmap slab identities.
+
+G105's audit identified this as the next traversal work needed for true read-only slab safety.
 
 ## Implementation Plan
 - [ ] Define `TraversalVisitState` and per-slab `SlabVisitBits` for `seen` and `active` traversal state.

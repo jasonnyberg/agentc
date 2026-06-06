@@ -2,7 +2,7 @@
 
 **Status**: PLANNED  
 **Created**: 2026-05-14  
-**Parent**: 🔗[G091 — Intern Worker Concurrency MVP](../G091-InternWorkerConcurrencyMvp/index.md)  
+**Parent**: 🔗[G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design](../G110-EventfdEpollMicroVmIpcDesign/index.md)  
 **Related Concept**: 🔗[Layered mmap Micro-VM Architecture](../../Concepts/LayeredMmapMicroVmArchitecture/index.md)
 
 ## Objective
@@ -38,3 +38,4 @@ The full-send architecture needs a coordinator-owned way for tertiary micro-VMs 
 ## Dependencies
 - Comes after the Root1 broker design in 🔗[G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design](../G110-EventfdEpollMicroVmIpcDesign/index.md), because G106 should reuse its resource-key, lease, epoch, and participant identity model.
 - Likely follows 🔗[G105 — ReadOnly Static Slab Ownership Model](../G105-ReadOnlyStaticSlabOwnershipModel/index.md) for immutable publication safety.
+- Depends on G107 process-isolated workers as the primary publisher.
