@@ -77,6 +77,17 @@ public:
     Root1AwaitPollResult pollAndResume(agentc::root1::Root1ResourceBroker& broker,
                                        int timeoutMs);
 
+    // Serialize all parked/ready continuation state into a ListreeValue.
+    // Caller owns the returned value and may attach it as a child of the
+    // session root.  Resume callbacks and transient events are not saved
+    // — on restore, continuations are rebuilt with no callback and must
+    // be re-attached by the caller.
+    CPtr<agentc::ListreeValue> saveState() const;
+    // Reconstruct continuation state from a value previously returned by
+    // saveState().  Continuations are created in their saved state but
+    // with no resume callback.
+    bool loadState(CPtr<agentc::ListreeValue> state);
+
 private:
     struct ParkedContinuation {
         Root1ContinuationHandle handle = 0;

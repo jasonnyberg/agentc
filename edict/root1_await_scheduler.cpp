@@ -231,4 +231,94 @@ size_t Root1AwaitScheduler::eventCount(const CPtr<agentc::ListreeValue>& eventsV
     return count;
 }
 
+CPtr<agentc::ListreeValue> Root1AwaitScheduler::saveState() const {
+    auto state = agentc::createNullValue();
+    agentc::addNamedItem(state, "next_id", agentc::createStringValue(std::to_string(nextId_)));
+    auto contList = agentc::createListValue();
+    for (const auto& entry : continuations_) {
+        const auto& c = entry.second;
+        if (c.state == Root1ContinuationState::Invalid) continue;
+        auto cv = agentc::createNullValue();
+        agentc::addNamedItem(cv, "handle", agentc::createStringValue(std::to_string(c.handle)));
+        agentc::addNamedItem(cv, "participant", agentc::createStringValue(std::to_string(c.participant)));
+        std::string stateName;
+        switch (c.state) {
+            case Root1ContinuationState::Parked: stateName = "parked"; break;
+            case Root1ContinuationState::Ready: stateName = "ready"; break;
+            case Root1ContinuationState::Resumed: stateName = "resumed"; break;
+            case Root1ContinuationState::Timeout: stateName = "timeout"; break;
+            case Root1ContinuationState::Cancelled: stateName = "cancelled"; break;
+            default: stateName = "invalid"; break;
+        }
+        agentc::addNamedItem(cv, "state", agentc::createStringValue(stateName));
+        agentc::addNamedItem(cv, "events_delivered", agentc::createStringValue(std::to_string(c.eventsDelivered)));
+        agentc::addNamedItem(cv, "resume_state", agentc::createStringValue(std::to_string(c.resumeState)));
+        agentc::addListItem(contList, cv);
+    }
+    agentc::addNamedItem(state, "continuations", contList);
+    return state;
+}
+
+bool Root1AwaitScheduler::loadState(CPtr<agentc::ListreeValue> state) {
+    if (!state) return false;
+    auto nextIdItem = state->find("next_id");
+    if (!nextIdItem) return false;
+    auto nextIdVal = nextIdItem->getValue();
+    if (!nextIdVal || !nextIdVal->getData()) return false;
+    nextId_ = std::stoull(std::string((char*)nextIdVal->getData(), nextIdVal->getLength()));
+
+    continuations_.clear();
+    byParticipant_.clear();
+
+    auto contListItem = state->find("continuations");
+    if (!contListItem) return true;  // empty state is valid
+    auto contList = contListItem->getValue();
+    if (!contList || !contList->isListMode()) return true;
+
+    contList->forEachList([&](CPtr<agentc::ListreeValueRef>& ref) {
+        if (!ref) return;
+        auto cv = ref->getValue();
+        if (!cv) return;
+        auto handleItem = cv->find("handle");
+        if (!handleItem) return;
+        auto handleVal = handleItem->getValue();
+        if (!handleVal || !handleVal->getData()) return;
+        auto handle = std::stoull(std::string((char*)handleVal->getData(), handleVal->getLength()));
+        auto participantItem = cv->find("participant");
+        if (!participantItem) return;
+        auto participant = std::stoull(std::string((char*)participantItem->getValue()->getData(),
+                                                    participantItem->getValue()->getLength()));
+        auto stateItem = cv->find("state");
+        std::string stateStr;
+        if (stateItem && stateItem->getValue() && stateItem->getValue()->getData()) {
+            stateStr = std::string((char*)stateItem->getValue()->getData(),
+                                    stateItem->getValue()->getLength());
+        }
+        Root1ContinuationState contState = Root1ContinuationState::Parked;
+        if (stateStr == "ready") contState = Root1ContinuationState::Ready;
+        else if (stateStr == "resumed") contState = Root1ContinuationState::Resumed;
+        else if (stateStr == "timeout") contState = Root1ContinuationState::Timeout;
+        else if (stateStr == "cancelled") contState = Root1ContinuationState::Cancelled;
+
+        size_t eventsDelivered = 0;
+        auto edItem = cv->find("events_delivered");
+        if (edItem && edItem->getValue() && edItem->getValue()->getData()) {
+            eventsDelivered = std::stoull(std::string((char*)edItem->getValue()->getData(),
+                                                       edItem->getValue()->getLength()));
+        }
+        int resumeState = 0;
+        auto rsItem = cv->find("resume_state");
+        if (rsItem && rsItem->getValue() && rsItem->getValue()->getData()) {
+            resumeState = std::stoi(std::string((char*)rsItem->getValue()->getData(),
+                                                  rsItem->getValue()->getLength()));
+        }
+        continuations_.emplace(handle, ParkedContinuation{
+            handle, static_cast<agentc::root1::ParticipantId>(participant),
+            contState, eventsDelivered, resumeState, nullptr, ResumeCallback{}
+        });
+        byParticipant_[static_cast<agentc::root1::ParticipantId>(participant)].push_back(handle);
+    });
+    return true;
+}
+
 } // namespace agentc::edict
