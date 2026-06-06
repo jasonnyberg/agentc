@@ -75,6 +75,7 @@ void EdictREPL::run() {
         } else if (!line.empty()) {
             processLine(line);
         }
+        if (schedulerPump_) schedulerPump_();
     }
 }
 
@@ -157,6 +158,7 @@ bool EdictREPL::runScript(std::istream& in) {
                     output << "Error (lines " << accumulator.getStartLine() << "-" << lineNum << "): " << vm.getError() << std::endl;
                     return false;
                 }
+                if (schedulerPump_) schedulerPump_();
             } catch (const std::exception& e) {
                 output << "Error (lines " << accumulator.getStartLine() << "-" << lineNum << "): " << e.what() << std::endl;
                 return false;

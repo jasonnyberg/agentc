@@ -210,6 +210,15 @@ void pumpScheduler(agentc::root1::Root1ResourceBroker& broker,
     }
 }
 
+auto makeSchedulerPump(StartupSession& session) {
+    return [&session]() {
+        if (session.broker && session.coordinatorParticipant != 0) {
+            pumpScheduler(*session.broker, session.awaitScheduler,
+                          session.coordinatorParticipant);
+        }
+    };
+}
+
 bool saveSession(StartupSession& session, agentc::edict::EdictVM& vm) {
     if (!session.enabled) {
         return true;
@@ -344,6 +353,7 @@ int main(int argc, char** argv) {
                 currentDebugLevel = DEBUG_WARNING;
                 startupTrace("stdin-script-before-repl");
                 agentc::edict::EdictREPL repl(root, std::cin, std::cout);
+                repl.setSchedulerPump(makeSchedulerPump(session));
                 startupTrace("stdin-script-after-repl");
                 const bool ok = repl.runScript(std::cin);
                 if (ok && !saveSession(session, repl.getVM())) return 1;
@@ -370,6 +380,7 @@ int main(int argc, char** argv) {
                 output << std::unitbuf; // Force unbuffered output for live IPC
                 
                 agentc::edict::EdictREPL repl(root, input, output);
+                repl.setSchedulerPump(makeSchedulerPump(session));
                 repl.run();
                 return saveSession(session, repl.getVM()) ? 0 : 1;
             }
@@ -421,6 +432,7 @@ int main(int argc, char** argv) {
                 dup2(client_fd, STDOUT_FILENO);
                 
                 agentc::edict::EdictREPL repl(root, std::cin, std::cout);
+                repl.setSchedulerPump(makeSchedulerPump(session));
                 std::cout << "VM-READY" << std::endl; // Marker for the client
                 repl.run();
                 const bool saved = saveSession(session, repl.getVM());
@@ -440,6 +452,7 @@ int main(int argc, char** argv) {
                     return 1;
                 }
                 agentc::edict::EdictREPL repl(root, file, std::cout);
+                repl.setSchedulerPump(makeSchedulerPump(session));
                 const bool ok = repl.runScript(file);
                 if (ok && !saveSession(session, repl.getVM())) return 1;
                 return ok ? 0 : 1;
@@ -452,6 +465,7 @@ int main(int argc, char** argv) {
         // Create and run the REPL
         startupTrace("interactive-before-repl");
         agentc::edict::EdictREPL repl(root, std::cin, std::cout);
+        repl.setSchedulerPump(makeSchedulerPump(session));
         startupTrace("interactive-after-repl");
         repl.run();
         return saveSession(session, repl.getVM()) ? 0 : 1;

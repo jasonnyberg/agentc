@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <functional>
 #include <istream>
 #include <string>
 #include <vector>
@@ -49,6 +50,11 @@ public:
     // Returns true on success, false if any line produces a VM error.
     bool runScript(std::istream& in);
 
+    // Optional callback invoked between each REPL turn.  Used to pump the
+    // Root1 await scheduler so yielded continuations can receive mailbox
+    // descriptors without waiting for the next user input.
+    void setSchedulerPump(std::function<void()> pump) { schedulerPump_ = std::move(pump); }
+
 private:
     EdictVM vm;
     EdictCompiler compiler;
@@ -69,6 +75,9 @@ private:
     
     // Special commands
     bool handleSpecialCommand(const std::string& line);
+
+    // Optional scheduler pump
+    std::function<void()> schedulerPump_;
 };
 
 } // namespace agentc::edict
