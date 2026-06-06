@@ -561,6 +561,7 @@ private:
         std::shared_ptr<void> mappedRegion;   // non-null when any part is mmap-backed
         size_t mappedBytes = 0;               // total size of mappedRegion (for msync)
         bool mappedBacking = false;
+        bool staticImmortal = false;       // set when markSlabStaticImmortal() is called
 
         // Heap-backed slab.
         Slab()
@@ -1419,6 +1420,7 @@ public:
             return false;
         }
         ++staticImmortalSlabs_[slabIndex];
+        slabs[slabIndex]->staticImmortal = true;
         return true;
     }
 
@@ -1439,6 +1441,7 @@ public:
         }
         if (--it->second == 0) {
             staticImmortalSlabs_.erase(it);
+            slabs[slabIndex]->staticImmortal = false;
         }
         return true;
     }
@@ -1459,6 +1462,9 @@ public:
         std::lock_guard<std::recursive_mutex> lock(mutex_);
         staticImmortalSlabs_.clear();
         staticImmortalSlots_.clear();
+        for (size_t i = 0; i < NUM_SLABS; ++i) {
+            if (slabs[i]) slabs[i]->staticImmortal = false;
+        }
     }
 
     size_t staticImmortalSlabCount() const {
@@ -1478,6 +1484,10 @@ public:
 
     bool slotIsStaticImmortal(SlabId si) const {
         std::lock_guard<std::recursive_mutex> lock(mutex_);
+        // Fast path: if the entire slab is immortal, all slots are immortal.
+        if (si.first < NUM_SLABS && slabs[si.first] && slabs[si.first]->staticImmortal) {
+            return true;
+        }
         return staticImmortalSlabs_.find(si.first) != staticImmortalSlabs_.end()
             || staticImmortalSlots_.find(si) != staticImmortalSlots_.end();
     }
