@@ -49,17 +49,30 @@ CPtr<ListreeValue> dequeueTraversalValue(CPtr<CLL<ListreeValue>>& queue) {
 } // namespace
 
 //////////////////////////////////////////////////
-// TraversalContext Implementation
+// TraversalVisitState Implementation
 //////////////////////////////////////////////////
 
-TraversalContext::TraversalContext() {}
-TraversalContext::~TraversalContext() {}
-void TraversalContext::mark_absolute(SlabId sid) { absolute_visited.insert(sid); }
-bool TraversalContext::is_absolute(SlabId sid) const { return absolute_visited.count(sid) > 0; }
-void TraversalContext::mark_recursive(SlabId sid) { recursive_visited.insert(sid); }
-void TraversalContext::unmark_recursive(SlabId sid) { recursive_visited.erase(sid); }
-bool TraversalContext::is_recursive(SlabId sid) const { return recursive_visited.count(sid) > 0; }
-void TraversalContext::clear() { absolute_visited.clear(); recursive_visited.clear(); }
+void TraversalVisitState::mark_seen(SlabId sid) {
+    auto& bits = slabs_[sid.first];
+    bits.seen[sid.second] = 1;
+}
+bool TraversalVisitState::is_seen(SlabId sid) const {
+    auto it = slabs_.find(sid.first);
+    return it != slabs_.end() && it->second.seen[sid.second] != 0;
+}
+void TraversalVisitState::mark_active(SlabId sid) {
+    auto& bits = slabs_[sid.first];
+    bits.active[sid.second] = 1;
+}
+void TraversalVisitState::unmark_active(SlabId sid) {
+    auto it = slabs_.find(sid.first);
+    if (it != slabs_.end()) it->second.active[sid.second] = 0;
+}
+bool TraversalVisitState::is_active(SlabId sid) const {
+    auto it = slabs_.find(sid.first);
+    return it != slabs_.end() && it->second.active[sid.second] != 0;
+}
+void TraversalVisitState::clear() { slabs_.clear(); }
 
 //////////////////////////////////////////////////
 // ListreeValueRef Implementation
@@ -163,7 +176,7 @@ void ListreeValue::setReadOnly(bool recursive) {
         traverse([](CPtr<ListreeValue> node) {
             if (node)
                 node->flags = node->flags | LtvFlags::ReadOnly;
-        }, opts, std::make_shared<TraversalContext>());
+        }, opts, std::make_shared<TraversalVisitState>());
     } catch (...) {
         // If getSlabId fails the flag on this node is already set above;
         // child marking is best-effort.
@@ -346,12 +359,12 @@ CPtr<ListreeValue> ListreeValue::copy(int maxDepth, void* ctx_ptr) const {
         }
     }
 
-    // Cycle detection: reuse or create a TraversalContext for this traversal.
-    std::shared_ptr<TraversalContext> ctx;
+    // Cycle detection: reuse or create a TraversalVisitState for this traversal.
+    std::shared_ptr<TraversalVisitState> ctx;
     if (ctx_ptr) {
-        ctx = *static_cast<std::shared_ptr<TraversalContext>*>(ctx_ptr);
+        ctx = *static_cast<std::shared_ptr<TraversalVisitState>*>(ctx_ptr);
     } else {
-        ctx = std::make_shared<TraversalContext>();
+        ctx = std::make_shared<TraversalVisitState>();
     }
 
     SlabId my_sid(0, 0);
@@ -359,7 +372,7 @@ CPtr<ListreeValue> ListreeValue::copy(int maxDepth, void* ctx_ptr) const {
     try {
         my_sid = Allocator<ListreeValue>::getAllocator().getSlabId(this);
         have_sid = true;
-        if (ctx->is_recursive(my_sid)) {
+        if (ctx->is_active(my_sid)) {
             // Already on the call stack — cycle detected; return null to break it.
             return CPtr<ListreeValue>();
         }
@@ -380,7 +393,7 @@ CPtr<ListreeValue> ListreeValue::copy(int maxDepth, void* ctx_ptr) const {
     }
     if (maxDepth == 0) return res;
 
-    if (have_sid) ctx->mark_recursive(my_sid);
+    if (have_sid) ctx->mark_active(my_sid);
 
     int nextDepth = (maxDepth > 0) ? maxDepth - 1 : -1;
     void* next_ctx = &ctx;
@@ -405,18 +418,18 @@ CPtr<ListreeValue> ListreeValue::copy(int maxDepth, void* ctx_ptr) const {
         });
     }
 
-    if (have_sid) ctx->unmark_recursive(my_sid);
+    if (have_sid) ctx->unmark_active(my_sid);
     return res;
 }
 void ListreeValue::forEachList(const std::function<void(CPtr<ListreeValueRef>&)>& callback, bool forward) { if (isListMode() && list) list->forEach(callback, forward); }
 void ListreeValue::forEachTree(const std::function<void(const std::string&, CPtr<ListreeItem>&)>& callback, bool forward) { if (!isListMode() && tree) tree->forEach(callback, forward); }
 
-void ListreeValue::traverse(const std::function<void(CPtr<ListreeValue>)>& callback, TraversalOptions options, std::shared_ptr<TraversalContext> context) {
+void ListreeValue::traverse(const std::function<void(CPtr<ListreeValue>)>& callback, TraversalOptions options, std::shared_ptr<TraversalVisitState> context) {
     CPtr<ListreeValue> startNode = options.from;
     if (!startNode) { try { SlabId sid = Allocator<ListreeValue>::getAllocator().getSlabId(this); startNode = CPtr<ListreeValue>(sid); } catch (...) { return; } }
-    if (!context) context = std::make_shared<TraversalContext>();
+    if (!context) context = std::make_shared<TraversalVisitState>();
     SlabId sid = startNode.getSlabId();
-    if (context->is_recursive(sid) || context->is_absolute(sid)) return;
+    if (context->is_active(sid) || context->is_seen(sid)) return;
     bool forward = (options.direction == TraversalDirection::Forward);
     if (options.order == TraversalOrder::BreadthFirst) {
         CPtr<CLL<ListreeValue>> queue = createTraversalQueue();
@@ -424,28 +437,28 @@ void ListreeValue::traverse(const std::function<void(CPtr<ListreeValue>)>& callb
         while (true) {
             CPtr<ListreeValue> current = dequeueTraversalValue(queue);
             if (!current) break;
-            SlabId curSid = current.getSlabId(); if (context->is_absolute(curSid)) continue;
-            context->mark_absolute(curSid); callback(current);
-            if (current->isListMode()) { current->forEachList([&](CPtr<ListreeValueRef>& ref) { if (ref && ref->getValue()) { CPtr<ListreeValue> child = ref->getValue(); if (!context->is_absolute(child.getSlabId())) enqueueTraversalValue(queue, child); } }, forward); } 
-            else { current->forEachTree([&](const std::string&, CPtr<ListreeItem>& item) { if (item) item->forEachValue([&](CPtr<ListreeValue>& val) { if (val && !context->is_absolute(val.getSlabId())) enqueueTraversalValue(queue, val); }, forward); }, forward); }
+            SlabId curSid = current.getSlabId(); if (context->is_seen(curSid)) continue;
+            context->mark_seen(curSid); callback(current);
+            if (current->isListMode()) { current->forEachList([&](CPtr<ListreeValueRef>& ref) { if (ref && ref->getValue()) { CPtr<ListreeValue> child = ref->getValue(); if (!context->is_seen(child.getSlabId())) enqueueTraversalValue(queue, child); } }, forward); } 
+            else { current->forEachTree([&](const std::string&, CPtr<ListreeItem>& item) { if (item) item->forEachValue([&](CPtr<ListreeValue>& val) { if (val && !context->is_seen(val.getSlabId())) enqueueTraversalValue(queue, val); }, forward); }, forward); }
         }
     } else {
-        context->mark_absolute(sid); context->mark_recursive(sid); callback(startNode);
+        context->mark_seen(sid); context->mark_active(sid); callback(startNode);
         TraversalOptions recOpts = options; recOpts.from = nullptr;
         if (startNode->isListMode()) { startNode->forEachList([&](CPtr<ListreeValueRef>& ref) { if (ref && ref->getValue()) ref->getValue()->traverse(callback, recOpts, context); }, forward); } 
         else { startNode->forEachTree([&](const std::string&, CPtr<ListreeItem>& item) { if (item) item->forEachValue([&](CPtr<ListreeValue>& val) { if (val) val->traverse(callback, recOpts, context); }, forward); }, forward); }
-        context->unmark_recursive(sid);
+        context->unmark_active(sid);
     }
 }
 
 void ListreeValue::toDot(std::ostream& os, const std::string& label) const {
     os << "digraph \"" << label << "\" {\n  node [fontname=\"Helvetica\"];\n  edge [fontname=\"Helvetica\"];\n";
-    TraversalContext visited;
+    TraversalVisitState visited;
     std::function<void(CPtr<ListreeValue>)> visitLtv = [&](CPtr<ListreeValue> ltv) {
         if (!ltv) return;
         SlabId sid = ltv.getSlabId();
-        if (visited.is_absolute(sid)) return;
-        visited.mark_absolute(sid);
+        if (visited.is_seen(sid)) return;
+        visited.mark_seen(sid);
         std::string id = "LTV" + std::to_string(sid.first) + "_" + std::to_string(sid.second);
         std::string lstr;
         if (ltv->isEmpty()) lstr = "null";

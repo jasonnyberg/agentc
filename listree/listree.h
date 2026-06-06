@@ -39,23 +39,31 @@ class ListreeValue;
 class ListreeItem;
 class ListreeValueRef;
 
-// TraversalContext tracks visited SlabIds during listree traversal for cycle
-// detection. Uses std::unordered_set<SlabId> to correctly handle all 16-bit
-// slab indices and all SLAB_SIZE offsets (both can exceed 255, which the
-// former manual bit-array with toIndex = (first<<8)|second could not).
-class TraversalContext {
+// TraversalVisitState replaces the old TraversalContext. Instead of storing
+// each visited SlabId in an unordered_set, it uses per-slab bitmaps
+// (lazily allocated) for O(1) visit checks, lower memory overhead for
+// dense slab-local traversals, and future compatibility with layered
+// slab identities.
+//   seen  = slab node has already been visited in this traversal
+//   active = slab node is currently in the recursion stack (cycle detection)
+class TraversalVisitState {
 public:
-    TraversalContext();
-    ~TraversalContext();
-    void mark_absolute(SlabId sid);
-    bool is_absolute(SlabId sid) const;
-    void mark_recursive(SlabId sid);
-    void unmark_recursive(SlabId sid);
-    bool is_recursive(SlabId sid) const;
+    TraversalVisitState() = default;
+    ~TraversalVisitState() = default;
+
+    void mark_seen(SlabId sid);
+    bool is_seen(SlabId sid) const;
+    void mark_active(SlabId sid);
+    void unmark_active(SlabId sid);
+    bool is_active(SlabId sid) const;
     void clear();
 private:
-    std::unordered_set<SlabId> absolute_visited;
-    std::unordered_set<SlabId> recursive_visited;
+    struct PerSlabBits {
+        std::vector<char> seen;
+        std::vector<char> active;
+        PerSlabBits() : seen(SLAB_SIZE, 0), active(SLAB_SIZE, 0) {}
+    };
+    std::unordered_map<uint16_t, PerSlabBits> slabs_;
 };
 
 // LtvFlags encodes the storage class and interpretation of a ListreeValue's
@@ -290,7 +298,7 @@ public:
     CPtr<ListreeValue> copy(int maxDepth = -1, void* ctx = nullptr) const;
     void forEachList(const std::function<void(CPtr<ListreeValueRef>&)>& callback, bool forward = true);
     void forEachTree(const std::function<void(const std::string&, CPtr<ListreeItem>&)>& callback, bool forward = true);
-    void traverse(const std::function<void(CPtr<ListreeValue>)>& callback, TraversalOptions options = {}, std::shared_ptr<TraversalContext> context = nullptr);
+    void traverse(const std::function<void(CPtr<ListreeValue>)>& callback, TraversalOptions options = {}, std::shared_ptr<TraversalVisitState> context = nullptr);
     void toDot(std::ostream& os, const std::string& label = "Listree") const;
     static bool unwind(SlabId sid);
     friend std::ostream& operator<<(std::ostream& os, const ListreeValue& ltv);

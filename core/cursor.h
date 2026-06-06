@@ -84,7 +84,7 @@ public:
     
     bool forEach(const std::function<bool(Cursor&)>& callback);
     bool forEachChild(const std::function<bool(Cursor&)>& callback);
-    void traverse(const std::function<void(CPtr<ListreeValue>)>& callback, TraversalOptions options = {}, std::shared_ptr<TraversalContext> context = nullptr);
+    void traverse(const std::function<void(CPtr<ListreeValue>)>& callback, TraversalOptions options = {}, std::shared_ptr<TraversalVisitState> context = nullptr);
     
     void reset(CPtr<ListreeValue> newRoot = nullptr);
     Cursor clone() const;

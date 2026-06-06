@@ -580,7 +580,7 @@ bool Cursor::forEach(const std::function<bool(Cursor&)>& callback) {
     return cont;
 }
 bool Cursor::forEachChild(const std::function<bool(Cursor&)>& callback) { return forEach(callback); }
-void Cursor::traverse(const std::function<void(CPtr<ListreeValue>)>& callback, TraversalOptions options, std::shared_ptr<TraversalContext> context) { if (current) { if (!options.from) options.from = current; current->traverse(callback, options, context); } }
+void Cursor::traverse(const std::function<void(CPtr<ListreeValue>)>& callback, TraversalOptions options, std::shared_ptr<TraversalVisitState> context) { if (current) { if (!options.from) options.from = current; current->traverse(callback, options, context); } }
 void Cursor::reset(CPtr<ListreeValue> newRoot) { unpinPath(); if (newRoot) root = newRoot; current = root; currentParent = nullptr; currentItem = nullptr; currentItemFromEnd = false; pathComponents = createListValue(); pinPath(); }
 Cursor Cursor::clone() const { return *this; }
 Cursor Cursor::createEmpty() { return Cursor(createNullValue()); }

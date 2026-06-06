@@ -15,19 +15,22 @@ Current traversal state is already external to `ListreeValue` flags, but it uses
 G105's audit identified this as the next traversal work needed for true read-only slab safety.
 
 ## Implementation Plan
-- [ ] Define `TraversalVisitState` and per-slab `SlabVisitBits` for `seen` and `active` traversal state.
-- [ ] Rename/clarify semantics: `absolute_visited` → `seen`; `recursive_visited` → `active`.
-- [ ] Keep traversal state operation-scoped, not permanent cursor state.
-- [ ] Make the key shape compatible with future layer/arena identity, even if current code uses an implicit default layer.
-- [ ] Replace `TraversalContext` set usage in `ListreeValue::traverse(...)` and related traversal helpers.
-- [ ] Add tests for two independent traversals over the same read-only graph and cyclic graphs.
+- [x] Define `TraversalVisitState` and per-slab `SlabVisitBits` for `seen` and `active` traversal state.
+- [x] Rename/clarify semantics: `absolute_visited` → `seen`; `recursive_visited` → `active`.
+- [x] Keep traversal state operation-scoped, not permanent cursor state.
+- [x] Make the key shape compatible with future layer/arena identity, even if current code uses an implicit default layer.
+- [x] Replace `TraversalContext` set usage in `ListreeValue::traverse(...)` and related traversal helpers.
+- [x] Add tests for two independent traversals over the same read-only graph and cyclic graphs.
 - [ ] Benchmark or sanity-check allocation behavior against the current `unordered_set` implementation.
 
 ## Acceptance Criteria
-- [ ] Traversal visit bookkeeping performs no writes to traversed `ListreeValue`, `ListreeItem`, `ListreeValueRef`, CLL, or AATree slabs.
-- [ ] Multiple traversal contexts can traverse the same read-only graph concurrently without shared visited-state interference.
-- [ ] Cycle handling remains correct for breadth-first and depth-first traversal.
-- [ ] The design can be extended to layered slab ids without invalidating the API.
+- [x] Traversal visit bookkeeping performs no writes to traversed `ListreeValue`, `ListreeItem`, `ListreeValueRef`, CLL, or AATree slabs.
+- [x] Multiple traversal contexts can traverse the same read-only graph concurrently without shared visited-state interference.
+- [x] Cycle handling remains correct for breadth-first and depth-first traversal.
+- [x] The design can be extended to layered slab ids without invalidating the API.
 
 ## Dependencies
 Supports 🔗[G105](../G105-ReadOnlyStaticSlabOwnershipModel/index.md), 🔗[G096](../G096-AuthoritativeMmapSessionResume/index.md), and future Root1/static-slab traversal. This is lower risk than the ownership/refcount/pinning changes because current traversal state is already external.
+
+## Progress
+- 2026-06-06: Landed the first G108 implementation slice. Replaced `TraversalContext` (two `std::unordered_set<SlabId>`) with `TraversalVisitState` using per-slab bitmaps (`std::unordered_map<uint16_t, PerSlabBits>` with `std::vector<char>` of size SLAB_SIZE for `seen` and `active` fields). Updated all call sites: `ListreeValue::traverse()`, `ListreeValue::copy()`, `ListreeValue::toDot()`, `ListreeValue::setReadOnly()`, `Cursor::traverse()`, `Cursor::traverse()` in cursor.cpp. Renamed `absolute_visited` → `seen`, `recursive_visited` → `active`. Added 5 tests: `TwoIndependentTraversalsSameGraph`, `TwoIndependentTraversalsReadOnlyGraph`, `BreadthFirstCycleHandling`, `TraversalVisitStateFreshAfterSeparateUsage`, `ClearResetsState`. Benchmark/deferred allocation behaviour check remains as the last unchecked item. Validation: listree_tests 81/81 (76 existing + 5 new), Edict focused slice 75/75.
