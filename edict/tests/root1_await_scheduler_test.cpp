@@ -264,3 +264,88 @@ TEST(Root1AwaitSchedulerTest, SaveAndLoadPreservesTerminalStates) {
     EXPECT_EQ(restored.status(h1).state, Root1ContinuationState::Parked);
     EXPECT_EQ(restored.status(h2).state, Root1ContinuationState::Parked);
 }
+
+// After save and load, the rebuilt byParticipant_ index correctly routes
+// mailbox descriptors to the right continuations via pollAndResume.
+TEST(Root1AwaitSchedulerTest, SaveAndLoadPreservesParticipantDispatch) {
+    agentc::root1::Root1ResourceBroker broker;
+    auto participant = broker.registerParticipant();
+    ASSERT_GT(participant, 0u);
+
+    Root1AwaitScheduler scheduler;
+    auto handle = scheduler.park(participant);
+    ASSERT_GT(handle, 0u);
+    ASSERT_EQ(scheduler.parkedCount(), 1u);
+
+    // Save and reload into a fresh scheduler
+    auto saved = scheduler.saveState();
+    ASSERT_TRUE(saved);
+
+    Root1AwaitScheduler restored;
+    ASSERT_TRUE(restored.loadState(saved));
+    ASSERT_EQ(restored.parkedCount(), 1u);
+    ASSERT_EQ(restored.status(handle).participant, participant);
+
+    // Create a fresh broker and register a participant.
+    // The broker assigns IDs starting at 1, so the first
+    // registerParticipant() gets the same ID as the original.
+    agentc::root1::Root1ResourceBroker freshBroker;
+    auto freshParticipant = freshBroker.registerParticipant();
+    ASSERT_EQ(freshParticipant, participant)
+        << "fresh broker gave different participant ID — "
+        << "dispatch test requires deterministic participant IDs";
+
+    // Send a descriptor to that participant
+    agentc::root1::MailboxDescriptor descriptor;
+    descriptor.eventKind = agentc::root1::MailboxEventKind::Complete;
+    descriptor.sequence = 42;
+    ASSERT_TRUE(freshBroker.sendMailboxDescriptor(freshParticipant, descriptor));
+
+    // pollAndResume on the restored scheduler should pick up the
+    // continuation because byParticipant_ was rebuilt on load.
+    auto result = restored.pollAndResume(freshBroker, 1000);
+    EXPECT_EQ(result.readyContinuations, 1u);
+    auto status = restored.status(handle);
+    EXPECT_EQ(status.state, Root1ContinuationState::Ready);
+    EXPECT_EQ(status.eventsDelivered, 1u);
+}
+
+// Save and load preserves multiple continuations on the same participant.
+TEST(Root1AwaitSchedulerTest, SaveAndLoadPreservesMultiDispatch) {
+    agentc::root1::Root1ResourceBroker broker;
+    auto p1 = broker.registerParticipant();
+    auto p2 = broker.registerParticipant();
+    ASSERT_GT(p1, 0u);
+    ASSERT_GT(p2, 0u);
+
+    Root1AwaitScheduler scheduler;
+    auto h1 = scheduler.park(p1);
+    auto h2 = scheduler.park(p2);
+    auto h3 = scheduler.park(p1);  // two on p1
+    ASSERT_EQ(scheduler.parkedCount(), 3u);
+
+    auto saved = scheduler.saveState();
+    Root1AwaitScheduler restored;
+    ASSERT_TRUE(restored.loadState(saved));
+    ASSERT_EQ(restored.parkedCount(), 3u);
+
+    // Fresh broker with same participant ID pattern
+    agentc::root1::Root1ResourceBroker freshBroker;
+    auto fp1 = freshBroker.registerParticipant();
+    auto fp2 = freshBroker.registerParticipant();
+    ASSERT_EQ(fp1, p1);
+    ASSERT_EQ(fp2, p2);
+
+    // Send one descriptor to p1 — should wake exactly one continuation on p1
+    agentc::root1::MailboxDescriptor desc;
+    desc.eventKind = agentc::root1::MailboxEventKind::Progress;
+    ASSERT_TRUE(freshBroker.sendMailboxDescriptor(fp1, desc));
+
+    auto result = restored.pollAndResume(freshBroker, 1000);
+    // Both continuations on p1 go Parked → Ready (pollAndResume delivers
+    // all drained descriptors to every parked continuation on the participant)
+    EXPECT_EQ(result.readyContinuations, 2u);
+    EXPECT_EQ(restored.status(h1).state, Root1ContinuationState::Ready);
+    EXPECT_EQ(restored.status(h2).state, Root1ContinuationState::Parked);  // p2 untouched
+    EXPECT_EQ(restored.status(h3).state, Root1ContinuationState::Ready);
+}
