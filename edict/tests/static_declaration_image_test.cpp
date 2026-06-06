@@ -315,3 +315,60 @@ TEST(StaticDeclarationImageTest, StaticMountCanBeBackedByOSReadOnlyMmap) {
     std::filesystem::remove(path);
     resetListreeAllocatorsForStaticDeclarationTests();
 }
+
+TEST(StaticDeclarationImageTest, ValidationRejectsNativeHandleImage) {
+    // A static declaration image claiming native handles must be rejected.
+    auto image = agentc::edict::static_image::buildWorkerPrimitiveDeclarationImage();
+    auto manifest = namedValue(image, "manifest");
+    ASSERT_TRUE(manifest);
+    agentc::addNamedItem(manifest, "contains_native_handles", agentc::createStringValue("true"));
+
+    const auto validation = agentc::edict::static_image::validateDeclarationImage(image);
+    EXPECT_FALSE(validation.ok);
+    EXPECT_EQ(validation.code, "native_handles_forbidden");
+}
+
+TEST(StaticDeclarationImageTest, ValidationRejectsSymbolWithNativeHandle) {
+    // A symbol declaration that stores a native handle must be rejected.
+    auto declarations = agentc::createListValue();
+    auto badSymbol = agentc::createNullValue();
+    agentc::addNamedItem(badSymbol, "word", agentc::createStringValue("bad.provider_handle"));
+    agentc::addNamedItem(badSymbol, "native_symbol", agentc::createStringValue("bad_provider_handle_ltv"));
+    agentc::addNamedItem(badSymbol, "stack_signature", agentc::createStringValue("() -> ltv"));
+    agentc::addNamedItem(badSymbol, "category", agentc::createStringValue("provider"));
+    agentc::addNamedItem(badSymbol, "binding", agentc::createStringValue("static"));
+    agentc::addNamedItem(badSymbol, "stores_native_handle", agentc::createStringValue("true"));
+    agentc::addNamedItem(badSymbol, "worker_allowed", agentc::createStringValue("false"));
+    agentc::addListItem(declarations, badSymbol);
+
+    auto manifest = agentc::createNullValue();
+    agentc::addNamedItem(manifest, "format", agentc::createStringValue("agentc.static_declaration_image"));
+    agentc::addNamedItem(manifest, "format_version", agentc::createStringValue("1"));
+    agentc::addNamedItem(manifest, "image_kind", agentc::createStringValue("declarative_import_module"));
+    agentc::addNamedItem(manifest, "module", agentc::createStringValue("bad.provider"));
+    agentc::addNamedItem(manifest, "root_id", agentc::createStringValue("bad.provider/declarations"));
+    agentc::addNamedItem(manifest, "hash_algorithm", agentc::createStringValue("fnv1a64"));
+    agentc::addNamedItem(manifest, "payload_hash", agentc::edict::static_image::declarationPayloadHash(declarations));
+    agentc::addNamedItem(manifest, "contains_native_handles", agentc::createStringValue("false"));
+    agentc::addNamedItem(manifest, "native_binding_policy", agentc::createStringValue("lazy_process_local_sidecar"));
+    auto forbiddenPayloads = agentc::createListValue();
+    agentc::addListItem(forbiddenPayloads, agentc::createStringValue("dlopen_handle"));
+    agentc::addListItem(forbiddenPayloads, agentc::createStringValue("dlsym_pointer"));
+    agentc::addListItem(forbiddenPayloads, agentc::createStringValue("function_pointer"));
+    agentc::addListItem(forbiddenPayloads, agentc::createStringValue("eventfd"));
+    agentc::addListItem(forbiddenPayloads, agentc::createStringValue("epoll_fd"));
+    agentc::addListItem(forbiddenPayloads, agentc::createStringValue("pidfd"));
+    agentc::addListItem(forbiddenPayloads, agentc::createStringValue("edict_vm_pointer"));
+    agentc::addListItem(forbiddenPayloads, agentc::createStringValue("activation_frame"));
+    agentc::addListItem(forbiddenPayloads, agentc::createStringValue("credential"));
+    agentc::addListItem(forbiddenPayloads, agentc::createStringValue("provider_handle"));
+    agentc::addNamedItem(manifest, "forbidden_payloads", forbiddenPayloads);
+
+    auto image = agentc::createNullValue();
+    agentc::addNamedItem(image, "manifest", manifest);
+    agentc::addNamedItem(image, "declarations", declarations);
+
+    const auto validation = agentc::edict::static_image::validateDeclarationImage(image);
+    EXPECT_FALSE(validation.ok);
+    EXPECT_EQ(validation.code, "invalid_symbol_declaration");
+}

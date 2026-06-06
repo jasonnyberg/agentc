@@ -7,7 +7,7 @@ Last updated: 2026-05-28
 | Archived | ID | Title | Status | Summary |
 |---|---|---|---|---|
 | 2026-05-28 | G105 | ReadOnly Static Slab Ownership Model | Complete | Immortal static slab model, mount lease/registry, PROT_READ mmap safety proven |
-| 2026-05-28 | G107 | Process-Isolated Micro-VM Interns | Complete | Fork/exec workers, independent G103 image mounting, borrowed bytecode slab execution |
+| 2026-05-28 | G107 | Process-Isolated Micro-VM Interns | Complete | Fork/exec workers, independent G103 image mounting, borrowed bytecode slab execution, documented handle/capability policy (inherited/rehydrated/blocked) |
 | 2026-05-28 | G109 | Listree ReadOnly Mutation Surface Hardening | Complete | Frozen-tree removal/item-history gaps closed for public VM/Cursor paths |
 | 2026-05-28 | G111 | Root1/Worker Primitive FFI and Edict Intern Surface Migration | Complete | VM opcodes → imported LTV primitives + plain Edict words; intern words as module code |
 | 2026-05-11 | G068 | Client/Agent Split with Embedded Persistent Edict VM | Complete | Foundational embedded-VM/client-host architecture completed; remaining live-loop/tool/context work now tracked by G078/G079/G080 |
