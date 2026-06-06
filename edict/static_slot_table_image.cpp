@@ -356,6 +356,14 @@ bool writeStaticSlotTableImage(CPtr<agentc::ListreeValue> declarationImage,
     const uint32_t bindingName = intern("binding");
     const uint32_t storesNativeHandleName = intern("stores_native_handle");
     const uint32_t workerAllowedName = intern("worker_allowed");
+    const uint32_t threadSafeName = intern("thread_safe");
+    const uint32_t processSafeName = intern("process_safe");
+    const uint32_t reentrantName = intern("reentrant");
+    const uint32_t pureName = intern("pure");
+    const uint32_t sideEffectsName = intern("side_effects");
+    const uint32_t credentialBearingName = intern("credential_bearing");
+    const uint32_t staticShareableDeclarationName = intern("static_shareable_declaration");
+    const uint32_t requiresProcessLocalBindingName = intern("requires_process_local_binding");
     const uint32_t notesName = intern("notes");
 
     auto declarationList = namedValue(declarationImage, "declarations");
@@ -372,6 +380,14 @@ bool writeStaticSlotTableImage(CPtr<agentc::ListreeValue> declarationImage,
         declaration.binding = intern(stringValue(namedValue(symbol, "binding")));
         declaration.storesNativeHandle = intern(stringValue(namedValue(symbol, "stores_native_handle")));
         declaration.workerAllowed = intern(stringValue(namedValue(symbol, "worker_allowed")));
+        declaration.threadSafe = intern(stringValue(namedValue(symbol, "thread_safe")));
+        declaration.processSafe = intern(stringValue(namedValue(symbol, "process_safe")));
+        declaration.reentrant = intern(stringValue(namedValue(symbol, "reentrant")));
+        declaration.pure = intern(stringValue(namedValue(symbol, "pure")));
+        declaration.sideEffects = intern(stringValue(namedValue(symbol, "side_effects")));
+        declaration.credentialBearing = intern(stringValue(namedValue(symbol, "credential_bearing")));
+        declaration.staticShareableDeclaration = intern(stringValue(namedValue(symbol, "static_shareable_declaration")));
+        declaration.requiresProcessLocalBinding = intern(stringValue(namedValue(symbol, "requires_process_local_binding")));
         declaration.notes = intern(stringValue(namedValue(symbol, "notes")));
         declarations.push_back(declaration);
 
@@ -383,6 +399,14 @@ bool writeStaticSlotTableImage(CPtr<agentc::ListreeValue> declarationImage,
         objectItems.push_back(makeStringField(bindingName, stringValue(namedValue(symbol, "binding"))));
         objectItems.push_back(makeStringField(storesNativeHandleName, stringValue(namedValue(symbol, "stores_native_handle"))));
         objectItems.push_back(makeStringField(workerAllowedName, stringValue(namedValue(symbol, "worker_allowed"))));
+        objectItems.push_back(makeStringField(threadSafeName, stringValue(namedValue(symbol, "thread_safe"))));
+        objectItems.push_back(makeStringField(processSafeName, stringValue(namedValue(symbol, "process_safe"))));
+        objectItems.push_back(makeStringField(reentrantName, stringValue(namedValue(symbol, "reentrant"))));
+        objectItems.push_back(makeStringField(pureName, stringValue(namedValue(symbol, "pure"))));
+        objectItems.push_back(makeStringField(sideEffectsName, stringValue(namedValue(symbol, "side_effects"))));
+        objectItems.push_back(makeStringField(credentialBearingName, stringValue(namedValue(symbol, "credential_bearing"))));
+        objectItems.push_back(makeStringField(staticShareableDeclarationName, stringValue(namedValue(symbol, "static_shareable_declaration"))));
+        objectItems.push_back(makeStringField(requiresProcessLocalBindingName, stringValue(namedValue(symbol, "requires_process_local_binding"))));
         objectItems.push_back(makeStringField(notesName, stringValue(namedValue(symbol, "notes"))));
         std::sort(objectItems.begin(), objectItems.end(), [&](const auto& lhs, const auto& rhs) {
             return strings[lhs.name] < strings[rhs.name];

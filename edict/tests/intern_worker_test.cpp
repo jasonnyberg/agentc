@@ -774,6 +774,14 @@ TEST(InternWorkerTest, InternStartCanDispatchExecedStaticProgramFromMountedImage
     agentc::addNamedItem(entry, "binding", agentc::createStringValue("static_code_object"));
     agentc::addNamedItem(entry, "stores_native_handle", agentc::createStringValue("false"));
     agentc::addNamedItem(entry, "worker_allowed", agentc::createStringValue("true"));
+    agentc::addNamedItem(entry, "thread_safe", agentc::createStringValue("true"));
+    agentc::addNamedItem(entry, "process_safe", agentc::createStringValue("true"));
+    agentc::addNamedItem(entry, "reentrant", agentc::createStringValue("true"));
+    agentc::addNamedItem(entry, "pure", agentc::createStringValue("true"));
+    agentc::addNamedItem(entry, "side_effects", agentc::createStringValue("none"));
+    agentc::addNamedItem(entry, "credential_bearing", agentc::createStringValue("false"));
+    agentc::addNamedItem(entry, "static_shareable_declaration", agentc::createStringValue("true"));
+    agentc::addNamedItem(entry, "requires_process_local_binding", agentc::createStringValue("true"));
     agentc::addNamedItem(entry, "program_source", agentc::createStringValue(
         "input.label @result.label "
         "context.fact @result.fact "
@@ -893,6 +901,14 @@ TEST(InternWorkerTest, InternStartCanDispatchExecedStaticBytecodeFromMountedImag
     agentc::addNamedItem(entry, "bytecode_encoding", agentc::createStringValue("agentc.edict.bytecode.v1.hex"));
     agentc::addNamedItem(entry, "stores_native_handle", agentc::createStringValue("false"));
     agentc::addNamedItem(entry, "worker_allowed", agentc::createStringValue("true"));
+    agentc::addNamedItem(entry, "thread_safe", agentc::createStringValue("true"));
+    agentc::addNamedItem(entry, "process_safe", agentc::createStringValue("true"));
+    agentc::addNamedItem(entry, "reentrant", agentc::createStringValue("true"));
+    agentc::addNamedItem(entry, "pure", agentc::createStringValue("true"));
+    agentc::addNamedItem(entry, "side_effects", agentc::createStringValue("none"));
+    agentc::addNamedItem(entry, "credential_bearing", agentc::createStringValue("false"));
+    agentc::addNamedItem(entry, "static_shareable_declaration", agentc::createStringValue("true"));
+    agentc::addNamedItem(entry, "requires_process_local_binding", agentc::createStringValue("true"));
     agentc::addNamedItem(entry, "bytecode_hex", agentc::createStringValue(bytecodeHex(entryBytecode)));
     agentc::addListItem(declarations, entry);
 
@@ -1018,6 +1034,14 @@ TEST(InternWorkerTest, InternStartCanDispatchExecedBorrowedBytecodeSlabFromMount
     agentc::addNamedItem(entry, "bytecode_slab_hash", agentc::createStringValue(bytecodeHash(entryBytecode)));
     agentc::addNamedItem(entry, "stores_native_handle", agentc::createStringValue("false"));
     agentc::addNamedItem(entry, "worker_allowed", agentc::createStringValue("true"));
+    agentc::addNamedItem(entry, "thread_safe", agentc::createStringValue("true"));
+    agentc::addNamedItem(entry, "process_safe", agentc::createStringValue("true"));
+    agentc::addNamedItem(entry, "reentrant", agentc::createStringValue("true"));
+    agentc::addNamedItem(entry, "pure", agentc::createStringValue("true"));
+    agentc::addNamedItem(entry, "side_effects", agentc::createStringValue("none"));
+    agentc::addNamedItem(entry, "credential_bearing", agentc::createStringValue("false"));
+    agentc::addNamedItem(entry, "static_shareable_declaration", agentc::createStringValue("true"));
+    agentc::addNamedItem(entry, "requires_process_local_binding", agentc::createStringValue("true"));
     agentc::addListItem(declarations, entry);
 
     auto manifest = agentc::createNullValue();

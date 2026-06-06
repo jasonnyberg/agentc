@@ -146,6 +146,55 @@ static bool validateResolvedArtifactFreshness(const resolver::ResolvedApi& resol
     return true;
 }
 
+static const char* classifySideEffects(const std::string& functionName) {
+    // Heuristic: infer side effects from function name
+    const std::string lower = functionName;
+    if (lower.find("read") != std::string::npos ||
+        lower.find("write") != std::string::npos ||
+        lower.find("open") != std::string::npos ||
+        lower.find("file") != std::string::npos ||
+        lower.find("save") != std::string::npos ||
+        lower.find("load") != std::string::npos ||
+        lower.find("remove") != std::string::npos ||
+        lower.find("unlink") != std::string::npos ||
+        lower.find("rename") != std::string::npos) {
+        return "filesystem";
+    }
+    if (lower.find("connect") != std::string::npos ||
+        lower.find("socket") != std::string::npos ||
+        lower.find("http") != std::string::npos ||
+        lower.find("listen") != std::string::npos ||
+        lower.find("send") != std::string::npos ||
+        lower.find("recv") != std::string::npos ||
+        lower.find("curl") != std::string::npos) {
+        return "network";
+    }
+    if (lower.find("fork") != std::string::npos ||
+        lower.find("exec") != std::string::npos ||
+        lower.find("system") != std::string::npos ||
+        lower.find("spawn") != std::string::npos) {
+        return "process";
+    }
+    if (lower.find("credential") != std::string::npos ||
+        lower.find("auth") != std::string::npos ||
+        lower.find("login") != std::string::npos ||
+        lower.find("token") != std::string::npos ||
+        lower.find("secret") != std::string::npos ||
+        lower.find("key") != std::string::npos) {
+        return "credentials";
+    }
+    return "none";
+}
+
+static bool isCredentialBearing(const std::string& functionName) {
+    const std::string lower = functionName;
+    return lower.find("credential") != std::string::npos ||
+           lower.find("auth") != std::string::npos ||
+           lower.find("login") != std::string::npos ||
+           lower.find("token") != std::string::npos ||
+           lower.find("secret") != std::string::npos;
+}
+
 static bool isUnsafeFunctionName(const std::string& functionName) {
     return functionName == "system" ||
            functionName == "free" ||
@@ -157,6 +206,32 @@ static bool isUnsafeFunctionName(const std::string& functionName) {
            functionName == "remove" ||
            functionName == "rename" ||
            functionName == "kill";
+}
+
+static bool isPureFunction(const std::string& functionName) {
+    // Pure math/comparison functions that are deterministic and side-effect-free
+    return functionName == "add" ||
+           functionName == "sub" ||
+           functionName == "mul" ||
+           functionName == "div" ||
+           functionName == "abs" ||
+           functionName == "min" ||
+           functionName == "max" ||
+           functionName == "clamp" ||
+           functionName == "lerp" ||
+           functionName == "sqrt" ||
+           functionName == "pow" ||
+           functionName == "exp" ||
+           functionName == "log" ||
+           functionName == "sin" ||
+           functionName == "cos" ||
+           functionName == "tan" ||
+           functionName == "round" ||
+           functionName == "floor" ||
+           functionName == "ceil" ||
+           functionName == "strlen" ||
+           functionName == "strcmp" ||
+           functionName == "memcmp";
 }
 
 static void annotateImportedNode(CPtr<ListreeValue> value,
@@ -174,10 +249,22 @@ static void annotateImportedNode(CPtr<ListreeValue> value,
     std::string kind;
     valueToString(kindValue, kind);
     if (kind == "Function") {
-        const std::string safety = isUnsafeFunctionName(key) ? "unsafe" : "safe";
+        const bool unsafe = isUnsafeFunctionName(key);
+        const bool pure = isPureFunction(key);
+        const std::string safety = unsafe ? "unsafe" : "safe";
+        const std::string sideEffects = unsafe ? "process" : std::string(classifySideEffects(key));
+        const bool credentialBearing = isCredentialBearing(key);
         addNamedItem(value, "safety", createStringValue(safety));
         addNamedItem(value, "imported_via", createStringValue("cartographer_service"));
-        if (safety == "unsafe") {
+        addNamedItem(value, "thread_safe", createStringValue(safety == "safe" ? "true" : "false"));
+        addNamedItem(value, "process_safe", createStringValue(safety == "safe" ? "true" : "false"));
+        addNamedItem(value, "reentrant", createStringValue(pure ? "true" : "false"));
+        addNamedItem(value, "pure", createStringValue(pure ? "true" : "false"));
+        addNamedItem(value, "side_effects", createStringValue(sideEffects));
+        addNamedItem(value, "credential_bearing", createStringValue(credentialBearing ? "true" : "false"));
+        addNamedItem(value, "static_shareable_declaration", createStringValue("true"));
+        addNamedItem(value, "requires_process_local_binding", createStringValue("true"));
+        if (unsafe) {
             addNamedItem(value, "policy", createStringValue("blocked_by_default"));
         }
     }

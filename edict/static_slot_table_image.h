@@ -31,6 +31,14 @@ struct StaticSlotTableDeclaration {
     uint32_t binding = 0;
     uint32_t storesNativeHandle = 0;
     uint32_t workerAllowed = 0;
+    uint32_t threadSafe = 0;
+    uint32_t processSafe = 0;
+    uint32_t reentrant = 0;
+    uint32_t pure = 0;
+    uint32_t sideEffects = 0;
+    uint32_t credentialBearing = 0;
+    uint32_t staticShareableDeclaration = 0;
+    uint32_t requiresProcessLocalBinding = 0;
     uint32_t notes = 0;
 };
 

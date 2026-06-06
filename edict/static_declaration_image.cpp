@@ -68,7 +68,15 @@ CPtr<agentc::ListreeValue> stringList(std::initializer_list<std::string> values)
 CPtr<agentc::ListreeValue> symbolDeclaration(const std::string& word,
                                              const std::string& nativeSymbol,
                                              const std::string& stackSignature,
-                                             const std::string& category) {
+                                             const std::string& category,
+                                             const std::string& threadSafe = "true",
+                                             const std::string& processSafe = "true",
+                                             const std::string& reentrant = "true",
+                                             const std::string& pure = "true",
+                                             const std::string& sideEffects = "none",
+                                             const std::string& credentialBearing = "false",
+                                             const std::string& staticShareable = "true",
+                                             const std::string& requiresLocalBinding = "true") {
     auto symbol = agentc::createNullValue();
     agentc::addNamedItem(symbol, "word", agentc::createStringValue(word));
     agentc::addNamedItem(symbol, "native_symbol", agentc::createStringValue(nativeSymbol));
@@ -77,6 +85,14 @@ CPtr<agentc::ListreeValue> symbolDeclaration(const std::string& word,
     agentc::addNamedItem(symbol, "binding", agentc::createStringValue("lazy_process_local"));
     agentc::addNamedItem(symbol, "stores_native_handle", agentc::createStringValue("false"));
     agentc::addNamedItem(symbol, "worker_allowed", agentc::createStringValue("true"));
+    agentc::addNamedItem(symbol, "thread_safe", agentc::createStringValue(threadSafe));
+    agentc::addNamedItem(symbol, "process_safe", agentc::createStringValue(processSafe));
+    agentc::addNamedItem(symbol, "reentrant", agentc::createStringValue(reentrant));
+    agentc::addNamedItem(symbol, "pure", agentc::createStringValue(pure));
+    agentc::addNamedItem(symbol, "side_effects", agentc::createStringValue(sideEffects));
+    agentc::addNamedItem(symbol, "credential_bearing", agentc::createStringValue(credentialBearing));
+    agentc::addNamedItem(symbol, "static_shareable_declaration", agentc::createStringValue(staticShareable));
+    agentc::addNamedItem(symbol, "requires_process_local_binding", agentc::createStringValue(requiresLocalBinding));
     agentc::addNamedItem(symbol, "notes", agentc::createStringValue(
         "Declarative metadata only; actual Cartographer/FFI binding is process-local."));
     return symbol;
@@ -403,15 +419,24 @@ ValidationResult validateDeclarationImage(CPtr<agentc::ListreeValue> image) {
         if (symbolError) {
             return;
         }
-        if (stringValue(namedValue(symbol, "word")).empty()) {
+        const std::string word = stringValue(namedValue(symbol, "word"));
+        const std::string nativeSymbol = stringValue(namedValue(symbol, "native_symbol"));
+        const std::string storesNativeHandle = stringValue(namedValue(symbol, "stores_native_handle"));
+        if (word.empty()) {
             symbolError = true;
             missingField = "word";
-        } else if (stringValue(namedValue(symbol, "native_symbol")).empty()) {
+        } else if (nativeSymbol.empty()) {
             symbolError = true;
             missingField = "native_symbol";
-        } else if (stringValue(namedValue(symbol, "stores_native_handle")) != "false") {
+        } else if (storesNativeHandle != "false") {
             symbolError = true;
             missingField = "stores_native_handle=false";
+        } else if (stringValue(namedValue(symbol, "side_effects")).empty()) {
+            symbolError = true;
+            missingField = "side_effects";
+        } else if (stringValue(namedValue(symbol, "thread_safe")).empty()) {
+            symbolError = true;
+            missingField = "thread_safe";
         }
     });
     if (symbolError) {

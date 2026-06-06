@@ -372,3 +372,82 @@ TEST(StaticDeclarationImageTest, ValidationRejectsSymbolWithNativeHandle) {
     EXPECT_FALSE(validation.ok);
     EXPECT_EQ(validation.code, "invalid_symbol_declaration");
 }
+
+TEST(StaticDeclarationImageTest, WorkerPrimitiveSymbolsCarryCapabilityMetadata) {
+    // All worker primitive symbols must carry the full G092 capability metadata.
+    auto image = agentc::edict::static_image::buildWorkerPrimitiveDeclarationImage();
+    auto declarations = namedValue(image, "declarations");
+    ASSERT_TRUE(declarations);
+    ASSERT_TRUE(declarations->isListMode());
+
+    struct FieldCheck {
+        const char* name;
+        const char* expected;
+    };
+    const FieldCheck requiredFields[] = {
+        {"word", nullptr},
+        {"native_symbol", nullptr},
+        {"binding", "lazy_process_local"},
+        {"stores_native_handle", "false"},
+        {"worker_allowed", "true"},
+        {"thread_safe", "true"},
+        {"process_safe", "true"},
+        {"reentrant", "true"},
+        {"pure", "true"},
+        {"side_effects", "none"},
+        {"credential_bearing", "false"},
+        {"static_shareable_declaration", "true"},
+        {"requires_process_local_binding", "true"},
+    };
+    const size_t fieldCount = sizeof(requiredFields) / sizeof(requiredFields[0]);
+
+    size_t checkedSymbols = 0;
+    declarations->forEachList([&](CPtr<agentc::ListreeValueRef>& ref) {
+        auto symbol = ref ? ref->getValue() : nullptr;
+        if (!symbol) {
+            return;
+        }
+        ++checkedSymbols;
+        for (size_t i = 0; i < fieldCount; ++i) {
+            const auto field = namedValue(symbol, requiredFields[i].name);
+            ASSERT_TRUE(field) << "symbol '" << textValue(namedValue(symbol, "word"))
+                               << "' is missing required field: " << requiredFields[i].name;
+            if (requiredFields[i].expected) {
+                EXPECT_EQ(textValue(field), std::string(requiredFields[i].expected))
+                    << "symbol '" << textValue(namedValue(symbol, "word"))
+                    << "' field " << requiredFields[i].name
+                    << " expected " << requiredFields[i].expected
+                    << " but got " << textValue(field);
+            }
+        }
+    });
+    EXPECT_GT(checkedSymbols, 0u);
+}
+
+TEST(StaticDeclarationImageTest, WorkerPrimitiveSymbolsHaveValidSideEffects) {
+    // Verify that side_effects is one of the valid enum values.
+    auto image = agentc::edict::static_image::buildWorkerPrimitiveDeclarationImage();
+    auto declarations = namedValue(image, "declarations");
+    ASSERT_TRUE(declarations);
+
+    const std::string validSideEffects[] = {
+        "none", "filesystem", "network", "process", "credentials"
+    };
+
+    declarations->forEachList([&](CPtr<agentc::ListreeValueRef>& ref) {
+        auto symbol = ref ? ref->getValue() : nullptr;
+        if (!symbol) {
+            return;
+        }
+        const std::string se = textValue(namedValue(symbol, "side_effects"));
+        bool valid = false;
+        for (const auto& vse : validSideEffects) {
+            if (se == vse) {
+                valid = true;
+                break;
+            }
+        }
+        EXPECT_TRUE(valid) << "symbol '" << textValue(namedValue(symbol, "word"))
+                           << "' has invalid side_effects: " << se;
+    });
+}
