@@ -7,7 +7,7 @@ Edict is a tiny concatenative language.
 
 - Source is a flat sequence of terms.
 - Terms compile into bytecode in `edict/edict_compiler.cpp`.
-- Bytecode executes in `edict/edict_vm.cpp`.
+- Bytecode executes in `edict/edict_vm_core.cpp` (dispatch loop and op handlers) and `edict/edict_vm_bootstrap.cpp` (builtin registration).
 - Values live in Listree nodes, so strings, dicts, lists, bytecode payloads, and bindings all share one substrate.
 
 The most important habit is: think in terms of stack effects, not expression trees.
@@ -38,10 +38,31 @@ The compiler is very direct.
   - Example: `[x]@a [y]/@a` means assign `x` to `a`, then for `a` remove the current binding head and assign `y`.
   - Multi-sigil chains are generalized: `[x]@a [y]@a [z]@a //a` pops `z`, then `y`, leaving `a == x`.
   - Intermediate `/` in a chain uses non-cleaning `REMOVE_HEAD` so the live dictionary entry survives until the chain finishes; a terminal `/name` keeps legacy cleanup semantics.
-- Bare `/`
+- Bare `/` (a / with a space before the following token)
   - Compiles to `POP`.
+- `yield!`
+  - Compiles to `VMOP_YIELD`.
+  - Sets `VM_YIELD` and pauses execution. Does not modify the stack.
+  - The VM resumes at the next opcode after `vm.resume()` is called.
+  - Typical usage: `yield! @destination destination` — the `@destination destination` part executes after resume, storing any data pushed by the resume caller.
 - `!`
   - Compiles to `EVAL`.
+- `await!`
+  - Compiles to `VMOP_AWAIT`.
+  - Pops a waitable ID string from the data stack (e.g. `"5"` or `job.waitable` field from `intern_start!`).
+  - If the stack is empty, defaults to the coordinator participant set by `vm.setAwaitScheduler()`.
+  - Calls `scheduler.parkVm(participant, vm)`, which stores a resume callback that pushes mailbox events onto the data stack and calls `vm.resume()`.
+  - Sets `VM_YIELD` so execution returns to the caller (REPL, script runner, etc.).
+  - On the next scheduler pump, if a descriptor has arrived for that participant, the scheduler calls the callback: events are pushed to the stack and the VM resumes at the next opcode.
+  - Usage with an explicit waitable:
+    ```edict
+    {"program": "...", "task_id": "t1"} @task intern_start! @job
+    job.waitable await! @events events
+    ```
+  - Usage with the coordinator default:
+    ```
+    await! @events events
+    ```
 - `&`
   - Compiles to `THROW`.
 - `|`
@@ -102,7 +123,7 @@ Examples:
 ```
 
 ## 5. Truthiness: Use the VM, Not the Old Prose
-The actual truthiness rules are in `edict/edict_vm.cpp::isTrue(...)`.
+The actual truthiness rules are in `edict/edict_vm_core.cpp::isTrue(...)`.
 
 Reliable truths:
 
@@ -290,16 +311,58 @@ provider < context_reset! > / /
 
 `context_reset!` mutates the stable provider object in place, clears conversation messages, resets the assistant text, and preserves the system prompt. The REPL command path uses raw string equality through a generic stdlib helper; it does not eval arbitrary user chat text as Edict.
 
-### Pattern: Deterministic intern worker task
+### Pattern: Deterministic intern worker task (synchronous)
 
 G091 adds the first substrate-level intern-worker primitive, `intern_run!`. The coordinator passes a bounded task envelope; Edict freezes `context` and `imports`, snapshots `input`, runs the `program` in a fresh worker VM with private `workspace`, joins the worker, and returns a structured result on the coordinator stack.
 
 ```edict
-worker_task intern_run! @worker_result
+{"program": "1 2 + @result", "task_id": "t1"} @task intern_run! @worker_result
 worker_result.result to_json! print
 ```
 
 Worker programs should assign a JSON-serializable `result` object. Keep intern tasks bounded, explicit, and checkable; do not pass stateful provider handles through worker context/imports in the MVP.
+
+### Pattern: Yield and resume
+
+`yield!` is the low-level pause instruction. It sets `VM_YIELD` and returns control to the caller (REPL, script runner). The VM can later be resumed via `vm.resume()`.
+
+Unlike `await!`, `yield!` does **not** register with the Root1 await scheduler. It is a purely mechanical pause — the caller must arrange for the VM to be resumed externally. Use `yield!` when you need fine-grained control over when and how the VM continues.
+
+```edict
+'before yield! 'after @events events
+```
+
+Execution: `'before` pushes the string `"before"` onto the stack, then `yield!` pauses. After `vm.resume()` is called, execution continues: `'after` pushes `"after"`, `@events` stores it in `events`, `events` pushes it back onto the stack.
+
+### Pattern: Async intern worker with await!
+
+`intern_start!` launches a worker asynchronously and returns an envelope with fields including `waitable`, an opaque participant ID string. Pass `job.waitable` to `await!` to park the VM on that specific worker's mailbox:
+
+```edict
+{"program": "1 2 + @result", "task_id": "my_task"} @task intern_start! @job
+job.waitable await! @events events
+```
+
+`await!` pops the waitable string from the stack (here coming from `job.waitable`), parks the VM on that participant, and yields. On the next REPL turn the scheduler pump delivers the worker's completion descriptor, pushes the mailbox events list onto the stack, and resumes the VM at `@events`. The `events` binding now holds the delivered mailbox events; field access follows standard Edict dot-path resolution through the cursor.
+
+To await the coordinator's default mailbox instead of a specific worker's:
+
+```edict
+await! @events events
+```
+
+### Pattern: Concurrent workers with independent awaits
+
+Each `intern_start!` creates a separate participant mailbox. By passing each job's `waitable` to its own `await!`, the waits are independent and do not wake each other:
+
+```edict
+{"program": "...", "task_id": "ta"} @task intern_start! @job_a
+{"program": "...", "task_id": "tb"} @task intern_start! @job_b
+
+job_a.waitable await! @events_a events_a
+
+job_b.waitable await! @events_b events_b
+```
 
 ### Pattern: Provider streaming
 
@@ -308,7 +371,7 @@ G074 adds a first decoupled ghost-queue stream surface:
 ```edict
 llm.init([gemma-4-31b-it]) @provider
 provider < [Reply exactly ok] stream_start! > / /
--- later / after yielding or doing other work:
+# later: after yielding or doing other work:
 provider < stream_sync! > / /
 provider.stream_last.tokens print
 ```
