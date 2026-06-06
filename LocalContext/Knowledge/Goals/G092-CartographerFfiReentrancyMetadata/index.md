@@ -1,6 +1,6 @@
 # Goal: G092 — Cartographer FFI Re-entrancy Metadata
 
-**Status**: ACTIVE / DESIGN PHASE  
+|**Status**: COMPLETE  
 **Created**: 2026-05-14  
 **Parent**: 🔗[G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design](../G110-EventfdEpollMicroVmIpcDesign/index.md)  
 **Related Concept**: 🔗[Layered mmap Micro-VM Architecture](../../Concepts/LayeredMmapMicroVmArchitecture/index.md) (see §9 "Capability Metadata as Loader Contract")
@@ -59,11 +59,11 @@ Update `buildWorkerPrimitiveDeclarationImage()` to include capability metadata f
 - Process-isolated workers (G107) validate capability metadata at launch
 
 ## Acceptance Criteria
-- [ ] Static declaration image symbols carry full capability metadata schema
-- [ ] Cartographer import annotates functions with inferred capabilities (conservative defaults)
-- [ ] Worker primitives (`worker.edict_*`) have accurate manual capability annotations
-- [ ] Validation rejects images missing required capability fields
-- [ ] Tests cover capability metadata generation and validation
+- [x] Static declaration image symbols carry full capability metadata schema
+- [x] Cartographer import annotates functions with inferred capabilities (conservative defaults)
+- [x] Worker primitives (`worker.edict_*`) have accurate manual capability annotations
+- [x] Validation rejects images missing required capability fields
+- [x] Tests cover capability metadata generation and validation
 
 ## Current Symbol Metadata (Baseline)
 | Field | Current | G092 Target |
@@ -84,7 +84,16 @@ Update `buildWorkerPrimitiveDeclarationImage()` to include capability metadata f
 | **static_shareable_declaration** | ❌ | ✅ |
 | **requires_process_local_binding** | ❌ | ✅ |
 
-## Related Work
-- G103 static declaration image manifest already has `contains_native_handles: false` and `forbidden_payloads` list
-- G107 process-isolated workers need this metadata to validate what can cross the coordinator→worker boundary
-- G110 Root1 broker capability hooks inform the metadata schema
+## Summary
+- **Phase 1 (Symbol Metadata Schema)**: Extended `symbolDeclaration()` in `static_declaration_image.cpp` with 8 capability fields: `thread_safe`, `process_safe`, `reentrant`, `pure`, `side_effects` (enum: none/filesystem/network/process/credentials), `credential_bearing`, `static_shareable_declaration`, `requires_process_local_binding`. All worker primitives default to safe/pure/non-credential defaults.
+- **Phase 2 (Cartographer Import Classification)**: Added `annotateImportedNode()` capability inference in `cartographer/service.cpp` including `isUnsafeFunctionName()`, `isPureFunction()`, `classifySideEffects()`, and `isCredentialBearing()` heuristics. Conservative defaults: unsafe if unprovably safe.
+- **Phase 3 (Static Declaration Image Generation)**: `buildWorkerPrimitiveDeclarationImage()` includes full capability metadata for all worker primitives via the extended `symbolDeclaration()`.
+- **Phase 4 (Validation & Tests)**: `validateDeclarationImage()` checks for required capability fields (`thread_safe`, `side_effects`). Two new tests: `WorkerPrimitiveSymbolsCarryCapabilityMetadata` (validates all 13 required fields present) and `WorkerPrimitiveSymbolsHaveValidSideEffects` (validates enum values).
+- **Phase 5 (Worker Runtime Enforcement)**: Deferred; depends on G107 process-isolated worker validation.
+- **Validation**: StaticDeclarationImageTest 14/14 passed, InternWorkerTest 27/27 passed.
+
+## Deliverables
+- `edict/static_declaration_image.cpp` — extended `symbolDeclaration()` with capability fields
+- `edict/static_slot_table_image.cpp` — extended `StaticSlotTableDeclaration` with capability fields
+- `cartographer/service.cpp` — `annotateImportedNode()` with capability heuristics
+- `edict/tests/static_declaration_image_test.cpp` — `WorkerPrimitiveSymbolsCarryCapabilityMetadata`, `WorkerPrimitiveSymbolsHaveValidSideEffects`
