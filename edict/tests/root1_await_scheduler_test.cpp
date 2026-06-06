@@ -388,3 +388,68 @@ TEST(Root1AwaitSchedulerTest, AwaitBuiltinParksVmAndResumesOnDescriptor) {
     ASSERT_TRUE(stackTop);
     ASSERT_TRUE(stackTop->isListMode());
 }
+
+// await! accepts an explicit waitable (participant id string) from the stack.
+// This lets users park on a specific job's participant rather than the
+// coordinator default.
+TEST(Root1AwaitSchedulerTest, AwaitBuiltinWithExplicitWaitable) {
+    agentc::root1::Root1ResourceBroker broker;
+    // Register participants until we get participant 7
+    agentc::root1::ParticipantId target = 7;
+    for (agentc::root1::ParticipantId i = 0; i < target; ++i) {
+        broker.registerParticipant();
+    }
+    // Register one more whose descriptor triggers the wake
+    auto wakeSource = broker.registerParticipant();
+    ASSERT_GE(wakeSource, target);
+
+    auto root = agentc::createNullValue();
+    EdictVM vm(root);
+    EdictCompiler compiler;
+    Root1AwaitScheduler scheduler;
+    vm.setAwaitScheduler(&scheduler, 1);  // default = 1, but we'll override
+
+    // Push a waitable string explicitly, then await
+    int state = vm.execute(compiler.compile("\"7\" await! @events events"));
+    ASSERT_TRUE(state & agentc::edict::VM_YIELD);
+    EXPECT_EQ(scheduler.parkedCount(), 1u);
+
+    // Send a descriptor to participant 7 (not the coordinator at 1)
+    agentc::root1::MailboxDescriptor descriptor;
+    descriptor.eventKind = agentc::root1::MailboxEventKind::Progress;
+    descriptor.sequence = 42;
+    ASSERT_TRUE(agentc::root1::setInlinePayload(descriptor, "explicit"));
+    ASSERT_TRUE(broker.sendMailboxDescriptor(target, descriptor));
+
+    // Pump — should wake the continuation parked on participant 7
+    auto result = scheduler.pollAndResume(broker, 1000);
+    EXPECT_EQ(result.resumedContinuations, 1u);
+    EXPECT_EQ(scheduler.parkedCount(), 0u);
+}
+
+// await! with no stack value uses the default (coordinator) participant.
+TEST(Root1AwaitSchedulerTest, AwaitBuiltinUsesDefaultWhenStackEmpty) {
+    agentc::root1::Root1ResourceBroker broker;
+    auto participant = broker.registerParticipant();
+    ASSERT_GT(participant, 0u);
+
+    auto root = agentc::createNullValue();
+    EdictVM vm(root);
+    EdictCompiler compiler;
+    Root1AwaitScheduler scheduler;
+    vm.setAwaitScheduler(&scheduler, participant);
+
+    // No waitable pushed — await! should use the default
+    int state = vm.execute(compiler.compile("await! @events events"));
+    ASSERT_TRUE(state & agentc::edict::VM_YIELD);
+    EXPECT_EQ(scheduler.parkedCount(), 1u);
+
+    // Send descriptor to the default participant
+    agentc::root1::MailboxDescriptor descriptor;
+    descriptor.eventKind = agentc::root1::MailboxEventKind::Complete;
+    ASSERT_TRUE(broker.sendMailboxDescriptor(participant, descriptor));
+
+    auto result = scheduler.pollAndResume(broker, 1000);
+    EXPECT_EQ(result.resumedContinuations, 1u);
+    EXPECT_EQ(scheduler.parkedCount(), 0u);
+}

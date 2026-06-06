@@ -1291,11 +1291,29 @@ CPtr<agentc::ListreeValue> EdictVM::readValue() {
 void EdictVM::op_YIELD() { state |= VM_YIELD; }
 
 void EdictVM::op_AWAIT() {
-    // await! parks the current VM on the await scheduler and yields.
-    // Syntax:  value-to-save @destination await!
-    // (The name assignment is handled by the compiler, same as yield!.)
-    if (awaitScheduler_) {
-        awaitScheduler_->parkVm(awaitParticipant_, *this);
+    // await! parks the current VM on a scheduler participant and yields.
+    // It pops a waitable reference from the data stack.  If the stack is
+    // empty at the time await! executes, the coordinator participant is
+    // used as a default.
+    //
+    // Syntax:
+    //   @job "waitable" await! @events events    — await on job's participant
+    //   await! @events events                    — await on coordinator
+    //
+    // "waitable" is the envelope.waitable string from intern_start! et al.
+    // It encodes the participant id as a decimal integer.
+    agentc::root1::ParticipantId target = awaitParticipant_;
+    auto stackVal = peekData();
+    if (stackVal && stackVal->getData() && stackVal->getLength() > 0) {
+        std::string val(static_cast<char*>(stackVal->getData()), stackVal->getLength());
+        try {
+            auto parsed = static_cast<agentc::root1::ParticipantId>(std::stoul(val));
+            if (parsed != 0) target = parsed;
+        } catch (...) {}
+        popData();
+    }
+    if (awaitScheduler_ && target != 0) {
+        awaitScheduler_->parkVm(target, *this);
     }
     state |= VM_YIELD;
 }
