@@ -349,3 +349,42 @@ TEST(Root1AwaitSchedulerTest, SaveAndLoadPreservesMultiDispatch) {
     EXPECT_EQ(restored.status(h2).state, Root1ContinuationState::Parked);  // p2 untouched
     EXPECT_EQ(restored.status(h3).state, Root1ContinuationState::Ready);
 }
+
+// await! builtin parks the VM on the scheduler and yields.
+// On scheduler pump with a matching descriptor, the continuation resumes.
+TEST(Root1AwaitSchedulerTest, AwaitBuiltinParksVmAndResumesOnDescriptor) {
+    agentc::root1::Root1ResourceBroker broker;
+    auto participant = broker.registerParticipant();
+    ASSERT_GT(participant, 0u);
+
+    auto root = agentc::createNullValue();
+    EdictVM vm(root);
+    EdictCompiler compiler;
+
+    // Wire the await scheduler into the VM
+    Root1AwaitScheduler scheduler;
+    vm.setAwaitScheduler(&scheduler, participant);
+
+    // Execute await! — should park and yield
+    int state = vm.execute(compiler.compile("await! @events events"));
+    ASSERT_TRUE(state & agentc::edict::VM_YIELD);
+    EXPECT_EQ(scheduler.parkedCount(), 1u);
+
+    // Send a descriptor to the participant
+    agentc::root1::MailboxDescriptor descriptor;
+    descriptor.eventKind = agentc::root1::MailboxEventKind::Complete;
+    descriptor.sequence = 99;
+    ASSERT_TRUE(agentc::root1::setInlinePayload(descriptor, "await-test"));
+    ASSERT_TRUE(broker.sendMailboxDescriptor(participant, descriptor));
+
+    // Pump the scheduler — should resume the VM
+    auto result = scheduler.pollAndResume(broker, 1000);
+    EXPECT_EQ(result.resumedContinuations, 1u);
+    EXPECT_EQ(scheduler.parkedCount(), 0u);
+
+    // The VM should have the delivered events on the stack
+    ASSERT_GT(vm.getStackSize(), 0u);
+    auto stackTop = vm.getStackTop();
+    ASSERT_TRUE(stackTop);
+    ASSERT_TRUE(stackTop->isListMode());
+}

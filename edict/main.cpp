@@ -105,7 +105,7 @@ void stripVolatileStartupBindings(CPtr<agentc::ListreeValue> root) {
         "ffi_closure", "rewrite_define", "rewrite_list", "rewrite_remove", "rewrite_apply",
         "rewrite_mode", "rewrite_trace", "speculate", "unsafe_extensions_allow",
         "unsafe_extensions_block", "unsafe_extensions_status", "HeapUtilization", "freeze",
-        "to_json", "from_json", "intern_run", "intern_start", "intern_sync", "intern_cancel", "__bootstrap_import", "cursor", "parser",
+        "to_json", "from_json", "await", "intern_run", "intern_start", "intern_sync", "intern_cancel", "__bootstrap_import", "cursor", "parser",
         "resolver", "cartographer"
     };
     for (const char* name : names) {
@@ -217,6 +217,16 @@ auto makeSchedulerPump(StartupSession& session) {
                           session.coordinatorParticipant);
         }
     };
+}
+
+// Wire the REPL's scheduler pump and VM await! builtin from the session.
+// Must be called before repl.run() or repl.runScript().
+void wireScheduler(agentc::edict::EdictREPL& repl, StartupSession& session) {
+    repl.setSchedulerPump(makeSchedulerPump(session));
+    if (session.broker && session.coordinatorParticipant != 0) {
+        repl.getVM().setAwaitScheduler(&session.awaitScheduler,
+                                        session.coordinatorParticipant);
+    }
 }
 
 bool saveSession(StartupSession& session, agentc::edict::EdictVM& vm) {
@@ -353,7 +363,7 @@ int main(int argc, char** argv) {
                 currentDebugLevel = DEBUG_WARNING;
                 startupTrace("stdin-script-before-repl");
                 agentc::edict::EdictREPL repl(root, std::cin, std::cout);
-                repl.setSchedulerPump(makeSchedulerPump(session));
+                wireScheduler(repl, session);
                 startupTrace("stdin-script-after-repl");
                 const bool ok = repl.runScript(std::cin);
                 if (ok && !saveSession(session, repl.getVM())) return 1;
@@ -380,7 +390,7 @@ int main(int argc, char** argv) {
                 output << std::unitbuf; // Force unbuffered output for live IPC
                 
                 agentc::edict::EdictREPL repl(root, input, output);
-                repl.setSchedulerPump(makeSchedulerPump(session));
+                wireScheduler(repl, session);
                 repl.run();
                 return saveSession(session, repl.getVM()) ? 0 : 1;
             }
@@ -432,7 +442,7 @@ int main(int argc, char** argv) {
                 dup2(client_fd, STDOUT_FILENO);
                 
                 agentc::edict::EdictREPL repl(root, std::cin, std::cout);
-                repl.setSchedulerPump(makeSchedulerPump(session));
+                wireScheduler(repl, session);
                 std::cout << "VM-READY" << std::endl; // Marker for the client
                 repl.run();
                 const bool saved = saveSession(session, repl.getVM());
@@ -452,7 +462,7 @@ int main(int argc, char** argv) {
                     return 1;
                 }
                 agentc::edict::EdictREPL repl(root, file, std::cout);
-                repl.setSchedulerPump(makeSchedulerPump(session));
+                wireScheduler(repl, session);
                 const bool ok = repl.runScript(file);
                 if (ok && !saveSession(session, repl.getVM())) return 1;
                 return ok ? 0 : 1;
@@ -465,7 +475,7 @@ int main(int argc, char** argv) {
         // Create and run the REPL
         startupTrace("interactive-before-repl");
         agentc::edict::EdictREPL repl(root, std::cin, std::cout);
-        repl.setSchedulerPump(makeSchedulerPump(session));
+        wireScheduler(repl, session);
         startupTrace("interactive-after-repl");
         repl.run();
         return saveSession(session, repl.getVM()) ? 0 : 1;

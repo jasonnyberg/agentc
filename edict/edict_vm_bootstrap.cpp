@@ -197,6 +197,7 @@ void EdictVM::loadCoreBuiltins() {
 
     addBuiltinThunk(dictVal, "reset", VMOP_RESET);
     addBuiltinThunk(dictVal, "yield", VMOP_YIELD);
+    addBuiltinThunk(dictVal, "await", VMOP_AWAIT);
     addBuiltinThunk(dictVal, "dup", VMOP_DUP);
     addBuiltinThunk(dictVal, "swap", VMOP_SWAP);
     addBuiltinThunk(dictVal, "ref", VMOP_REF);

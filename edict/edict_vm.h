@@ -15,18 +15,23 @@
 
 #pragma once
 
-#include <vector>
+#include <cstdint>
+#include <memory>
 #include <string>
+#include <vector>
 #include <functional>
 #include <optional>
 #include "../core/cursor.h"
 #include "../kanren/kanren.h"
 #include "edict_types.h"
+#include "edict_compiler.h"
+#include "../core/root1_resource_broker.h"
 
 namespace agentc::edict {
 
-// Forward declarations
+class EdictREPL;
 class EdictCompiler;
+class Root1AwaitScheduler;
 
 } // namespace agentc::edict
 
@@ -147,6 +152,15 @@ public:
     std::unique_ptr<agentc::cartographer::Mapper> mapper;
     std::unique_ptr<agentc::cartographer::FFI> ffi;
     std::unique_ptr<agentc::cartographer::CartographerService> cartographer;
+
+    // Await scheduler for await! builtin.  Set externally (e.g. by main.cpp)
+    // before executing code that uses await!.  Not serialized — rebuilt on
+    // session restore alongside the scheduler state.
+    void setAwaitScheduler(class agentc::edict::Root1AwaitScheduler* s,
+                           agentc::root1::ParticipantId p) {
+        awaitScheduler_ = s;
+        awaitParticipant_ = p;
+    }
 
 private:
     enum class ScanMode {
@@ -273,6 +287,7 @@ private:
     void op_FREEZE();
     void op_TO_JSON();
     void op_FROM_JSON();
+    void op_AWAIT();
 
     // Cursor navigation ops (registered via registerCursorOperations)
     void op_CURSOR_DOWN();  // Move cursor to first child; push bool result
@@ -328,6 +343,10 @@ private:
     void pushCodeFrame(const BytecodeBuffer& code);
     void popCodeFrame();
     CPtr<agentc::ListreeValue> peekCodeFrame();
+
+    // Await scheduler wiring — set via setAwaitScheduler().
+    class agentc::edict::Root1AwaitScheduler* awaitScheduler_ = nullptr;
+    agentc::root1::ParticipantId awaitParticipant_ = 0;
 };
 
 } // namespace agentc::edict

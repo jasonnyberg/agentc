@@ -123,7 +123,8 @@ enum VMOpcode {
     VMOP_FREEZE,        // Pop data stack top, mark it read-only (recursive), push it back
     VMOP_TO_JSON,       // Pop data stack top, serialize to JSON string, push result
     VMOP_FROM_JSON,     // Pop JSON string, parse into Listree value, push result
-    
+    VMOP_AWAIT,         // Pop destination name, yield and park on await scheduler
+
     // Number of opcodes (must be last)
     VMOP_COUNT
 };

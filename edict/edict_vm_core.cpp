@@ -21,6 +21,7 @@
 
 #include "edict_vm.h"
 #include "edict_compiler.h"
+#include "root1_await_scheduler.h"
 #include "../cartographer/mapper.h"
 #include "../cartographer/ffi.h"
 #include "../cartographer/ltv_api.h"
@@ -1288,6 +1289,16 @@ CPtr<agentc::ListreeValue> EdictVM::readValue() {
 }
 
 void EdictVM::op_YIELD() { state |= VM_YIELD; }
+
+void EdictVM::op_AWAIT() {
+    // await! parks the current VM on the await scheduler and yields.
+    // Syntax:  value-to-save @destination await!
+    // (The name assignment is handled by the compiler, same as yield!.)
+    if (awaitScheduler_) {
+        awaitScheduler_->parkVm(awaitParticipant_, *this);
+    }
+    state |= VM_YIELD;
+}
 void EdictVM::op_PUSHEXT() { 
     auto v = readValue(); 
     if (v) pushData(v); 
@@ -2116,6 +2127,7 @@ int EdictVM::runCodeLoop(size_t stopCodeDepth, bool markCompleteOnDrain) {
         &&op_FREEZE,
         &&op_TO_JSON,
         &&op_FROM_JSON,
+        &&op_AWAIT,
     };
     // Verify dispatch table has exactly one entry per opcode. If this fires,
     // an opcode was added to VMOpcode without a corresponding dispatch entry.
@@ -2295,6 +2307,7 @@ op_CURSOR_SET: op_CURSOR_SET(); goto op_epilogue;
 op_FREEZE: op_FREEZE(); goto op_epilogue;
 op_TO_JSON: op_TO_JSON(); goto op_epilogue;
 op_FROM_JSON: op_FROM_JSON(); goto op_epilogue;
+op_AWAIT: op_AWAIT(); goto op_epilogue;
 op_INVALID: setError("Op " + std::to_string(op)); goto op_epilogue;
 op_epilogue:
         if (allow_rewrite_epilogue && !(state & (VM_ERROR | VM_YIELD | VM_SCANNING))) applyRewriteLoop();
