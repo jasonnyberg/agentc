@@ -42,6 +42,7 @@ struct SessionImageBootstrapAllocator {
     std::string encoding;
     size_t item_size_bytes = 0;
     std::string metadata_file;
+    std::vector<std::string> files;  // slab file paths (e.g., slab.0000.bin, slab.0001.bin)
 };
 
 struct SessionImageBootstrap {

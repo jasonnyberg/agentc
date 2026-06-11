@@ -460,7 +460,27 @@ bool SessionStateStore::saveRootFileBacked(CPtr<agentc::ListreeValue> root,
     Allocator<AATree<agentc::ListreeItem>>::getAllocator().flushMappedSlabs();
     BlobAllocator::getAllocator().flushMappedSlabs();
 
-    // 2. Write root anchor and bootstrap — the slab files are already the
+    // 2. Persist slab[0] for each allocator (heap-backed sentinel slab).
+    //    This ensures the root anchor survives process restart even when
+    //    the root lives in slab[0].
+    const std::string session_dir = sessionImageStore().sessionPath();
+    auto writeSlabZero = [&](auto& allocator, const char* name, const char* prefix) {
+        // Use the same naming convention as createOwnedSlab so reattach finds it.
+        // Format: {prefix}.slab.{index}.bin (e.g., slab.slab.0000.bin)
+        std::ostringstream fname;
+        fname << prefix << ".slab.0000.bin";
+        std::string slab0Path = (std::filesystem::path(session_dir) / "allocators" / name / fname.str()).string();
+        std::string write_err;
+        allocator.writeSlabToFile(0, slab0Path, &write_err);
+    };
+    writeSlabZero(Allocator<agentc::ListreeValue>::getAllocator(),        kAllocatorNameValue, "slab");
+    writeSlabZero(Allocator<agentc::ListreeValueRef>::getAllocator(),     kAllocatorNameRef, "slab");
+    writeSlabZero(Allocator<CLL<agentc::ListreeValueRef>>::getAllocator(), kAllocatorNameNode, "slab");
+    writeSlabZero(Allocator<agentc::ListreeItem>::getAllocator(),         kAllocatorNameItem, "slab");
+    writeSlabZero(Allocator<AATree<agentc::ListreeItem>>::getAllocator(),  kAllocatorNameTree, "slab");
+    writeSlabZero(BlobAllocator::getAllocator(),                          kAllocatorNameBlob, "blob");
+
+    // 3. Write root anchor and bootstrap — the slab files are already the
     //    authoritative persisted state.
     auto image_store = sessionImageStore();
     const SlabId root_sid = root.getSlabId();
@@ -475,6 +495,34 @@ bool SessionStateStore::saveRootFileBacked(CPtr<agentc::ListreeValue> root,
         ba.name          = name;
         ba.encoding      = "file_backed_native";
         ba.metadata_file = std::string("allocators/") + name + "/meta.bin"; // placeholder
+        // Include the slab files for this allocator in the bootstrap.
+        // Use the same naming convention as createOwnedSlab.
+        const char* prefix = (name == kAllocatorNameBlob) ? "blob" : "slab";
+        std::ostringstream fname;
+        fname << prefix << ".slab.0000.bin";
+        ba.files = {std::string("allocators/") + name + "/" + fname.str()};
+        // Set type and item_size_bytes so the bootstrap round-trips through
+        // bootstrapFromJson, which validates !allocator.type.empty() and
+        // requires item_size_bytes to be present and numeric.
+        ba.item_size_bytes = sizeof(agentc::ListreeValue);
+        if (name == kAllocatorNameValue) {
+            ba.type = "agentc::ListreeValue";
+        } else if (name == kAllocatorNameRef) {
+            ba.type = "agentc::ListreeValueRef";
+            ba.item_size_bytes = sizeof(agentc::ListreeValueRef);
+        } else if (name == kAllocatorNameNode) {
+            ba.type = "CLL<agentc::ListreeValueRef>";
+            ba.item_size_bytes = sizeof(CLL<agentc::ListreeValueRef>);
+        } else if (name == kAllocatorNameItem) {
+            ba.type = "agentc::ListreeItem";
+            ba.item_size_bytes = sizeof(agentc::ListreeItem);
+        } else if (name == kAllocatorNameTree) {
+            ba.type = "AATree<agentc::ListreeItem>";
+            ba.item_size_bytes = sizeof(AATree<agentc::ListreeItem>);
+        } else if (name == kAllocatorNameBlob) {
+            ba.type = "BlobAllocator";
+            ba.item_size_bytes = 1;
+        }
         bootstrap.allocators.push_back(std::move(ba));
     }
 
@@ -524,10 +572,34 @@ bool SessionStateStore::loadRootFileBacked(CPtr<agentc::ListreeValue>& out,
         return false;
     }
 
-    // Look up the root anchor.
+    // 4. Restore slab[0] for each allocator from the persisted file.
+    //    The bootstrap contains the file paths in the allocator's `files` field.
     ArenaRootState root_state;
     SessionImageBootstrap bootstrap;
     if (!image_store.loadBootstrap(bootstrap, error)) return false;
+
+    const std::string session_dir = sessionImageStore().sessionPath();
+    auto restoreSlabZero = [&](auto& allocator, const char* name) {
+        // Find the allocator bootstrap entry to get its slab files.
+        for (const auto& ba : bootstrap.allocators) {
+            if (ba.name == name && !ba.files.empty()) {
+                std::string slab0Path = (std::filesystem::path(session_dir) / ba.files[0]).string();
+                // Skip if file doesn't exist (e.g., BlobAllocator with no allocations).
+                if (!std::filesystem::exists(slab0Path)) break;
+                std::string restore_err;
+                allocator.restoreSlabFromFile(0, slab0Path, &restore_err);
+                break;
+            }
+        }
+    };
+    restoreSlabZero(Allocator<agentc::ListreeValue>::getAllocator(),        kAllocatorNameValue);
+    restoreSlabZero(Allocator<agentc::ListreeValueRef>::getAllocator(),     kAllocatorNameRef);
+    restoreSlabZero(Allocator<CLL<agentc::ListreeValueRef>>::getAllocator(), kAllocatorNameNode);
+    restoreSlabZero(Allocator<agentc::ListreeItem>::getAllocator(),         kAllocatorNameItem);
+    restoreSlabZero(Allocator<AATree<agentc::ListreeItem>>::getAllocator(),  kAllocatorNameTree);
+    restoreSlabZero(BlobAllocator::getAllocator(),                          kAllocatorNameBlob);
+
+    // Look up the root anchor.
     if (!image_store.loadRootState(bootstrap.roots_file, root_state, error)) return false;
 
     const SlabId root_sid = findAnchor(root_state, "session");

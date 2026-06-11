@@ -528,6 +528,87 @@ public:
         return true;
     }
 
+    // Write a specific heap-backed blob slab to a file in the mmap-compatible format.
+    // Used to persist slab[0] during file-backed session save.
+    // File layout: [sizeof(size_t) count][kBlobSlabBytes data]
+    bool writeSlabToFile(uint16_t slabIndex, const std::string& path, std::string* error = nullptr) const {
+        if (slabIndex >= NUM_SLABS || !slabs[slabIndex]) {
+            if (error) *error = "slab index out of range or slab does not exist";
+            return false;
+        }
+        if (slabs[slabIndex]->mappedBacking) {
+            if (slabs[slabIndex]->mappedRegion) {
+                if (::msync(slabs[slabIndex]->mappedRegion.get(),
+                            kBlobSlabFileBytes, MS_SYNC) != 0) {
+                    if (error) *error = "msync failed for mapped blob slab";
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        std::filesystem::create_directories(std::filesystem::path(path).parent_path());
+
+        FILE* f = fopen(path.c_str(), "wb");
+        if (!f) {
+            if (error) *error = "failed to open blob slab file for writing: " + path;
+            return false;
+        }
+
+        // Write count (first sizeof(size_t) bytes).
+        if (fwrite(&slabs[slabIndex]->count, 1, sizeof(size_t), f) != sizeof(size_t)) {
+            fclose(f);
+            if (error) *error = "failed to write count to blob slab file";
+            return false;
+        }
+
+        // Write blob data.
+        if (fwrite(slabs[slabIndex]->bytes, 1, kBlobSlabBytes, f) != kBlobSlabBytes) {
+            fclose(f);
+            if (error) *error = "failed to write blob data to slab file";
+            return false;
+        }
+
+        fclose(f);
+        return true;
+    }
+
+    // Restore a specific blob slab from a file in the mmap-compatible format.
+    // Used to restore slab[0] after process restart.
+    bool restoreSlabFromFile(uint16_t slabIndex, const std::string& path, std::string* error = nullptr) {
+        if (slabIndex >= NUM_SLABS || !slabs[slabIndex]) {
+            if (error) *error = "slab index out of range or slab does not exist";
+            return false;
+        }
+        if (!std::filesystem::exists(path)) {
+            if (error) *error = "blob slab file does not exist: " + path;
+            return false;
+        }
+
+        FILE* f = fopen(path.c_str(), "rb");
+        if (!f) {
+            if (error) *error = "failed to open blob slab file for reading: " + path;
+            return false;
+        }
+
+        // Read count.
+        if (fread(&slabs[slabIndex]->count, 1, sizeof(size_t), f) != sizeof(size_t)) {
+            fclose(f);
+            if (error) *error = "failed to read count from blob slab file";
+            return false;
+        }
+
+        // Read blob data.
+        if (fread(slabs[slabIndex]->bytes, 1, kBlobSlabBytes, f) != kBlobSlabBytes) {
+            fclose(f);
+            if (error) *error = "failed to read blob data from slab file";
+            return false;
+        }
+
+        fclose(f);
+        return true;
+    }
+
     struct BlobStats {
         size_t activeSlabs = 0;
         size_t totalBytes  = 0;  // activeSlabs * 65536
@@ -977,6 +1058,107 @@ public:
                 return false;
             }
         }
+        return true;
+    }
+
+    // Write a specific heap-backed slab to a file in the mmap-compatible format.
+    // This is used to persist slab[0] (which is always heap-backed) during
+    // file-backed session save so it survives process restart.
+    // File layout: [SLAB_SIZE * sizeof(size_t) inUse][SLAB_SIZE * sizeof(T) items]
+    bool writeSlabToFile(uint16_t slabIndex, const std::string& path, std::string* error = nullptr) const {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        if (slabIndex >= NUM_SLABS || !slabs[slabIndex]) {
+            if (error) *error = "slab index out of range or slab does not exist";
+            return false;
+        }
+        if (slabs[slabIndex]->mappedBacking) {
+            // Already file-backed; just msync.
+            if (slabs[slabIndex]->mappedRegion) {
+                if (::msync(slabs[slabIndex]->mappedRegion.get(),
+                            slabs[slabIndex]->mappedBytes, MS_SYNC) != 0) {
+                    if (error) *error = "msync failed for mapped slab";
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        // Create parent directories.
+        std::filesystem::create_directories(std::filesystem::path(path).parent_path());
+
+        const size_t inUseBytes = SLAB_SIZE * sizeof(size_t);
+        const size_t itemBytes  = SLAB_SIZE * sizeof(T);
+        const size_t totalBytes = inUseBytes + itemBytes;
+
+        FILE* f = fopen(path.c_str(), "wb");
+        if (!f) {
+            if (error) *error = "failed to open slab file for writing: " + path;
+            return false;
+        }
+
+        // Write inUse array (first SLAB_SIZE * sizeof(size_t) bytes).
+        if (fwrite(slabs[slabIndex]->inUse, 1, inUseBytes, f) != inUseBytes) {
+            fclose(f);
+            if (error) *error = "failed to write inUse array to slab file";
+            return false;
+        }
+
+        // Write item data.
+        if (fwrite(slabs[slabIndex]->items, 1, itemBytes, f) != itemBytes) {
+            fclose(f);
+            if (error) *error = "failed to write item data to slab file";
+            return false;
+        }
+
+        fclose(f);
+        return true;
+    }
+
+    // Restore a specific slab from a file in the mmap-compatible format.
+    // Used to restore slab[0] after process restart when using file-backed sessions.
+    bool restoreSlabFromFile(uint16_t slabIndex, const std::string& path, std::string* error = nullptr) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        if (slabIndex >= NUM_SLABS || !slabs[slabIndex]) {
+            if (error) *error = "slab index out of range or slab does not exist";
+            return false;
+        }
+        if (!std::filesystem::exists(path)) {
+            if (error) *error = "slab file does not exist: " + path;
+            return false;
+        }
+
+        const size_t inUseBytes = SLAB_SIZE * sizeof(size_t);
+        const size_t itemBytes  = SLAB_SIZE * sizeof(T);
+        const size_t totalBytes = inUseBytes + itemBytes;
+
+        FILE* f = fopen(path.c_str(), "rb");
+        if (!f) {
+            if (error) *error = "failed to open slab file for reading: " + path;
+            return false;
+        }
+
+        // Read inUse array.
+        if (fread(slabs[slabIndex]->inUse, 1, inUseBytes, f) != inUseBytes) {
+            fclose(f);
+            if (error) *error = "failed to read inUse array from slab file";
+            return false;
+        }
+
+        // Read item data.
+        if (fread(slabs[slabIndex]->items, 1, itemBytes, f) != itemBytes) {
+            fclose(f);
+            if (error) *error = "failed to read item data from slab file";
+            return false;
+        }
+
+        fclose(f);
+
+        // Rebuild slab count from inUse array.
+        size_t count = 0;
+        for (size_t offset = 0; offset < SLAB_SIZE; ++offset) {
+            if (slabs[slabIndex]->inUse[offset] > 0) ++count;
+        }
+        slabs[slabIndex]->count = count;
         return true;
     }
 

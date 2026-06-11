@@ -6,7 +6,9 @@
 #include "../runtime/persistence/session_state_store.h"
 #include "../../core/alloc.h"
 #include "../../edict/edict_vm.h"
+#include "../../edict/edict_compiler.h"
 #include "../../edict/root1_await_scheduler.h"
+#include "../../core/root1_resource_broker.h"
 
 #include <cstdio>
 #include <filesystem>
@@ -812,4 +814,265 @@ TEST(SessionStateStoreTest, SchedulerContinuationStateSurvivesSessionSaveLoad) {
 
     store.clear();
     EXPECT_FALSE(store.exists());
+}
+
+// Full VM + await scheduler session save/load simulating the CLI wiring in
+// main.cpp (prepareSession / saveSession).  Validates that root state and
+// scheduler metadata survive a save/load cycle that resets allocator heap
+// state, matching the "process restart" simulation that main.cpp performs.
+TEST(SessionStateStoreTest, VmWithSchedulerSurvivesSessionSaveLoad) {
+#if !defined(__linux__)
+    GTEST_SKIP() << "Root1 await scheduler requires Linux eventfd/epoll";
+#else
+    const auto base = (std::filesystem::temp_directory_path() /
+                       "agentc_vm_scheduler_save_test").string();
+    std::filesystem::remove_all(base);
+
+    // ── Phase 1: Create state, save ──
+    {
+        agentc::runtime::SessionStateStore store(base);
+        store.clear();
+        ASSERT_FALSE(store.exists());
+
+        // Build a root with non-trivial conversation state.
+        auto rootJson = agentc::runtime::make_default_agent_root(
+            "restart survivor", "google", "gemini-3.1-pro-preview");
+        rootJson["conversation"]["messages"] = nlohmann::json::array({
+            nlohmann::json{{"role", "user"}, {"text", "hello from before restart"}},
+            nlohmann::json{{"role", "assistant"}, {"text", "I will survive"}}
+        });
+        rootJson["conversation"]["assistant_text"] = "I will survive";
+        auto root = agentc::fromJson(rootJson.dump());
+        ASSERT_TRUE(root);
+
+        // Park continuations on the await scheduler.
+        agentc::edict::Root1AwaitScheduler scheduler;
+        agentc::root1::Root1ResourceBroker broker;
+        auto participant = broker.registerParticipant();
+        ASSERT_GT(participant, 0u);
+        scheduler.park(participant);
+        scheduler.park(participant + 1);
+        ASSERT_EQ(scheduler.parkedCount(), 2u);
+
+        // Attach scheduler state to root (same pattern as main.cpp saveSession).
+        auto schedulerState = scheduler.saveState();
+        ASSERT_TRUE(schedulerState);
+        agentc::addNamedItem(root, "__root1_scheduler", schedulerState);
+
+        // Save session.
+        std::string error;
+        ASSERT_TRUE(store.saveRoot(root, &error)) << error;
+        ASSERT_TRUE(store.exists());
+    }
+    // All in-memory state dropped — VM, scheduler, broker, root out of scope.
+
+    // ── Phase 2: "Process restart" — restore from files ──
+    {
+        agentc::runtime::SessionStateStore store(base);
+        ASSERT_TRUE(store.exists());
+
+        CPtr<agentc::ListreeValue> restoredRoot;
+        std::string error;
+        ASSERT_TRUE(store.loadRoot(restoredRoot, &error)) << error;
+        ASSERT_TRUE(restoredRoot);
+
+        // Verify root data survived (same assertions as main.cpp would see).
+        {
+            auto restoredJson = nlohmann::json::parse(
+                agentc::toJson(restoredRoot));
+            EXPECT_EQ(
+                restoredJson["conversation"]["system_prompt"].get<std::string>(),
+                "restart survivor");
+            EXPECT_EQ(
+                restoredJson["conversation"]["assistant_text"].get<std::string>(),
+                "I will survive");
+            ASSERT_TRUE(restoredJson["conversation"]["messages"].is_array());
+            ASSERT_EQ(restoredJson["conversation"]["messages"].size(), 2u);
+            EXPECT_EQ(
+                restoredJson["conversation"]["messages"][0]["role"].get<std::string>(),
+                "user");
+            EXPECT_EQ(
+                restoredJson["conversation"]["messages"][0]["text"].get<std::string>(),
+                "hello from before restart");
+        }
+
+        // Extract and restore scheduler state from __root1_scheduler child
+        // (same pattern as main.cpp prepareSession).
+        auto scItem = restoredRoot->find("__root1_scheduler");
+        ASSERT_TRUE(scItem) << "scheduler state missing after restart";
+        auto scValue = scItem->getValue();
+        ASSERT_TRUE(scValue);
+
+        agentc::edict::Root1AwaitScheduler restoredScheduler;
+        ASSERT_TRUE(restoredScheduler.loadState(scValue));
+
+        // Verify continuation metadata survived.
+        EXPECT_EQ(restoredScheduler.parkedCount(), 2u);
+
+        // Verify we can wire a fresh VM and broker to the restored scheduler
+        // (same pattern as main.cpp wireScheduler).
+        agentc::root1::Root1ResourceBroker restoredBroker;
+        auto restoredParticipant = restoredBroker.registerParticipant();
+        ASSERT_GT(restoredParticipant, 0u);
+
+        agentc::edict::EdictVM restoredVm(restoredRoot);
+        restoredVm.setAwaitScheduler(&restoredScheduler, restoredParticipant);
+
+        // Verify the restored VM can execute Edict.
+        auto state = restoredVm.execute(
+            agentc::edict::EdictCompiler().compile("[restart survived] print"));
+        EXPECT_FALSE(state & agentc::edict::VM_ERROR);
+
+        store.clear();
+        EXPECT_FALSE(store.exists());
+    }
+
+    std::filesystem::remove_all(base);
+#endif
+}
+
+// Same as VmWithSchedulerSurvivesSessionSaveLoad but explicitly uses the
+// file-backed allocator path (configureFileBackedAllocators).  Validates that
+// slab[0] persistence works and the root survives even when it lands in
+// slab[0] (i.e., small data that doesn't force slab[1] allocation).
+TEST(SessionStateStoreTest, FileBackedVmWithSchedulerSurvivesSessionSaveLoad) {
+#if !defined(__linux__)
+    GTEST_SKIP() << "Root1 await scheduler requires Linux eventfd/epoll";
+#else
+    const auto base = (std::filesystem::temp_directory_path() /
+                       "agentc_filebacked_vm_scheduler_save_test").string();
+    std::filesystem::remove_all(base);
+
+    // ── Phase 1: Create state, save via file-backed path ──
+    {
+        agentc::runtime::SessionStateStore store(base);
+        store.clear();
+        ASSERT_FALSE(store.exists());
+
+        // Enable file-backed allocators BEFORE any allocations.
+        store.configureFileBackedAllocators();
+
+        // Build a root with non-trivial conversation state.
+        auto rootJson = agentc::runtime::make_default_agent_root(
+            "restart survivor", "google", "gemini-3.1-pro-preview");
+        rootJson["conversation"]["messages"] = nlohmann::json::array({
+            nlohmann::json{{"role", "user"}, {"text", "hello from before restart"}},
+            nlohmann::json{{"role", "assistant"}, {"text", "I will survive"}}
+        });
+        rootJson["conversation"]["assistant_text"] = "I will survive";
+        auto root = agentc::fromJson(rootJson.dump());
+        ASSERT_TRUE(root);
+
+        // Park continuations on the await scheduler.
+        agentc::edict::Root1AwaitScheduler scheduler;
+        agentc::root1::Root1ResourceBroker broker;
+        auto participant = broker.registerParticipant();
+        ASSERT_GT(participant, 0u);
+        scheduler.park(participant);
+        scheduler.park(participant + 1);
+        ASSERT_EQ(scheduler.parkedCount(), 2u);
+
+        // Attach scheduler state to root.
+        auto schedulerState = scheduler.saveState();
+        ASSERT_TRUE(schedulerState);
+        agentc::addNamedItem(root, "__root1_scheduler", schedulerState);
+
+        // Save session via file-backed path.
+        std::string error;
+        const SlabId root_sid_before = root.getSlabId();
+        std::cerr << "DEBUG: root_sid_before = (" << root_sid_before.first << ", " << root_sid_before.second << ")" << std::endl;
+        ASSERT_TRUE(store.saveRoot(root, &error)) << error;
+        ASSERT_TRUE(store.exists());
+
+        // Verify the slab[0] files were created (for allocators that have them).
+        // BlobAllocator creates slab[0] lazily on first allocation, so if no
+        // blobs were allocated, there's no slab[0] to persist.
+        // Use the same naming convention as createOwnedSlab.
+        const std::string session_dir =
+            (std::filesystem::path(base) / "default").string();
+        for (const char* name : {"value", "ref", "node", "item", "tree"}) {
+            EXPECT_TRUE(std::filesystem::exists(
+                std::filesystem::path(session_dir) / "allocators" / name / "slab.slab.0000.bin"))
+                << "missing slab.slab.0000.bin for allocator " << name;
+        }
+    }
+    // All in-memory state dropped.
+
+    // ── Phase 2: "Process restart" — restore from files ──
+    {
+        agentc::runtime::SessionStateStore store(base);
+        ASSERT_TRUE(store.exists());
+
+        // Must configure file-backed allocators so loadRoot uses file-backed path.
+        store.configureFileBackedAllocators();
+
+        // DEBUG: Check if slab[0] files exist before loadRoot
+        const std::string session_dir =
+            (std::filesystem::path(base) / "default").string();
+        for (const char* name : {"value", "ref", "node", "item", "tree"}) {
+            auto path = std::filesystem::path(session_dir) / "allocators" / name / "slab.slab.0000.bin";
+            std::cerr << "DEBUG: " << name << " slab.slab.0000.bin exists: " << std::filesystem::exists(path) 
+                      << ", size: " << (std::filesystem::exists(path) ? std::filesystem::file_size(path) : 0) << std::endl;
+        }
+
+        CPtr<agentc::ListreeValue> restoredRoot;
+        std::string error;
+        std::cerr << "DEBUG: Calling loadRoot..." << std::endl;
+        ASSERT_TRUE(store.loadRoot(restoredRoot, &error)) << error;
+        ASSERT_TRUE(restoredRoot);
+        std::cerr << "DEBUG: loadRoot succeeded, restoredRoot = " << (restoredRoot ? "non-null" : "NULL") << std::endl;
+        const SlabId root_sid_after = restoredRoot.getSlabId();
+        std::cerr << "DEBUG: root_sid_after = (" << root_sid_after.first << ", " << root_sid_after.second << ")" << std::endl;
+
+        // Verify root data survived.
+        {
+            auto restoredJson = nlohmann::json::parse(
+                agentc::toJson(restoredRoot));
+            EXPECT_EQ(
+                restoredJson["conversation"]["system_prompt"].get<std::string>(),
+                "restart survivor");
+            EXPECT_EQ(
+                restoredJson["conversation"]["assistant_text"].get<std::string>(),
+                "I will survive");
+            ASSERT_TRUE(restoredJson["conversation"]["messages"].is_array());
+            ASSERT_EQ(restoredJson["conversation"]["messages"].size(), 2u);
+            EXPECT_EQ(
+                restoredJson["conversation"]["messages"][0]["role"].get<std::string>(),
+                "user");
+            EXPECT_EQ(
+                restoredJson["conversation"]["messages"][0]["text"].get<std::string>(),
+                "hello from before restart");
+        }
+
+        // Extract and restore scheduler state.
+        auto scItem = restoredRoot->find("__root1_scheduler");
+        ASSERT_TRUE(scItem) << "scheduler state missing after restart";
+        auto scValue = scItem->getValue();
+        ASSERT_TRUE(scValue);
+
+        agentc::edict::Root1AwaitScheduler restoredScheduler;
+        ASSERT_TRUE(restoredScheduler.loadState(scValue));
+
+        // Verify continuation metadata survived.
+        EXPECT_EQ(restoredScheduler.parkedCount(), 2u);
+
+        // Verify we can wire a fresh VM and broker to the restored scheduler.
+        agentc::root1::Root1ResourceBroker restoredBroker;
+        auto restoredParticipant = restoredBroker.registerParticipant();
+        ASSERT_GT(restoredParticipant, 0u);
+
+        agentc::edict::EdictVM restoredVm(restoredRoot);
+        restoredVm.setAwaitScheduler(&restoredScheduler, restoredParticipant);
+
+        // Verify the restored VM can execute Edict.
+        auto state = restoredVm.execute(
+            agentc::edict::EdictCompiler().compile("[restart survived] print"));
+        EXPECT_FALSE(state & agentc::edict::VM_ERROR);
+
+        store.clear();
+        EXPECT_FALSE(store.exists());
+    }
+
+    std::filesystem::remove_all(base);
+#endif
 }

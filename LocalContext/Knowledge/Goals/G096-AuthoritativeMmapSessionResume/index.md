@@ -1,8 +1,9 @@
 # Goal: G096 — Authoritative mmap Session Resume
 
-**Status**: PLANNED  
-**Created**: 2026-05-14  
-**Depends On**: G104 (code/activation split), G105 (static slab model), G110 (broker fd reconstruction)
+**Status**: PLANNED — dependencies G104 (code/activation split), G105 (static slab model) complete; G110 scheduler persistence prerequisite landed 2026-06-06<br>
+**Created**: 2026-05-14<br>
+**Updated**: 2026-06-06<br>
+**Depends On**: G104 (code/activation split — complete), G105 (static slab model — complete), G110 (broker fd reconstruction — prototype complete; scheduler persistence landed)
 
 ## Objective
 Complete the persistence direction where AgentC's cognitive state is backed by mmap-owned slabs that can be flushed and restored with minimal reconstruction, enabling kill/restart/resume behavior for agent state.

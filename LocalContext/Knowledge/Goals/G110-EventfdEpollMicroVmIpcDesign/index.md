@@ -3,7 +3,7 @@
 **Status**: ACTIVE / PROTOTYPE COMPLETE
 **Priority**: IMMEDIATE DESIGN / FIRST PROTOTYPE TRACK
 **Created**: 2026-05-16
-**Updated**: 2026-05-18
+**Updated**: 2026-06-06
 **Parent**: 🔗[G078 — Edict-Resident Agent Loop Consolidation](../G078-EdictResidentAgentLoopConsolidation/index.md)
 **Immediate Consumer**: 🔗[G091 — Intern Worker Concurrency MVP](../G091-InternWorkerConcurrencyMvp/index.md)
 **Related Concept**: 🔗[Layered mmap Micro-VM Architecture](../../Concepts/LayeredMmapMicroVmArchitecture/index.md)
@@ -211,7 +211,7 @@ On resume, Root1 recreates eventfds, rebuilds the epoll set, rescans mailbox/res
 - [x] Add first Root1 await parking table prototype: `Root1AwaitScheduler` maps logical participant waitables to continuation handles, polls Root1 descriptors, pushes descriptor events through an optional resume callback, and can resume a yielded code frame through `EdictVM::resume()`.
 - [x] Replace the test-only raw `EdictVM*` parking record with a logical continuation handle/status surface: handles report `parked`, `ready`, `resumed`, `timeout`, and `cancelled`, and descriptor events can be retrieved by handle without exposing VM pointers.
 - [x] Define the public parking `await!` contract boundary over the handle/status surface: resumed code receives a structured envelope, timeout/cancel are terminal envelopes, terminal handles are retained until explicit drop, and durable/session-safe continuation reconstruction is deferred to G096/G104.
-- [ ] Define durable/session-safe continuation handles and production `await!` syntax; the first scheduler prototype remains process-local and uses callback adapters for VM resumption.
+- [~] Define durable/session-safe continuation handles and production `await!` syntax; first scheduler prototype remains process-local and uses callback adapters for VM resumption. SaveState/loadState continuation table serialization landed 2026-06-06 (Root1AwaitScheduler::saveState/loadState).
 
 ## Public Parking `await!` Contract Boundary — 2026-05-19
 
@@ -331,6 +331,11 @@ Validation:
 - Earlier: `cmake --build build --target cpp_agent_tests -j2` — passed.
 
 ## Progress Notes
+
+### 2026-06-06
+- Did: Landed `Root1AwaitScheduler::saveState()`/`loadState()` for continuation table serialization — deterministic resume tests prove scheduler state survives round-trip save/load, 8 dedicated tests pass. Wired `Root1ResourceBroker` into `edict/main.cpp` CLI with scheduler pump triggered at session save time. Added scheduler pump callback to `EdictREPL` (5 REPL modes: auto, eval, stdin, file, blank). Implemented `await!` as a real `VMOP_AWAIT` opcode — pops optional waitable string from data stack, parks VM on that participant via `Root1AwaitScheduler::parkVm()`, yields. Per-waitable variant: `job.waitable await! @events events`. Default (coordinator) variant: `await! @events events`. Added `EdictVM::setAwaitScheduler()` for wiring. Added `await` builtin to bootstrap. CLI `./edict --session` now auto-persists scheduler state at save and calls `wireScheduler()` on all 5 REPL construction sites. Updated LLM's Guide to Edict (WP) with yield!/await! patterns, stack-based argument principle, fixed stale source paths. Validation: `Root1AwaitSchedulerTest.*` 11/11, focused edict slice 86/86 (incl. await!), listree_tests 83/83, cpp_agent scheduler integration 1/1. Commits: a321afc, 79095e1, b20a7b2, 22db316, 8042490, a56cde3, ba836c9, 78566e4.
+- Remaining: Full deterministic resume end-to-end test (park VM → save state → reload → resume continuation). Layered mmap session resume (G096) still deferred — this session's work is the scheduler persistence prerequisite.
+- Next: Advance G096 authoritative mmap session resume — both dependencies (G104, G105) are now complete.
 
 ### 2026-05-19
 - Did: Recorded the public parking `await!` contract boundary over the continuation handle/status surface: resumed code receives a structured envelope, timeout/cancel are terminal envelopes, terminal handles are retained until explicit drop, readiness/cancellation races are one-way terminal transitions, and true durable/session-safe continuation identity is deferred to G104/G096.

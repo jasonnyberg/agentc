@@ -255,13 +255,17 @@ bool allocatorFromJson(const nlohmann::json& json, SessionImageAllocatorManifest
 }
 
 nlohmann::json bootstrapAllocatorToJson(const SessionImageBootstrapAllocator& allocator) {
-    return nlohmann::json{
+    nlohmann::json json = {
         {"name", allocator.name},
         {"type", allocator.type},
         {"encoding", allocator.encoding},
         {"item_size_bytes", allocator.item_size_bytes},
         {"metadata_file", allocator.metadata_file},
     };
+    if (!allocator.files.empty()) {
+        json["files"] = allocator.files;
+    }
+    return json;
 }
 
 bool bootstrapAllocatorFromJson(const nlohmann::json& json, SessionImageBootstrapAllocator& allocator) {
@@ -280,6 +284,9 @@ bool bootstrapAllocatorFromJson(const nlohmann::json& json, SessionImageBootstra
     allocator.encoding = json["encoding"].get<std::string>();
     allocator.item_size_bytes = json["item_size_bytes"].get<size_t>();
     allocator.metadata_file = json["metadata_file"].get<std::string>();
+    if (json.contains("files") && json["files"].is_array()) {
+        allocator.files = json["files"].get<std::vector<std::string>>();
+    }
     return !allocator.name.empty() && !allocator.type.empty() && !allocator.encoding.empty() &&
         !allocator.metadata_file.empty();
 }
