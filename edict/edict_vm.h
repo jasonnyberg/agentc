@@ -75,7 +75,8 @@ public:
         int savedScanDepth = 0;
     };
 
-    EdictVM(CPtr<agentc::ListreeValue> root = nullptr);
+    explicit EdictVM(CPtr<agentc::ListreeValue> root = nullptr,
+            std::vector<CPtr<agentc::ListreeValue>> staticBases = {});
     ~EdictVM(); // Required for unique_ptr with forward decl
     
     // Execute bytecode
@@ -154,7 +155,6 @@ public:
     std::unique_ptr<agentc::cartographer::CartographerService> cartographer;
 
     // Await scheduler for await! builtin.  Set externally (e.g. by main.cpp)
-    // before executing code that uses await!.  Not serialized — rebuilt on
     // session restore alongside the scheduler state.
     void setAwaitScheduler(class agentc::edict::Root1AwaitScheduler* s,
                            agentc::root1::ParticipantId p) {
@@ -188,6 +188,7 @@ private:
     CPtr<agentc::ListreeValue> exception_value;
     const uint8_t* code_ptr;
     size_t code_size;
+    std::vector<CPtr<agentc::ListreeValue>> staticBases_;
     bool tail_eval;
     ScanMode scan_mode = ScanMode::None;
     int scan_depth = 0;

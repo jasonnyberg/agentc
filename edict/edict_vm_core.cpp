@@ -402,12 +402,13 @@ static const char* unsafeExtensionsStatusName(bool allow) {
 
 static void preload_imported_libraries(EdictVM& vm, CPtr<agentc::ListreeValue> scope);
 
-EdictVM::EdictVM(CPtr<agentc::ListreeValue> root)
+EdictVM::EdictVM(CPtr<agentc::ListreeValue> root, std::vector<CPtr<agentc::ListreeValue>> staticBases)
     : cursor(root),
       state(VM_NORMAL),
       instruction_ptr(0),
       code_ptr(nullptr),
-      code_size(0) {
+      code_size(0),
+      staticBases_(std::move(staticBases)) {
     startupTrace("vm-ctor-enter");
     mapper = std::make_unique<agentc::cartographer::Mapper>();
     startupTrace("vm-ctor-after-mapper");
@@ -733,6 +734,9 @@ void EdictVM::initResources(CPtr<agentc::ListreeValue> root) {
     startupTrace("initResources-after-stack-frame");
     enq(VMRES_DICT, agentc::createListValue());
     startupTrace("initResources-after-dict-frame");
+    for (auto& base : staticBases_) {
+        stack_enq(VMRES_DICT, base);
+    }
     stack_enq(VMRES_DICT, root ? root : agentc::createNullValue());
     startupTrace("initResources-after-root");
     loadBuiltins();
