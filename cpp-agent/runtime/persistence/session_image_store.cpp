@@ -296,12 +296,16 @@ nlohmann::json bootstrapToJson(const SessionImageBootstrap& bootstrap) {
     for (const auto& allocator : bootstrap.allocators) {
         allocators.push_back(bootstrapAllocatorToJson(allocator));
     }
-    return nlohmann::json{
+    nlohmann::json json = {
         {"version", bootstrap.version},
         {"session", bootstrap.session},
         {"roots_file", bootstrap.roots_file},
         {"allocators", allocators},
     };
+    if (!bootstrap.static_mounts.empty()) {
+        json["static_mounts"] = bootstrap.static_mounts;
+    }
+    return json;
 }
 
 bool bootstrapFromJson(const nlohmann::json& json, SessionImageBootstrap& bootstrap) {
@@ -316,6 +320,9 @@ bool bootstrapFromJson(const nlohmann::json& json, SessionImageBootstrap& bootst
     bootstrap.version = json["version"].get<uint32_t>();
     bootstrap.session = json["session"].get<std::string>();
     bootstrap.roots_file = json["roots_file"].get<std::string>();
+    if (json.contains("static_mounts") && json["static_mounts"].is_array()) {
+        bootstrap.static_mounts = json["static_mounts"].get<std::vector<std::string>>();
+    }
     if (bootstrap.version != 1 || bootstrap.session.empty() || bootstrap.roots_file.empty()) {
         return false;
     }
@@ -341,12 +348,16 @@ nlohmann::json manifestToJson(const SessionImageManifest& manifest) {
     for (const auto& allocator : manifest.allocators) {
         allocators.push_back(allocatorToJson(allocator));
     }
-    return nlohmann::json{
+    nlohmann::json json = {
         {"version", manifest.version},
         {"session", manifest.session},
         {"roots_file", manifest.roots_file},
         {"allocators", allocators},
     };
+    if (!manifest.static_mounts.empty()) {
+        json["static_mounts"] = manifest.static_mounts;
+    }
+    return json;
 }
 
 bool manifestFromJson(const nlohmann::json& json, SessionImageManifest& manifest) {
@@ -361,6 +372,9 @@ bool manifestFromJson(const nlohmann::json& json, SessionImageManifest& manifest
     manifest.version = json["version"].get<uint32_t>();
     manifest.session = json["session"].get<std::string>();
     manifest.roots_file = json["roots_file"].get<std::string>();
+    if (json.contains("static_mounts") && json["static_mounts"].is_array()) {
+        manifest.static_mounts = json["static_mounts"].get<std::vector<std::string>>();
+    }
     if (manifest.version != 1 || manifest.session.empty() || manifest.roots_file.empty()) {
         return false;
     }

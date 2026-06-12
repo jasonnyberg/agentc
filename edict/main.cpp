@@ -69,6 +69,7 @@ struct StartupSession {
     std::unique_ptr<agentc::root1::Root1ResourceBroker> broker;
     agentc::edict::Root1AwaitScheduler awaitScheduler;
     agentc::root1::ParticipantId coordinatorParticipant = 0;
+    std::unique_ptr<agentc::ListreeStaticMountRegistry> staticRegistry;
 };
 
 std::string envOrDefault(const char* name, const std::string& fallback) {
@@ -147,7 +148,8 @@ StartupOptions parseStartupOptions(int argc, char** argv) {
 }
 
 StartupSession prepareSession(const StartupOptions& options,
-                              CPtr<agentc::ListreeValue>& root) {
+                              CPtr<agentc::ListreeValue>& root,
+                              std::vector<CPtr<agentc::ListreeValue>>& staticBases) {
     StartupSession session;
     if (!options.sessionEnabled) {
         return session;
@@ -162,10 +164,11 @@ StartupSession prepareSession(const StartupOptions& options,
     session.sessionBase = options.sessionBase;
     session.store = std::make_unique<agentc::runtime::SessionStateStore>(
         session.sessionBase, session.sessionId);
+    session.staticRegistry = std::make_unique<agentc::ListreeStaticMountRegistry>();
 
     if (session.store->exists()) {
         std::string error;
-        if (!session.store->loadRoot(root, &error)) {
+        if (!session.store->loadRoot(root, &staticBases, session.staticRegistry.get(), &error)) {
             throw std::runtime_error("Failed to restore Edict session '" + session.sessionId +
                                      "': " + error);
         }

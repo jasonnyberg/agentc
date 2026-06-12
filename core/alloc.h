@@ -1088,7 +1088,6 @@ public:
 
         const size_t inUseBytes = SLAB_SIZE * sizeof(size_t);
         const size_t itemBytes  = SLAB_SIZE * sizeof(T);
-        const size_t totalBytes = inUseBytes + itemBytes;
 
         FILE* f = fopen(path.c_str(), "wb");
         if (!f) {
@@ -1129,7 +1128,6 @@ public:
 
         const size_t inUseBytes = SLAB_SIZE * sizeof(size_t);
         const size_t itemBytes  = SLAB_SIZE * sizeof(T);
-        const size_t totalBytes = inUseBytes + itemBytes;
 
         FILE* f = fopen(path.c_str(), "rb");
         if (!f) {

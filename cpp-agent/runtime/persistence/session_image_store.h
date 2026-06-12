@@ -49,6 +49,7 @@ struct SessionImageBootstrap {
     uint32_t version = 1;
     std::string session = "default";
     std::string roots_file = "roots.bin";
+    std::vector<std::string> static_mounts; // file paths to static declaration images
     std::vector<SessionImageBootstrapAllocator> allocators;
 };
 
@@ -56,6 +57,7 @@ struct SessionImageManifest {
     uint32_t version = 1;
     std::string session = "default";
     std::string roots_file = "roots.bin";
+    std::vector<std::string> static_mounts;
     std::vector<SessionImageAllocatorManifest> allocators;
 };
 

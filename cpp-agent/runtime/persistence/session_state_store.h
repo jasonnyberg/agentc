@@ -22,9 +22,15 @@ public:
     void configureFileBackedAllocators();
 
     bool exists() const;
-    bool loadRoot(CPtr<agentc::ListreeValue>& out, std::string* error = nullptr) const;
+    bool loadRoot(CPtr<agentc::ListreeValue>& out,
+                  std::vector<CPtr<agentc::ListreeValue>>* outStaticBases = nullptr,
+                  agentc::ListreeStaticMountRegistry* registry = nullptr,
+                  std::string* error = nullptr);
     bool saveRoot(CPtr<agentc::ListreeValue> root, std::string* error = nullptr) const;
     void clear() const;
+
+    // Track static mounts associated with this session so they can be preserved on save
+    std::vector<std::string> static_mounts;
 
 private:
     std::string root_path_;
@@ -35,7 +41,10 @@ private:
 
     // File-backed fast paths: flush + write metadata only (no copy/serialise).
     bool saveRootFileBacked(CPtr<agentc::ListreeValue> root, std::string* error) const;
-    bool loadRootFileBacked(CPtr<agentc::ListreeValue>& out, std::string* error) const;
+    bool loadRootFileBacked(CPtr<agentc::ListreeValue>& out,
+                            std::vector<CPtr<agentc::ListreeValue>>* outStaticBases,
+                            agentc::ListreeStaticMountRegistry* registry,
+                            std::string* error);
 };
 
 } // namespace agentc::runtime

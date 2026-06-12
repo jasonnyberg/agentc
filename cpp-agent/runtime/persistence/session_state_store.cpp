@@ -2,6 +2,7 @@
 
 #include "../../../core/alloc.h"
 #include "../../../listree/listree.h"
+#include "../../../edict/static_declaration_image.h"
 
 #include <algorithm>
 #include <cctype>
@@ -240,8 +241,11 @@ bool SessionStateStore::exists() const {
     return sessionImageStore().exists();
 }
 
-bool SessionStateStore::loadRoot(CPtr<agentc::ListreeValue>& out, std::string* error) const {
-    if (file_backed_) return loadRootFileBacked(out, error);
+bool SessionStateStore::loadRoot(CPtr<agentc::ListreeValue>& out,
+                                 std::vector<CPtr<agentc::ListreeValue>>* outStaticBases,
+                                 agentc::ListreeStaticMountRegistry* registry,
+                                 std::string* error) {
+    if (file_backed_) return loadRootFileBacked(out, outStaticBases, registry, error);
     auto image_store = sessionImageStore();
     if (!image_store.exists()) {
         if (error) *error = "session state does not exist";
@@ -297,6 +301,30 @@ bool SessionStateStore::loadRoot(CPtr<agentc::ListreeValue>& out, std::string* e
         if (error) *error = "restored session root is null";
         return false;
     }
+
+    // Mount any static images declared in the bootstrap.
+    if (!bootstrap.static_mounts.empty()) {
+        static_mounts = bootstrap.static_mounts; // Preserve for next save
+        if (!registry || !outStaticBases) {
+            if (error) *error = "session requires static mounts but no registry/bases output provided";
+            return false;
+        }
+        for (const auto& mount_path : bootstrap.static_mounts) {
+            std::string err;
+            auto image = agentc::edict::static_image::readDeclarationImageContainerMmapReadOnly(mount_path, &err);
+            if (!image) {
+                if (error) *error = "failed to read static mount '" + mount_path + "': " + err;
+                return false;
+            }
+            auto mounted = agentc::edict::static_image::mountDeclarationImageReadOnly(image, *registry);
+            if (!mounted.validation.ok) {
+                if (error) *error = "failed to validate static mount '" + mount_path + "': " + mounted.validation.message;
+                return false;
+            }
+            outStaticBases->push_back(mounted.root);
+        }
+    }
+
     return true;
 }
 
@@ -401,10 +429,12 @@ bool SessionStateStore::saveRoot(CPtr<agentc::ListreeValue> root, std::string* e
     SessionImageBootstrap bootstrap;
     bootstrap.session = image_store.sessionName();
     bootstrap.roots_file = "roots.bin";
+    bootstrap.static_mounts = static_mounts; // Write preserved mounts
 
     SessionImageManifest manifest;
     manifest.session = image_store.sessionName();
     manifest.roots_file = bootstrap.roots_file;
+    manifest.static_mounts = static_mounts; // Write preserved mounts
 
     if (!image_store.saveAllocatorMetadata(value_manifest, value_metadata, error) ||
         !image_store.saveAllocatorMetadata(ref_manifest, ref_metadata, error) ||
@@ -488,6 +518,7 @@ bool SessionStateStore::saveRootFileBacked(CPtr<agentc::ListreeValue> root,
     SessionImageBootstrap bootstrap;
     bootstrap.session    = image_store.sessionName();
     bootstrap.roots_file = "roots.bin";
+    bootstrap.static_mounts = static_mounts; // Write preserved mounts
     for (const char* name : {kAllocatorNameValue, kAllocatorNameRef,
                               kAllocatorNameNode,  kAllocatorNameItem,
                               kAllocatorNameTree,  kAllocatorNameBlob}) {
@@ -537,7 +568,9 @@ bool SessionStateStore::saveRootFileBacked(CPtr<agentc::ListreeValue> root,
 }
 
 bool SessionStateStore::loadRootFileBacked(CPtr<agentc::ListreeValue>& out,
-                                            std::string* error) const {
+                                            std::vector<CPtr<agentc::ListreeValue>>* outStaticBases,
+                                            agentc::ListreeStaticMountRegistry* registry,
+                                            std::string* error) {
     auto image_store = sessionImageStore();
     if (!image_store.exists()) {
         if (error) *error = "session state does not exist";
@@ -613,6 +646,30 @@ bool SessionStateStore::loadRootFileBacked(CPtr<agentc::ListreeValue>& out,
         if (error) *error = "restored session root is null";
         return false;
     }
+
+    // Mount any static images declared in the bootstrap.
+    if (!bootstrap.static_mounts.empty()) {
+        static_mounts = bootstrap.static_mounts; // Preserve for next save
+        if (!registry || !outStaticBases) {
+            if (error) *error = "session requires static mounts but no registry/bases output provided";
+            return false;
+        }
+        for (const auto& mount_path : bootstrap.static_mounts) {
+            std::string err;
+            auto image = agentc::edict::static_image::readDeclarationImageContainerMmapReadOnly(mount_path, &err);
+            if (!image) {
+                if (error) *error = "failed to read static mount '" + mount_path + "': " + err;
+                return false;
+            }
+            auto mounted = agentc::edict::static_image::mountDeclarationImageReadOnly(image, *registry);
+            if (!mounted.validation.ok) {
+                if (error) *error = "failed to validate static mount '" + mount_path + "': " + mounted.validation.message;
+                return false;
+            }
+            outStaticBases->push_back(mounted.root);
+        }
+    }
+
     return true;
 }
 
