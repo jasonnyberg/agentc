@@ -330,7 +330,8 @@ int main(int argc, char** argv) {
 
         // Create or restore a root node for the cursor.
         CPtr<agentc::ListreeValue> root;
-        StartupSession session = prepareSession(options, root);
+        std::vector<CPtr<agentc::ListreeValue>> staticBases;
+        StartupSession session = prepareSession(options, root, staticBases);
         const int commandIndex = options.commandIndex;
 
         if (commandIndex < argc) {
@@ -343,7 +344,7 @@ int main(int argc, char** argv) {
                 currentDebugLevel = DEBUG_WARNING;
                 std::string source = joinArgs(argc, argv, commandIndex + 1);
                 agentc::edict::EdictCompiler compiler;
-                agentc::edict::EdictVM vm(root);
+                agentc::edict::EdictVM vm(root, staticBases);
                 agentc::edict::BytecodeBuffer code = compiler.compile(source);
                 int result = vm.execute(code);
                 if (result & agentc::edict::VM_ERROR) {

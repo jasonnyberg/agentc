@@ -33,12 +33,15 @@ class EdictCompiler;
 // REPL class
 class EdictREPL {
 public:
-    EdictREPL(CPtr<agentc::ListreeValue> root) : vm(root), compiler(), input(std::cin), output(std::cout), historyIndex(0) {
+    EdictREPL(CPtr<agentc::ListreeValue> root,
+              std::vector<CPtr<agentc::ListreeValue>> staticBases = {})
+        : vm(root, std::move(staticBases)), compiler(), input(std::cin), output(std::cout), historyIndex(0) {
         vm.registerCursorOperations();
     }
-    
-    EdictREPL(CPtr<agentc::ListreeValue> root, std::istream& in, std::ostream& out)
-        : vm(root), compiler(), input(in), output(out), historyIndex(0) {
+
+    EdictREPL(CPtr<agentc::ListreeValue> root, std::istream& in, std::ostream& out,
+              std::vector<CPtr<agentc::ListreeValue>> staticBases = {})
+        : vm(root, std::move(staticBases)), compiler(), input(in), output(out), historyIndex(0) {
         vm.registerCursorOperations();
     }
     
