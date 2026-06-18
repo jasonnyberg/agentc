@@ -10,6 +10,8 @@
 #include "../../edict/root1_await_scheduler.h"
 #include "../../core/root1_resource_broker.h"
 
+#include "../../edict/static_declaration_image.h"
+
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -87,7 +89,7 @@ TEST(SessionStateStoreTest, RoundTripsCanonicalAgentRootThroughListreeBackedStor
 
     CPtr<agentc::ListreeValue> restoredRoot;
     nlohmann::json restored;
-    ASSERT_TRUE(store.loadRoot(restoredRoot, &error)) << error;
+    ASSERT_TRUE(store.loadRoot(restoredRoot, nullptr, nullptr, &error)) << error;
     restored = nlohmann::json::parse(agentc::toJson(restoredRoot));
     ASSERT_TRUE(restored["conversation"].is_object());
     ASSERT_TRUE(restored["memory"].is_object());
@@ -124,9 +126,9 @@ TEST(SessionStateStoreTest, IsolatesNamedSessionsInSeparateSubdirectories) {
     nlohmann::json restoredAlpha;
     CPtr<agentc::ListreeValue> restoredBetaRoot;
     nlohmann::json restoredBeta;
-    ASSERT_TRUE(alpha.loadRoot(restoredAlphaRoot, &error)) << error;
+    ASSERT_TRUE(alpha.loadRoot(restoredAlphaRoot, nullptr, nullptr, &error)) << error;
     restoredAlpha = nlohmann::json::parse(agentc::toJson(restoredAlphaRoot));
-    ASSERT_TRUE(beta.loadRoot(restoredBetaRoot, &error)) << error;
+    ASSERT_TRUE(beta.loadRoot(restoredBetaRoot, nullptr, nullptr, &error)) << error;
     restoredBeta = nlohmann::json::parse(agentc::toJson(restoredBetaRoot));
 
     EXPECT_EQ(restoredAlpha["conversation"]["system_prompt"].get<std::string>(), "alpha prompt");
@@ -215,7 +217,7 @@ TEST(SessionStateStoreTest, WritesSessionManifestAndAllocatorImageIndex) {
 
     CPtr<agentc::ListreeValue> restoredRoot;
     nlohmann::json restored;
-    ASSERT_TRUE(store.loadRoot(restoredRoot, &error)) << error;
+    ASSERT_TRUE(store.loadRoot(restoredRoot, nullptr, nullptr, &error)) << error;
     restored = nlohmann::json::parse(agentc::toJson(restoredRoot));
     EXPECT_EQ(restored["conversation"]["messages"].size(), 2u);
     EXPECT_EQ(restored["memory"]["summary"].get<std::string>(),
@@ -262,7 +264,7 @@ TEST(SessionStateStoreTest, WritesSessionBootstrapAndCanRestoreWithoutManifest) 
 
     CPtr<agentc::ListreeValue> restoredRoot;
     nlohmann::json restored;
-    ASSERT_TRUE(store.loadRoot(restoredRoot, &error)) << error;
+    ASSERT_TRUE(store.loadRoot(restoredRoot, nullptr, nullptr, &error)) << error;
     restored = nlohmann::json::parse(agentc::toJson(restoredRoot));
     EXPECT_EQ(restored["conversation"]["messages"].size(), 2u);
     EXPECT_EQ(restored["conversation"]["messages"][1]["text"].get<std::string>(), "bootstrap second message");
@@ -301,7 +303,7 @@ TEST(SessionStateStoreTest, PersistsDeclarativeRuntimeRehydrationMetadataWithout
 
     CPtr<agentc::ListreeValue> restoredRoot;
     nlohmann::json restored;
-    ASSERT_TRUE(store.loadRoot(restoredRoot, &error)) << error;
+    ASSERT_TRUE(store.loadRoot(restoredRoot, nullptr, nullptr, &error)) << error;
     restored = nlohmann::json::parse(agentc::toJson(restoredRoot));
     ASSERT_TRUE(restored["runtime"]["rehydration"].is_object());
     EXPECT_EQ(restored["runtime"]["rehydration"]["last_event"].get<std::string>(), "startup-restored");
@@ -349,7 +351,7 @@ TEST(SessionStateStoreTest, CanRestoreCanonicalRootWhenManifestSlabListsAreEmpty
 
     CPtr<agentc::ListreeValue> restoredRoot;
     nlohmann::json restored;
-    ASSERT_TRUE(store.loadRoot(restoredRoot, &error)) << error;
+    ASSERT_TRUE(store.loadRoot(restoredRoot, nullptr, nullptr, &error)) << error;
     restored = nlohmann::json::parse(agentc::toJson(restoredRoot));
     EXPECT_EQ(restored["conversation"]["messages"].size(), 2u);
     EXPECT_EQ(restored["conversation"]["messages"][1]["text"].get<std::string>(), "second message");
@@ -749,7 +751,7 @@ TEST(SessionStateStoreTest, SavesNativeSnapshotWithoutDestroyingLiveAmbientState
     EXPECT_EQ(root_state.anchors[0].name, "session");
 
     CPtr<agentc::ListreeValue> restored_root;
-    ASSERT_TRUE(store.loadRoot(restored_root, &error)) << error;
+    ASSERT_TRUE(store.loadRoot(restored_root, nullptr, nullptr, &error)) << error;
     ASSERT_TRUE(restored_root);
     EXPECT_EQ(nlohmann::json::parse(agentc::toJson(restored_root))["conversation"]["system_prompt"].get<std::string>(),
               "native prompt");
@@ -786,7 +788,7 @@ TEST(SessionStateStoreTest, SchedulerContinuationStateSurvivesSessionSaveLoad) {
 
     // Load session into a fresh root
     CPtr<agentc::ListreeValue> restoredRoot;
-    ASSERT_TRUE(store.loadRoot(restoredRoot, &error)) << error;
+    ASSERT_TRUE(store.loadRoot(restoredRoot, nullptr, nullptr, &error)) << error;
     ASSERT_TRUE(restoredRoot);
 
     // Extract scheduler state from the restored root
@@ -873,7 +875,7 @@ TEST(SessionStateStoreTest, VmWithSchedulerSurvivesSessionSaveLoad) {
 
         CPtr<agentc::ListreeValue> restoredRoot;
         std::string error;
-        ASSERT_TRUE(store.loadRoot(restoredRoot, &error)) << error;
+        ASSERT_TRUE(store.loadRoot(restoredRoot, nullptr, nullptr, &error)) << error;
         ASSERT_TRUE(restoredRoot);
 
         // Verify root data survived (same assertions as main.cpp would see).
@@ -929,6 +931,119 @@ TEST(SessionStateStoreTest, VmWithSchedulerSurvivesSessionSaveLoad) {
 
     std::filesystem::remove_all(base);
 #endif
+}
+
+// ── G096.3: Layered Mount Semantics acceptance test ──────────────────────────
+//
+// Verifies the full round-trip:
+//   1. Write a worker.edict static declaration image container to disk.
+//   2. Create a session, set store.static_mounts to that path, save a minimal root.
+//   3. Drop everything (simulate process restart).
+//   4. Restore session via loadRoot(outStaticBases, registry).
+//   5. Construct EdictVM(restoredRoot, staticBases).
+//   6. Execute Edict that resolves a word ("worker.edict_active_count") that
+//      exists ONLY in the static layer — absent from the private session root.
+//   7. Confirm no VM_ERROR and the resolved value is non-null (declaration node).
+//
+// The test also confirms that a word known only to the session root ("__probe")
+// is still reachable, validating that session-root overlay semantics are intact.
+TEST(SessionStateStoreTest, LayeredStaticMountSurvivesSessionRoundTrip) {
+    const auto base = (std::filesystem::temp_directory_path() /
+                       "agentc_layered_mount_session_test").string();
+    const auto imagePath = (std::filesystem::temp_directory_path() /
+                            "agentc_layered_mount_test.acsdi").string();
+    std::filesystem::remove_all(base);
+    std::filesystem::remove(imagePath);
+
+    // ── Phase 1: Write static image file ─────────────────────────────────────
+    {
+        auto image = agentc::edict::static_image::buildWorkerPrimitiveDeclarationImage();
+        ASSERT_TRUE(image);
+        std::string err;
+        ASSERT_TRUE(agentc::edict::static_image::writeDeclarationImageContainer(
+            image, imagePath, &err)) << err;
+    }
+
+    // ── Phase 2: Create session with static_mounts, save ─────────────────────
+    {
+        agentc::runtime::SessionStateStore store(base);
+        store.clear();
+        ASSERT_FALSE(store.exists());
+
+        // A minimal root with a sentinel word so we can confirm session-root
+        // overlay is intact after restore.
+        auto rootJson = agentc::runtime::make_default_agent_root(
+            "layered-mount-test", "google", "gemini-3.1-pro-preview");
+        auto root = agentc::fromJson(rootJson.dump());
+        ASSERT_TRUE(root);
+
+        // Write a named item onto the root so it is resolvable from the
+        // session-root dict layer after restore.
+        agentc::addNamedItem(root, "__probe",
+                             agentc::createStringValue("session-layer-alive"));
+
+        // Register the static image path for this session.
+        store.static_mounts.push_back(imagePath);
+
+        std::string error;
+        ASSERT_TRUE(store.saveRoot(root, &error)) << error;
+        ASSERT_TRUE(store.exists());
+    }
+
+    // ── Phase 3: Restore session ──────────────────────────────────────────────
+    {
+        agentc::runtime::SessionStateStore store(base);
+        ASSERT_TRUE(store.exists());
+
+        agentc::ListreeStaticMountRegistry registry;
+        std::vector<CPtr<agentc::ListreeValue>> staticBases;
+        CPtr<agentc::ListreeValue> restoredRoot;
+        std::string error;
+
+        ASSERT_TRUE(store.loadRoot(restoredRoot, &staticBases, &registry, &error))
+            << error;
+        ASSERT_TRUE(restoredRoot);
+
+        // The static layer must have been populated.
+        ASSERT_EQ(staticBases.size(), 1u)
+            << "expected exactly one static base from loadRoot";
+        ASSERT_TRUE(staticBases[0]);
+
+        // ── Phase 4: Construct layered VM ─────────────────────────────────────
+        agentc::edict::EdictVM vm(restoredRoot, staticBases);
+
+        // ── Phase 5: Resolve a word that lives ONLY in the static layer ───────
+        // "worker.edict_active_count" is declared in the worker.edict image;
+        // it is absent from the private session root.  In strict-null mode the
+        // VM pushes null for unknown words, so we use Lax (the default) and
+        // then assert we got a non-null (declaration) value.
+        agentc::edict::EdictCompiler compiler;
+        auto prog = compiler.compile("worker.edict_active_count @__static_word");
+        auto state = vm.execute(prog);
+        EXPECT_FALSE(state & agentc::edict::VM_ERROR)
+            << "static-layer word lookup raised VM_ERROR: " << vm.getError();
+
+        auto staticWord = restoredRoot->find("__static_word");
+        ASSERT_TRUE(staticWord)
+            << "worker.edict_active_count did not resolve from the static layer";
+        EXPECT_TRUE(staticWord->getValue())
+            << "resolved static-layer word value is null";
+
+        // ── Phase 6: Confirm session-root overlay still works ─────────────────
+        auto sessionWord = restoredRoot->find("__probe");
+        ASSERT_TRUE(sessionWord)
+            << "__probe (session-root sentinel) missing after layered restore";
+        ASSERT_TRUE(sessionWord->getValue());
+        const auto* data = static_cast<const char*>(
+            sessionWord->getValue()->getData());
+        const auto  len  = sessionWord->getValue()->getLength();
+        EXPECT_EQ(std::string(data, len), "session-layer-alive");
+
+        store.clear();
+    }
+
+    std::filesystem::remove_all(base);
+    std::filesystem::remove(imagePath);
 }
 
 // Same as VmWithSchedulerSurvivesSessionSaveLoad but explicitly uses the
@@ -1018,7 +1133,7 @@ TEST(SessionStateStoreTest, FileBackedVmWithSchedulerSurvivesSessionSaveLoad) {
         CPtr<agentc::ListreeValue> restoredRoot;
         std::string error;
         std::cerr << "DEBUG: Calling loadRoot..." << std::endl;
-        ASSERT_TRUE(store.loadRoot(restoredRoot, &error)) << error;
+        ASSERT_TRUE(store.loadRoot(restoredRoot, nullptr, nullptr, &error)) << error;
         ASSERT_TRUE(restoredRoot);
         std::cerr << "DEBUG: loadRoot succeeded, restoredRoot = " << (restoredRoot ? "non-null" : "NULL") << std::endl;
         const SlabId root_sid_after = restoredRoot.getSlabId();
