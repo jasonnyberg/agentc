@@ -209,6 +209,56 @@ summary to_json! print
     std::filesystem::remove_all(dir, ec);
 }
 
+TEST(EdictAgentcModuleTest, DirectEdictActionReadsFileThroughCuratedLauncher) {
+    const auto dir = std::filesystem::temp_directory_path() / "agentc_g101_direct_read";
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
+    std::filesystem::create_directories(dir);
+    const auto target = dir / "model-snippet-note.txt";
+
+    {
+        std::ofstream out(target);
+        out << "direct emission text";
+    }
+
+    std::ostringstream script;
+    script << "{\"op\":\"read_file\",\"path\":\"" << target.string()
+           << "\"} agentc_direct_action! @direct_result\n";
+    script << "[" << target.string() << "] agentc_file_read! @helper_result\n";
+    script << R"({"direct":null,"helper":null} @summary
+ direct_result @summary.direct
+ helper_result @summary.helper
+ summary to_json! print
+)";
+
+    const std::string jsonText = runLauncherScript(script.str());
+    auto parsed = nlohmann::json::parse(jsonText);
+    const auto& direct = parsed["direct"];
+    const auto& helper = parsed["helper"];
+    EXPECT_FALSE(direct["ok"].empty());
+    EXPECT_EQ(direct["emission"].get<std::string>(), "direct-edict-v1");
+    EXPECT_EQ(direct["op"].get<std::string>(), "read_file");
+    EXPECT_EQ(direct["content"].get<std::string>(), "direct emission text");
+    EXPECT_EQ(direct["content"], helper["content"]);
+    EXPECT_EQ(direct["bytes"], helper["bytes"]);
+
+    std::filesystem::remove_all(dir, ec);
+}
+
+TEST(EdictAgentcModuleTest, DirectEdictActionRejectsUnsafeShellOperation) {
+    std::ostringstream script;
+    script << R"({"op":"shell","command":"printf should-not-run"} agentc_direct_action! @direct_result
+direct_result to_json! print
+)";
+
+    const std::string jsonText = runLauncherScript(script.str());
+    auto parsed = nlohmann::json::parse(jsonText);
+    EXPECT_TRUE(parsed["ok"].empty());
+    ASSERT_TRUE(parsed.contains("error"));
+    EXPECT_EQ(parsed["error"]["code"].get<std::string>(), "direct_action_denied");
+    EXPECT_EQ(parsed["error"]["op"].get<std::string>(), "shell");
+}
+
 TEST(EdictAgentcModuleTest, StreamWrapperSpawnsAndSynchronizes) {
     const std::string moduleSource = readFile(modulePath());
 
