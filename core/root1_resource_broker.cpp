@@ -785,6 +785,144 @@ std::vector<ResourceKey> Root1ResourceBroker::recoverParticipantLeases(Participa
     return recoverParticipantLeasesLocked(owner, reason.empty() ? "participant owner abandoned" : reason);
 }
 
+PublicationLayerId Root1ResourceBroker::leasePublicationLayer(ParticipantId owner, uint64_t expiresAtTick) {
+    if (owner == 0) {
+        return 0;
+    }
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!isValidParticipantLocked(owner)) {
+        return 0;
+    }
+
+    PublicationLayerId layerId = nextPublicationLayerId_++;
+    while (layerId == 0 || publicationLeases_.find(layerId) != publicationLeases_.end() ||
+           publications_.find(layerId) != publications_.end()) {
+        layerId = nextPublicationLayerId_++;
+    }
+
+    publicationLeases_[layerId] = PublicationLeaseRecord{owner, expiresAtTick};
+    return layerId;
+}
+
+bool Root1ResourceBroker::renewPublicationLease(PublicationLayerId layerId,
+                                                ParticipantId owner,
+                                                uint64_t expiresAtTick) {
+    if (layerId == 0 || owner == 0) {
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = publicationLeases_.find(layerId);
+    if (it == publicationLeases_.end() || it->second.owner != owner || !isValidParticipantLocked(owner)) {
+        return false;
+    }
+    it->second.expiresAtTick = expiresAtTick;
+    return true;
+}
+
+bool Root1ResourceBroker::registerPublication(const PublicationDescriptor& publication,
+                                              std::string* error) {
+    auto fail = [error](const char* message) {
+        if (error) {
+            *error = message;
+        }
+        return false;
+    };
+
+    if (publication.layerId == 0) {
+        return fail("publication layer id is required");
+    }
+    if (publication.owner == 0) {
+        return fail("publication owner is required");
+    }
+    if (publication.epoch == 0) {
+        return fail("publication epoch is required");
+    }
+    if (publication.manifestPath.empty() || publication.manifestHash.empty()) {
+        return fail("publication manifest path/hash are required");
+    }
+    if (!publication.immutable || publication.permission != PublicationPermission::ReadOnly) {
+        return fail("publication must be immutable and read-only");
+    }
+    if (publication.rootHandle.layerId != 0 && publication.rootHandle.layerId != publication.layerId) {
+        return fail("publication root handle layer mismatch");
+    }
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto leaseIt = publicationLeases_.find(publication.layerId);
+    if (leaseIt == publicationLeases_.end()) {
+        return fail("publication layer is not leased");
+    }
+    if (leaseIt->second.owner != publication.owner) {
+        return fail("publication owner does not hold the layer lease");
+    }
+    if (!isValidParticipantLocked(publication.owner)) {
+        return fail("publication owner is not an active participant");
+    }
+
+    auto current = publications_.find(publication.layerId);
+    if (current != publications_.end() && publication.epoch <= current->second.epoch) {
+        return fail("publication epoch is stale");
+    }
+
+    PublicationDescriptor stored = publication;
+    if (stored.rootHandle.layerId == 0) {
+        stored.rootHandle.layerId = stored.layerId;
+    }
+    publications_[publication.layerId] = std::move(stored);
+    if (error) {
+        error->clear();
+    }
+    return true;
+}
+
+std::optional<PublicationDescriptor> Root1ResourceBroker::lookupPublication(PublicationLayerId layerId) const {
+    if (layerId == 0) {
+        return std::nullopt;
+    }
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (publicationLeases_.find(layerId) == publicationLeases_.end()) {
+        return std::nullopt;
+    }
+    auto it = publications_.find(layerId);
+    if (it == publications_.end()) {
+        return std::nullopt;
+    }
+    return it->second;
+}
+
+bool Root1ResourceBroker::retirePublication(PublicationLayerId layerId, ParticipantId owner) {
+    if (layerId == 0 || owner == 0) {
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto leaseIt = publicationLeases_.find(layerId);
+    if (leaseIt == publicationLeases_.end() || leaseIt->second.owner != owner) {
+        return false;
+    }
+    publications_.erase(layerId);
+    publicationLeases_.erase(leaseIt);
+    return true;
+}
+
+std::vector<PublicationLayerId> Root1ResourceBroker::recoverExpiredPublicationLeases(uint64_t nowTick) {
+    std::vector<PublicationLayerId> expired;
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (auto it = publicationLeases_.begin(); it != publicationLeases_.end();) {
+        if (it->second.expiresAtTick <= nowTick) {
+            expired.push_back(it->first);
+            publications_.erase(it->first);
+            it = publicationLeases_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    return expired;
+}
+
 bool Root1ResourceBroker::sendMailboxMessage(ParticipantId participant, std::string payload, uint64_t sequence) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!isValidParticipantLocked(participant)) {
@@ -1047,6 +1185,8 @@ void Root1ResourceBroker::closeAllFds() {
     participants_.clear();
     waiters_.clear();
     leases_.clear();
+    publicationLeases_.clear();
+    publications_.clear();
     if (epollFd_ >= 0) {
         close(epollFd_);
         epollFd_ = -1;

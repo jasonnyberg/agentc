@@ -22,6 +22,7 @@
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -32,6 +33,7 @@ namespace agentc::root1 {
 
 using ParticipantId = uint64_t;
 using GrantToken = uint64_t;
+using PublicationLayerId = uint32_t;
 
 struct ResourceKey {
     uint32_t layerId = 0;
@@ -100,6 +102,23 @@ struct SlabPayloadHandle {
     uint32_t slabId = 0;
     uint32_t offset = 0;
     uint64_t generation = 0;
+};
+
+enum class PublicationPermission : uint16_t {
+    None = 0,
+    ReadOnly = 1,
+};
+
+struct PublicationDescriptor {
+    PublicationLayerId layerId = 0;
+    ParticipantId owner = 0;
+    uint64_t epoch = 0;
+    std::string manifestPath;
+    std::string manifestHash;
+    std::string rootDescriptor;
+    SlabPayloadHandle rootHandle;
+    PublicationPermission permission = PublicationPermission::ReadOnly;
+    bool immutable = true;
 };
 
 constexpr size_t kMailboxInlineBytes = 96;
@@ -256,6 +275,16 @@ public:
     std::vector<ResourceKey> recoverParticipantLeases(ParticipantId owner,
                                                       std::string reason = {});
 
+    PublicationLayerId leasePublicationLayer(ParticipantId owner, uint64_t expiresAtTick);
+    bool renewPublicationLease(PublicationLayerId layerId,
+                               ParticipantId owner,
+                               uint64_t expiresAtTick);
+    bool registerPublication(const PublicationDescriptor& publication,
+                             std::string* error = nullptr);
+    std::optional<PublicationDescriptor> lookupPublication(PublicationLayerId layerId) const;
+    bool retirePublication(PublicationLayerId layerId, ParticipantId owner);
+    std::vector<PublicationLayerId> recoverExpiredPublicationLeases(uint64_t nowTick);
+
     bool sendMailboxMessage(ParticipantId participant, std::string payload, uint64_t sequence = 0);
     bool sendMailboxDescriptor(ParticipantId participant, const MailboxDescriptor& descriptor);
     bool sendCancellation(ParticipantId participant, uint64_t correlationId, std::string reason = {});
@@ -280,6 +309,11 @@ private:
         uint64_t expiresAtTick = 0;
     };
 
+    struct PublicationLeaseRecord {
+        ParticipantId owner = 0;
+        uint64_t expiresAtTick = 0;
+    };
+
     bool isValidParticipantLocked(ParticipantId participant) const;
     bool notifyParticipantLocked(ParticipantId participant) const;
     void pushEventLocked(ParticipantId participant, BrokerEvent event);
@@ -297,9 +331,12 @@ private:
     int epollFd_ = -1;
     ParticipantId nextParticipant_ = 1;
     GrantToken nextGrantToken_ = 1;
+    PublicationLayerId nextPublicationLayerId_ = 1;
     std::unordered_map<ParticipantId, ParticipantRecord> participants_;
     std::unordered_map<ResourceKey, std::deque<ParticipantId>, ResourceKeyHash> waiters_;
     std::unordered_map<ResourceKey, LeaseRecord, ResourceKeyHash> leases_;
+    std::unordered_map<PublicationLayerId, PublicationLeaseRecord> publicationLeases_;
+    std::unordered_map<PublicationLayerId, PublicationDescriptor> publications_;
 };
 
 } // namespace agentc::root1

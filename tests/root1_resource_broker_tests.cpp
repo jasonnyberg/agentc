@@ -33,6 +33,8 @@ using agentc::root1::MailboxDescriptor;
 using agentc::root1::MailboxEventKind;
 using agentc::root1::MailboxPayloadKind;
 using agentc::root1::MailboxRing;
+using agentc::root1::PublicationDescriptor;
+using agentc::root1::PublicationPermission;
 using agentc::root1::ResourceKey;
 using agentc::root1::ResourceState;
 using agentc::root1::Root1ResourceBroker;
@@ -42,6 +44,25 @@ namespace {
 bool containsParticipant(const std::vector<agentc::root1::ParticipantId>& participants,
                          agentc::root1::ParticipantId participant) {
     return std::find(participants.begin(), participants.end(), participant) != participants.end();
+}
+
+PublicationDescriptor makePublication(agentc::root1::PublicationLayerId layerId,
+                                      agentc::root1::ParticipantId owner,
+                                      uint64_t epoch) {
+    PublicationDescriptor publication;
+    publication.layerId = layerId;
+    publication.owner = owner;
+    publication.epoch = epoch;
+    publication.manifestPath = "/tmp/agentc-publication-" + std::to_string(layerId) + ".json";
+    publication.manifestHash = "sha256:testhash" + std::to_string(epoch);
+    publication.rootDescriptor = "worker/result";
+    publication.rootHandle.layerId = layerId;
+    publication.rootHandle.slabId = 7;
+    publication.rootHandle.offset = 11;
+    publication.rootHandle.generation = epoch;
+    publication.permission = PublicationPermission::ReadOnly;
+    publication.immutable = true;
+    return publication;
 }
 
 } // namespace
@@ -519,6 +540,106 @@ TEST(Root1ResourceBrokerTest, DeliversMmapCompatibleMailboxDescriptorsThroughEpo
     EXPECT_EQ(descriptors.front().sequence, 77u);
     EXPECT_EQ(descriptors.front().correlationId, 1234u);
     EXPECT_EQ(agentc::root1::inlinePayload(descriptors.front()), "descriptor-progress");
+#endif
+}
+
+TEST(Root1ResourceBrokerTest, LeasesLogicalPublicationLayerAndPublishesReadOnlyManifest) {
+#if !defined(__linux__)
+    GTEST_SKIP() << "Root1ResourceBroker prototype requires Linux eventfd/epoll";
+#else
+    Root1ResourceBroker broker;
+    auto owner = broker.registerParticipant();
+    ASSERT_GT(owner, 0u);
+
+    auto layer = broker.leasePublicationLayer(owner, 100);
+    ASSERT_GT(layer, 0u);
+    auto publication = makePublication(layer, owner, 1);
+    publication.rootHandle.layerId = 0; // Root1 should normalize an omitted handle layer.
+
+    std::string error;
+    ASSERT_TRUE(broker.registerPublication(publication, &error)) << error;
+    EXPECT_TRUE(error.empty());
+
+    auto visible = broker.lookupPublication(layer);
+    ASSERT_TRUE(visible.has_value());
+    EXPECT_EQ(visible->layerId, layer);
+    EXPECT_EQ(visible->owner, owner);
+    EXPECT_EQ(visible->epoch, 1u);
+    EXPECT_EQ(visible->manifestPath, publication.manifestPath);
+    EXPECT_EQ(visible->manifestHash, publication.manifestHash);
+    EXPECT_EQ(visible->rootDescriptor, "worker/result");
+    EXPECT_EQ(visible->rootHandle.layerId, layer);
+    EXPECT_EQ(visible->permission, PublicationPermission::ReadOnly);
+    EXPECT_TRUE(visible->immutable);
+
+    EXPECT_TRUE(broker.renewPublicationLease(layer, owner, 200));
+    EXPECT_TRUE(broker.retirePublication(layer, owner));
+    EXPECT_FALSE(broker.lookupPublication(layer).has_value());
+#endif
+}
+
+TEST(Root1ResourceBrokerTest, PublicationRegistryRejectsCollisionsAndStaleEpochs) {
+#if !defined(__linux__)
+    GTEST_SKIP() << "Root1ResourceBroker prototype requires Linux eventfd/epoll";
+#else
+    Root1ResourceBroker broker;
+    auto owner = broker.registerParticipant();
+    auto other = broker.registerParticipant();
+    ASSERT_GT(owner, 0u);
+    ASSERT_GT(other, 0u);
+
+    auto ownerLayer = broker.leasePublicationLayer(owner, 100);
+    auto otherLayer = broker.leasePublicationLayer(other, 100);
+    ASSERT_GT(ownerLayer, 0u);
+    ASSERT_GT(otherLayer, 0u);
+    EXPECT_NE(ownerLayer, otherLayer) << "Root1 must assign distinct logical publication layers";
+
+    std::string error;
+    auto wrongOwner = makePublication(ownerLayer, other, 1);
+    EXPECT_FALSE(broker.registerPublication(wrongOwner, &error));
+    EXPECT_EQ(error, "publication owner does not hold the layer lease");
+
+    auto missingManifest = makePublication(ownerLayer, owner, 1);
+    missingManifest.manifestHash.clear();
+    EXPECT_FALSE(broker.registerPublication(missingManifest, &error));
+    EXPECT_EQ(error, "publication manifest path/hash are required");
+
+    auto first = makePublication(ownerLayer, owner, 2);
+    ASSERT_TRUE(broker.registerPublication(first, &error)) << error;
+
+    auto stale = makePublication(ownerLayer, owner, 2);
+    EXPECT_FALSE(broker.registerPublication(stale, &error));
+    EXPECT_EQ(error, "publication epoch is stale");
+
+    auto newer = makePublication(ownerLayer, owner, 3);
+    EXPECT_TRUE(broker.registerPublication(newer, &error)) << error;
+    auto visible = broker.lookupPublication(ownerLayer);
+    ASSERT_TRUE(visible.has_value());
+    EXPECT_EQ(visible->epoch, 3u);
+#endif
+}
+
+TEST(Root1ResourceBrokerTest, ExpiredPublicationLeaseWithdrawsConsumerVisibility) {
+#if !defined(__linux__)
+    GTEST_SKIP() << "Root1ResourceBroker prototype requires Linux eventfd/epoll";
+#else
+    Root1ResourceBroker broker;
+    auto owner = broker.registerParticipant();
+    auto layer = broker.leasePublicationLayer(owner, 10);
+    ASSERT_GT(layer, 0u);
+
+    std::string error;
+    ASSERT_TRUE(broker.registerPublication(makePublication(layer, owner, 1), &error)) << error;
+    ASSERT_TRUE(broker.lookupPublication(layer).has_value());
+
+    EXPECT_TRUE(broker.recoverExpiredPublicationLeases(9).empty());
+    EXPECT_TRUE(broker.lookupPublication(layer).has_value());
+
+    auto expired = broker.recoverExpiredPublicationLeases(10);
+    ASSERT_EQ(expired.size(), 1u);
+    EXPECT_EQ(expired.front(), layer);
+    EXPECT_FALSE(broker.lookupPublication(layer).has_value());
+    EXPECT_FALSE(broker.renewPublicationLease(layer, owner, 20));
 #endif
 }
 

@@ -1,4 +1,5 @@
 ### 2026-06-20
+- Advanced 🔗[G106 — Root1 Slab Advertisement Registry](./Knowledge/Goals/G106-Root1SlabAdvertisementRegistry/index.md): landed Root1-owned logical publication layer registry MVP with `PublicationDescriptor`, layer leasing/renewal/retirement, read-only consumer lookup, owner mismatch rejection, stale epoch rejection, and expired publication lease withdrawal. Validation: new G106 tests 3/3, `Root1ResourceBrokerTest.*` 21/21, full `reflect_tests` 54/54, affected Edict Root1/static-image slice 26/26.
 - Completed 🔗[G096 — Authoritative mmap Session Resume](./Knowledge/Goals/G096-AuthoritativeMmapSessionResume/index.md): deterministic session root restore, file-backed slab[0] persistence, Root1 scheduler continuation persistence, preserved `static_mounts`, layered static declaration-image restore into `staticBases`, and WP_G096 durable/transient/deferred boundary. Validation: G096.3 focused 1/1, affected persistence/embedded slice 21/21, full `cpp_agent_tests` 53/53.
 
 ### 2026-06-06
