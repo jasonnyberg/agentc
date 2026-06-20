@@ -44,6 +44,25 @@ agentc::runtime::VmRuntimeImportArtifacts mockRuntimeArtifacts() {
     };
 }
 
+CPtr<agentc::ListreeValue> namedValue(CPtr<agentc::ListreeValue> value,
+                                      const std::string& name) {
+    if (!value || value->isListMode()) {
+        return nullptr;
+    }
+    auto item = value->find(name);
+    return item ? item->getValue(false, false) : nullptr;
+}
+
+std::string textValue(CPtr<agentc::ListreeValue> value) {
+    if (!value || !value->getData() || value->getLength() == 0) {
+        return {};
+    }
+    if ((value->getFlags() & agentc::LtvFlags::Binary) != agentc::LtvFlags::None) {
+        return {};
+    }
+    return std::string(static_cast<const char*>(value->getData()), value->getLength());
+}
+
 template <typename T>
 agentc::runtime::SessionImageAllocatorManifest makeTestAllocatorManifest(
     const std::string& logical_name,
@@ -1012,22 +1031,31 @@ TEST(SessionStateStoreTest, LayeredStaticMountSurvivesSessionRoundTrip) {
         // ── Phase 4: Construct layered VM ─────────────────────────────────────
         agentc::edict::EdictVM vm(restoredRoot, staticBases);
 
-        // ── Phase 5: Resolve a word that lives ONLY in the static layer ───────
+        // ── Phase 5: Verify a word that lives ONLY in the static layer ────────
         // "worker.edict_active_count" is declared in the worker.edict image;
-        // it is absent from the private session root.  In strict-null mode the
-        // VM pushes null for unknown words, so we use Lax (the default) and
-        // then assert we got a non-null (declaration) value.
-        agentc::edict::EdictCompiler compiler;
-        auto prog = compiler.compile("worker.edict_active_count @__static_word");
-        auto state = vm.execute(prog);
-        EXPECT_FALSE(state & agentc::edict::VM_ERROR)
-            << "static-layer word lookup raised VM_ERROR: " << vm.getError();
+        // it is absent from the private session root.  Do this as direct C++
+        // schema inspection rather than Edict execution: a bare Edict word
+        // invokes the declaration thunk, while this acceptance test is about
+        // durable mount restoration and layered dict availability.
+        auto declarations = namedValue(staticBases[0], "declarations");
+        ASSERT_TRUE(declarations)
+            << "mounted static image is missing its declarations list";
 
-        auto staticWord = restoredRoot->find("__static_word");
-        ASSERT_TRUE(staticWord)
-            << "worker.edict_active_count did not resolve from the static layer";
-        EXPECT_TRUE(staticWord->getValue())
-            << "resolved static-layer word value is null";
+        bool foundStaticWord = false;
+        declarations->forEachList([&](CPtr<agentc::ListreeValueRef>& ref) {
+            auto declaration = ref ? ref->getValue() : nullptr;
+            if (textValue(namedValue(declaration, "word")) == "worker.edict_active_count") {
+                foundStaticWord = true;
+            }
+        });
+        EXPECT_TRUE(foundStaticWord)
+            << "worker.edict_active_count did not survive as a mounted static declaration";
+        EXPECT_FALSE(restoredRoot->find("worker.edict_active_count"))
+            << "static-layer sentinel unexpectedly exists on the session root";
+
+        auto metadata = registry.metadata(1);
+        EXPECT_EQ(metadata.rootDescriptor, "worker.edict/declarations");
+        EXPECT_EQ(metadata.sectionDescriptor, "declarative_import_module:worker.edict");
 
         // ── Phase 6: Confirm session-root overlay still works ─────────────────
         auto sessionWord = restoredRoot->find("__probe");

@@ -26,7 +26,7 @@ TEST(EmbeddedVmRootRestoreTest, ConstructsVmFromRestoredAnchoredRoot) {
     ASSERT_TRUE(store.saveRoot(rootValue, &error)) << error;
 
     CPtr<agentc::ListreeValue> restoredRoot;
-    ASSERT_TRUE(store.loadRoot(restoredRoot, &error)) << error;
+    ASSERT_TRUE(store.loadRoot(restoredRoot, nullptr, nullptr, &error)) << error;
     ASSERT_TRUE(restoredRoot);
 
     agentc::edict::EdictVM vm(restoredRoot);
@@ -92,7 +92,7 @@ TEST(EmbeddedVmRootRestoreTest, FullTurnPersistenceAndResume) {
     {
         CPtr<agentc::ListreeValue> restoredRoot;
         std::string error;
-        ASSERT_TRUE(store.loadRoot(restoredRoot, &error)) << error;
+        ASSERT_TRUE(store.loadRoot(restoredRoot, nullptr, nullptr, &error)) << error;
         ASSERT_TRUE(restoredRoot);
 
         std::cout << "Rehydrating...\n" << std::flush;
