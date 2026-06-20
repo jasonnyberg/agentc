@@ -193,11 +193,31 @@ Isolated call syntax like `f([hello])` creates a fresh function/data/dict frame.
 Properties:
 
 - Arguments are evaluated into the isolated frame.
-- Local assignments stay local.
+- Local assignments stay local, including assignments performed by the thunk body itself.
 - Results merge back to the parent data stack at `FUN_POP`.
+- Parent bindings are protected from accidental overwrite by plain `@name` inside the isolated call.
 - The isolated frame does **not** directly mutate sibling fields on an owner object through plain `@field` assignment.
 
-This is the source of a major design trap:
+Test-backed safety examples from `CallIsolationTest`:
+
+```edict
+[parent] @x
+[[child] @x x] @mutate
+mutate() @result
+x print          -- prints parent; result is child
+```
+
+`mutate()` can return `child`, but the parent binding `x` remains `parent`.
+
+```edict
+[[child] @new_binding new_binding] @create_binding
+create_binding() @result
+new_binding print -- unresolved symbol fallback; no parent binding leaked
+```
+
+This boundary is useful for LLM-generated helper code: prefer isolated calls for helper transforms that may use temporary names.
+
+This is also the source of a major design trap:
 
 - `provider.request([prompt])` looks method-like.
 - But the request body runs inside a fresh function frame.
@@ -225,6 +245,16 @@ catalog < preset_name! > /
 ```
 
 This is the current clean way to resolve a named preset object from a dict catalog when direct string equality is inconvenient or unavailable.
+
+Example deliberate object mutation:
+
+```edict
+{} @ctx
+ctx < [child] @x > /
+ctx.x print -- prints child
+```
+
+The trailing `/` discards the context object returned by `CTX_POP`. Unlike `f(...)`, this form is intentionally mutating `ctx`; use it only when the target object should receive new bindings.
 
 ## 10. Mutating Object Methods: The Current Reliable Pattern
 If you need to mutate an object in place, do not rely on isolated-call syntax alone.
@@ -280,6 +310,17 @@ Use it for:
 - validating a form before mutating durable state
 
 ## 13. Quick-Start Patterns for Agents
+### Pattern: Compact direct action vs JSON tool envelope
+
+Direct Edict is useful when the action is already exposed as a guarded word and the data flow is obvious:
+
+```edict
+{"op":"read_file","path":"/tmp/example.txt"} agentc_direct_action! @result
+result.content print
+```
+
+The equivalent host/tool-call envelope is more verbose because the host has to serialize the operation, dispatch it, and deserialize the result. Direct Edict keeps the action inside the VM, but do not confuse compactness with ambient authority: new direct actions still need whitelist tests, and arbitrary helper code should run through isolated calls unless you deliberately enter a context with `< ... > /`.
+
 ### Pattern: Bind once, mutate in place
 
 ```edict

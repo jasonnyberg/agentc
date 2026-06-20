@@ -107,6 +107,48 @@ TEST_F(CallIsolationTest, LocalScopeIsolation) {
     EXPECT_EQ(stack.back(), "x");
 }
 
+TEST_F(CallIsolationTest, IsolatedCallCannotOverwriteParentBindingFromThunkBody) {
+    execute("[parent] @x");
+    execute("[[child] @x x] @mutate");
+
+    execute("mutate()");
+    auto returned = vm.popData();
+    ASSERT_TRUE(returned);
+    ASSERT_TRUE(returned->getData());
+    EXPECT_EQ(std::string(static_cast<char*>(returned->getData()), returned->getLength()), "child");
+
+    execute("x");
+    auto stack = stackStrings(vm.dumpStack());
+    ASSERT_EQ(stack.size(), 1);
+    EXPECT_EQ(stack.back(), "parent");
+}
+
+TEST_F(CallIsolationTest, IsolatedCallCannotLeakNewBindingFromThunkBody) {
+    execute("[[child] @new_binding new_binding] @create_binding");
+
+    execute("create_binding()");
+    auto returned = vm.popData();
+    ASSERT_TRUE(returned);
+    ASSERT_TRUE(returned->getData());
+    EXPECT_EQ(std::string(static_cast<char*>(returned->getData()), returned->getLength()), "child");
+
+    execute("new_binding");
+    auto stack = stackStrings(vm.dumpStack());
+    ASSERT_EQ(stack.size(), 1);
+    EXPECT_EQ(stack.back(), "new_binding");
+}
+
+TEST_F(CallIsolationTest, ExplicitContextEntryMutatesTargetObject) {
+    execute("{} @ctx");
+
+    execute("ctx < [child] @x > /");
+    execute("ctx.x");
+
+    auto stack = stackStrings(vm.dumpStack());
+    ASSERT_EQ(stack.size(), 1);
+    EXPECT_EQ(stack.back(), "child");
+}
+
 // Test 3: Result Merging
 // Items left on the isolated stack should be merged back to the parent.
 TEST_F(CallIsolationTest, ResultMerging) {
