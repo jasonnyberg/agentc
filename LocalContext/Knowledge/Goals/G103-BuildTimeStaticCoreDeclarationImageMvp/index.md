@@ -1,6 +1,6 @@
 # Goal: G103 — Build-Time Static Core Declaration Image MVP
 
-**Status**: MVP COMPLETE
+**Status**: COMPLETE — MVP accepted and retired from open backlog
 **Created**: 2026-05-14  
 **Parent**: 🔗[G096 — Authoritative mmap Session Resume](../G096-AuthoritativeMmapSessionResume/index.md)  
 **Related Concept**: 🔗[Layered mmap Micro-VM Architecture](../../Concepts/LayeredMmapMicroVmArchitecture/index.md)
@@ -124,3 +124,7 @@ This slice intentionally does **not** yet generate mmap slab files or mount OS-r
 
 ## Notes
 This goal is intentionally narrower than full Root0/Root1. It creates the first durable artifact that later Root1 and micro-VM workers can mount.
+
+## Closeout — 2026-06-20
+
+G103 is accepted as complete for its stated MVP scope. All acceptance criteria were already checked, the goal file records deterministic image generation, manifest/hash validation, metadata-only/no-native-handle policy, read-only/static-immortal mount inspection, registry-backed mount metadata, read-only mmap import, binary container validation, borrowed static slot-table inspection, and section provenance. Post-G096/G106 reconciliation retires G103 from the open Dashboard backlog; later full static-core expansion belongs to follow-on goals rather than this MVP.
