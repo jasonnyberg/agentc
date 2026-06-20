@@ -19,7 +19,11 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <sstream>
 #include <string>
+#include <string_view>
 
 #if defined(__linux__)
 #include <sys/wait.h>
@@ -46,6 +50,41 @@ bool containsParticipant(const std::vector<agentc::root1::ParticipantId>& partic
     return std::find(participants.begin(), participants.end(), participant) != participants.end();
 }
 
+std::string testFnv1a64Hex(std::string_view bytes) {
+    uint64_t hash = 14695981039346656037ull;
+    for (unsigned char byte : bytes) {
+        hash ^= byte;
+        hash *= 1099511628211ull;
+    }
+    std::ostringstream out;
+    out << "fnv1a64:" << std::hex << std::setfill('0') << std::setw(16) << hash;
+    return out.str();
+}
+
+std::string manifestJson(const PublicationDescriptor& publication) {
+    std::ostringstream out;
+    out << "{"
+        << "\"schema\":\"agentc.root1.publication.v1\","
+        << "\"layer_id\":" << publication.layerId << ","
+        << "\"epoch\":" << publication.epoch << ","
+        << "\"permission\":\"read_only\","
+        << "\"immutable\":true,"
+        << "\"root_descriptor\":\"" << publication.rootDescriptor << "\","
+        << "\"root_layer_id\":" << publication.layerId << ","
+        << "\"root_slab_id\":" << publication.rootHandle.slabId << ","
+        << "\"root_offset\":" << publication.rootHandle.offset << ","
+        << "\"root_generation\":" << publication.rootHandle.generation
+        << "}";
+    return out.str();
+}
+
+void writeTextFile(const std::string& path, const std::string& content) {
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    ASSERT_TRUE(file) << "failed to open " << path;
+    file << content;
+    ASSERT_TRUE(file.good()) << "failed to write " << path;
+}
+
 PublicationDescriptor makePublication(agentc::root1::PublicationLayerId layerId,
                                       agentc::root1::ParticipantId owner,
                                       uint64_t epoch) {
@@ -53,8 +92,6 @@ PublicationDescriptor makePublication(agentc::root1::PublicationLayerId layerId,
     publication.layerId = layerId;
     publication.owner = owner;
     publication.epoch = epoch;
-    publication.manifestPath = "/tmp/agentc-publication-" + std::to_string(layerId) + ".json";
-    publication.manifestHash = "sha256:testhash" + std::to_string(epoch);
     publication.rootDescriptor = "worker/result";
     publication.rootHandle.layerId = layerId;
     publication.rootHandle.slabId = 7;
@@ -62,6 +99,14 @@ PublicationDescriptor makePublication(agentc::root1::PublicationLayerId layerId,
     publication.rootHandle.generation = epoch;
     publication.permission = PublicationPermission::ReadOnly;
     publication.immutable = true;
+
+    auto manifestPath = std::filesystem::temp_directory_path() /
+                        ("agentc-root1-publication-" + std::to_string(layerId) + "-" +
+                         std::to_string(owner) + "-" + std::to_string(epoch) + ".json");
+    publication.manifestPath = manifestPath.string();
+    const std::string manifest = manifestJson(publication);
+    writeTextFile(publication.manifestPath, manifest);
+    publication.manifestHash = testFnv1a64Hex(manifest);
     return publication;
 }
 
@@ -616,6 +661,49 @@ TEST(Root1ResourceBrokerTest, PublicationRegistryRejectsCollisionsAndStaleEpochs
     auto visible = broker.lookupPublication(ownerLayer);
     ASSERT_TRUE(visible.has_value());
     EXPECT_EQ(visible->epoch, 3u);
+#endif
+}
+
+TEST(Root1ResourceBrokerTest, PublicationRegistryValidatesManifestFileHashAndRootMetadata) {
+#if !defined(__linux__)
+    GTEST_SKIP() << "Root1ResourceBroker prototype requires Linux eventfd/epoll";
+#else
+    Root1ResourceBroker broker;
+    auto owner = broker.registerParticipant();
+    ASSERT_GT(owner, 0u);
+    auto layer = broker.leasePublicationLayer(owner, 100);
+    ASSERT_GT(layer, 0u);
+
+    std::string error;
+    auto missingFile = makePublication(layer, owner, 1);
+    missingFile.manifestPath += ".missing";
+    EXPECT_FALSE(broker.registerPublication(missingFile, &error));
+    EXPECT_EQ(error, "publication manifest cannot be opened");
+
+    auto badHash = makePublication(layer, owner, 1);
+    badHash.manifestHash = "fnv1a64:0000000000000000";
+    EXPECT_FALSE(broker.registerPublication(badHash, &error));
+    EXPECT_EQ(error, "publication manifest hash mismatch");
+
+    auto wrongRoot = makePublication(layer, owner, 1);
+    const std::string mismatchedManifest =
+        "{\"schema\":\"agentc.root1.publication.v1\","
+        "\"layer_id\":" + std::to_string(layer) + ","
+        "\"epoch\":1,"
+        "\"permission\":\"read_only\","
+        "\"immutable\":true,"
+        "\"root_descriptor\":\"worker/result\","
+        "\"root_layer_id\":" + std::to_string(layer) + ","
+        "\"root_slab_id\":99,"
+        "\"root_offset\":11,"
+        "\"root_generation\":1}";
+    writeTextFile(wrongRoot.manifestPath, mismatchedManifest);
+    wrongRoot.manifestHash = testFnv1a64Hex(mismatchedManifest);
+    EXPECT_FALSE(broker.registerPublication(wrongRoot, &error));
+    EXPECT_EQ(error, "publication manifest root slab mismatch");
+
+    auto valid = makePublication(layer, owner, 1);
+    EXPECT_TRUE(broker.registerPublication(valid, &error)) << error;
 #endif
 }
 

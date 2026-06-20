@@ -17,7 +17,10 @@
 
 #include <algorithm>
 #include <cstring>
+#include <fstream>
+#include <iomanip>
 #include <new>
+#include <sstream>
 #include <stdexcept>
 #include <utility>
 
@@ -39,6 +42,95 @@ namespace {
 size_t mixHash(size_t seed, uint64_t value) {
     seed ^= static_cast<size_t>(value) + 0x9e3779b97f4a7c15ull + (seed << 6) + (seed >> 2);
     return seed;
+}
+
+std::string fnv1a64Hex(std::string_view bytes) {
+    uint64_t hash = 14695981039346656037ull;
+    for (unsigned char byte : bytes) {
+        hash ^= byte;
+        hash *= 1099511628211ull;
+    }
+    std::ostringstream out;
+    out << "fnv1a64:" << std::hex << std::setfill('0') << std::setw(16) << hash;
+    return out.str();
+}
+
+bool readTextFile(const std::string& path, std::string& out) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file) {
+        return false;
+    }
+    std::ostringstream buffer;
+    buffer << file.rdbuf();
+    out = buffer.str();
+    return file.good() || file.eof();
+}
+
+std::string jsonNumberField(std::string_view name, uint64_t value) {
+    return "\"" + std::string(name) + "\":" + std::to_string(value);
+}
+
+std::string jsonStringField(std::string_view name, std::string_view value) {
+    return "\"" + std::string(name) + "\":\"" + std::string(value) + "\"";
+}
+
+bool manifestContainsPublicationMetadata(const std::string& manifest,
+                                         const PublicationDescriptor& publication,
+                                         std::string* error) {
+    auto fail = [error](const char* message) {
+        if (error) {
+            *error = message;
+        }
+        return false;
+    };
+
+    if (manifest.find(jsonNumberField("layer_id", publication.layerId)) == std::string::npos) {
+        return fail("publication manifest layer mismatch");
+    }
+    if (manifest.find(jsonNumberField("epoch", publication.epoch)) == std::string::npos) {
+        return fail("publication manifest epoch mismatch");
+    }
+    if (manifest.find(jsonStringField("permission", "read_only")) == std::string::npos) {
+        return fail("publication manifest permission mismatch");
+    }
+    if (manifest.find("\"immutable\":true") == std::string::npos) {
+        return fail("publication manifest immutability mismatch");
+    }
+    if (!publication.rootDescriptor.empty() &&
+        manifest.find(jsonStringField("root_descriptor", publication.rootDescriptor)) == std::string::npos) {
+        return fail("publication manifest root descriptor mismatch");
+    }
+    if (manifest.find(jsonNumberField("root_layer_id", publication.layerId)) == std::string::npos) {
+        return fail("publication manifest root layer mismatch");
+    }
+    if (manifest.find(jsonNumberField("root_slab_id", publication.rootHandle.slabId)) == std::string::npos) {
+        return fail("publication manifest root slab mismatch");
+    }
+    if (manifest.find(jsonNumberField("root_offset", publication.rootHandle.offset)) == std::string::npos) {
+        return fail("publication manifest root offset mismatch");
+    }
+    if (manifest.find(jsonNumberField("root_generation", publication.rootHandle.generation)) == std::string::npos) {
+        return fail("publication manifest root generation mismatch");
+    }
+    return true;
+}
+
+bool validatePublicationManifest(const PublicationDescriptor& publication, std::string* error) {
+    auto fail = [error](const char* message) {
+        if (error) {
+            *error = message;
+        }
+        return false;
+    };
+
+    std::string manifest;
+    if (!readTextFile(publication.manifestPath, manifest)) {
+        return fail("publication manifest cannot be opened");
+    }
+    if (fnv1a64Hex(manifest) != publication.manifestHash) {
+        return fail("publication manifest hash mismatch");
+    }
+    return manifestContainsPublicationMetadata(manifest, publication, error);
 }
 
 #if defined(__linux__)
@@ -847,6 +939,9 @@ bool Root1ResourceBroker::registerPublication(const PublicationDescriptor& publi
     }
     if (publication.rootHandle.layerId != 0 && publication.rootHandle.layerId != publication.layerId) {
         return fail("publication root handle layer mismatch");
+    }
+    if (!validatePublicationManifest(publication, error)) {
+        return false;
     }
 
     std::lock_guard<std::mutex> lock(mutex_);
