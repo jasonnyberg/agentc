@@ -94,3 +94,37 @@ TEST(ReproFFITest, AddPoC) {
     std::string topStr(static_cast<const char*>(top->getData()), top->getLength());
     EXPECT_EQ(topStr, "42");
 }
+
+// Regression: SPLICE (^) with an empty-string destination (created by [])
+// must not corrupt the local function scope.  Previously, the auto-resolve
+// path in op_SPLICE resolved "" to the scope object itself (because
+// Cursor::resolve("") returns true with current=scope), then converted the
+// scope to list mode — destroying all named bindings.
+TEST(ReproFFITest, SpliceEmptyStringDoesNotCorruptLocalScope) {
+    EdictVM vm;
+    EdictCompiler compiler;
+    vm.reset();
+
+    // Thunk: [@a [] @lst a lst ^ a]
+    // - @a       : bind first arg (x)
+    // - [] @lst  : bind empty string to lst
+    // - a lst ^  : push a, push lst, SPLICE a into lst
+    // - a        : REF a — must still resolve after splice
+    int state = vm.execute(compiler.compile("[@a [] @lst a lst ^ a] @f f(x)"));
+    ASSERT_FALSE(state & VM_ERROR) << "VM Error: " << vm.getError();
+
+    // Stack should have 2 items: the spliced list (top) and the value of 'a'.
+    // If the bug is present, 'a' resolves to the literal string "a" instead
+    // of the value "x".
+    ASSERT_EQ(vm.getStackSize(), 2u);
+
+    // Top = spliced list (should contain "x")
+    auto spliced = vm.popData();
+    ASSERT_TRUE(bool(spliced));
+    ASSERT_TRUE(spliced->isListMode());
+    // Bottom = a (should be "x", not the literal string "a")
+    auto aVal = vm.popData();
+    ASSERT_TRUE(bool(aVal));
+    std::string aStr(static_cast<const char*>(aVal->getData()), aVal->getLength());
+    EXPECT_EQ(aStr, "x");
+}

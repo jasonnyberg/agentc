@@ -403,7 +403,7 @@ static const char* unsafeExtensionsStatusName(bool allow) {
 static void preload_imported_libraries(EdictVM& vm, CPtr<agentc::ListreeValue> scope);
 
 EdictVM::EdictVM(CPtr<agentc::ListreeValue> root, std::vector<CPtr<agentc::ListreeValue>> staticBases)
-    : cursor(root),
+    : cursor(root ? root : agentc::createNullValue()),
       state(VM_NORMAL),
       instruction_ptr(0),
       code_ptr(nullptr),
@@ -416,8 +416,9 @@ EdictVM::EdictVM(CPtr<agentc::ListreeValue> root, std::vector<CPtr<agentc::Listr
     startupTrace("vm-ctor-after-ffi");
     cartographer = std::make_unique<agentc::cartographer::CartographerService>(*mapper, *ffi);
     startupTrace("vm-ctor-after-cartographer");
-    initResources(root);
-    preload_imported_libraries(*this, root);
+    auto rootValue = cursor.getValue();
+    initResources(rootValue);
+    preload_imported_libraries(*this, rootValue);
     startupTrace("vm-ctor-after-initResources");
 }
 
@@ -1330,8 +1331,10 @@ void EdictVM::op_SPLICE() {
     auto destNode = popData();
     if (!destNode) { setError("Splicing (^) requires a destination node on the stack"); return; }
     
-    // Auto-resolve symbol if string
-    if (destNode->getData() && (destNode->getFlags() & agentc::LtvFlags::Binary) == agentc::LtvFlags::None && !destNode->isListMode()) {
+    // Auto-resolve symbol if string (skip empty strings — resolving "" would
+    // return the scope itself via Cursor::resolve, corrupting it when SPLICE
+    // converts the result to list mode).
+    if (destNode->getLength() > 0 && destNode->getData() && (destNode->getFlags() & agentc::LtvFlags::Binary) == agentc::LtvFlags::None && !destNode->isListMode()) {
         std::string k(static_cast<char*>(destNode->getData()), destNode->getLength());
         auto dictStack = resources[VMRES_DICT];
         if (dictStack) {
@@ -1714,12 +1717,13 @@ bool EdictVM::evalDispatchFFI(CPtr<agentc::ListreeValue> v) {
     if (!enforceImportedFunctionPolicy(funcName, v)) return true;
     
     auto resolutionItem = v->find("resolution_status");
-    if (!resolutionItem) return false;
-    std::string resStr;
-    if (!valueToString(resolutionItem->getValue(false, false), resStr)) return false;
-    if (resStr != "resolved") {
-        setError("Cannot invoke unresolved FFI function: " + funcName);
-        return true;
+    if (resolutionItem) {
+        std::string resStr;
+        if (!valueToString(resolutionItem->getValue(false, false), resStr)) return false;
+        if (resStr != "resolved") {
+            setError("Cannot invoke unresolved FFI function: " + funcName);
+            return true;
+        }
     }
 
     // Collect parameter nodes.

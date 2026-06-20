@@ -80,13 +80,12 @@ Passed:
 
 Broader suite note:
 
-- Full `./edict/edict_tests` currently reports 5 failures in unrelated ReproFFI/Callback suites:
-  - `ReproFFITest.AddPoC`
-  - `CallbackTest.ClosureFromParamSignature`
-  - `CallbackTest.EdictBuiltinsMapLoadAndInvokeCartographerFunction`
-  - `CallbackTest.ParserMapCanRoundTripThroughJson`
-  - `CallbackTest.PureEdictWrappersBuildCanonicalLogicSpecForImportedKanren`
-- These failures are outside the G100 call-isolation surface and were confirmed by the focused failing filter `ReproFFITest.*:CallbackTest.*`.
+- The previously reported 5 ReproFFI/Callback failures have been **resolved** (2026-06-20):
+  - Root cause 1: `evalDispatchFFI` rejected parser-mapped functions lacking `resolution_status`, silently leaving TOS as the result (expected `42`, got `32`).
+  - Root cause 2: `op_SPLICE` auto-resolved empty strings (`[]` literals) via `Cursor::resolve("")`, which returned the local scope object itself; SPLICE then converted the scope to list mode, destroying all named bindings.
+  - Fix: `evalDispatchFFI` now only rejects explicit non-`resolved` status; `op_SPLICE` skips auto-resolve for zero-length strings.
+  - Regression test: `ReproFFITest.SpliceEmptyStringDoesNotCorruptLocalScope`.
+- Full `./edict/edict_tests` now passes 174/174.
 
 ## Relationship To Other Goals
 
