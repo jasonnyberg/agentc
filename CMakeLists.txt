@@ -72,3 +72,6 @@ add_subdirectory(kanren)
 
 # Add C++ Agent (G063)
 add_subdirectory(cpp-agent)
+
+# Add Tree-Sitter integration (G094)
+add_subdirectory(treesitter)

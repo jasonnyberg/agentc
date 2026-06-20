@@ -416,6 +416,7 @@ EdictVM::EdictVM(CPtr<agentc::ListreeValue> root, std::vector<CPtr<agentc::Listr
     startupTrace("vm-ctor-after-ffi");
     cartographer = std::make_unique<agentc::cartographer::CartographerService>(*mapper, *ffi);
     startupTrace("vm-ctor-after-cartographer");
+    tsBridge_ = std::make_unique<agentc::treesitter::TreeSitterBridge>();
     auto rootValue = cursor.getValue();
     initResources(rootValue);
     preload_imported_libraries(*this, rootValue);
@@ -2154,6 +2155,7 @@ int EdictVM::runCodeLoop(size_t stopCodeDepth, bool markCompleteOnDrain) {
         &&op_TO_JSON,
         &&op_FROM_JSON,
         &&op_AWAIT,
+        &&op_TS_LOAD, &&op_TS_PARSE, &&op_TS_LIST,
     };
     // Verify dispatch table has exactly one entry per opcode. If this fires,
     // an opcode was added to VMOpcode without a corresponding dispatch entry.
@@ -2334,6 +2336,9 @@ op_FREEZE: op_FREEZE(); goto op_epilogue;
 op_TO_JSON: op_TO_JSON(); goto op_epilogue;
 op_FROM_JSON: op_FROM_JSON(); goto op_epilogue;
 op_AWAIT: op_AWAIT(); goto op_epilogue;
+        op_TS_LOAD: op_TS_LOAD(); goto op_epilogue;
+        op_TS_PARSE: op_TS_PARSE(); goto op_epilogue;
+        op_TS_LIST: op_TS_LIST(); goto op_epilogue;
 op_INVALID: setError("Op " + std::to_string(op)); goto op_epilogue;
 op_epilogue:
         if (allow_rewrite_epilogue && !(state & (VM_ERROR | VM_YIELD | VM_SCANNING))) applyRewriteLoop();

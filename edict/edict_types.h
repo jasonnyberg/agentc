@@ -125,6 +125,11 @@ enum VMOpcode {
     VMOP_FROM_JSON,     // Pop JSON string, parse into Listree value, push result
     VMOP_AWAIT,         // Pop destination name, yield and park on await scheduler
 
+    // G094: Tree-sitter AST operations
+    VMOP_TS_LOAD,       // Load a tree-sitter language parser by name
+    VMOP_TS_PARSE,      // Parse source code with loaded language, push AST Listree
+    VMOP_TS_LIST,       // Push list of loaded language names
+
     // Number of opcodes (must be last)
     VMOP_COUNT
 };

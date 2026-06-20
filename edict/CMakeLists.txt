@@ -29,6 +29,7 @@ set(LIB_SOURCES
     static_slot_table_image.cpp
     edict_repl.cpp
     block_accumulator.cpp
+    edict_vm_treesitter.cpp
 )
 
 # Create library
@@ -36,6 +37,7 @@ add_library(libedict SHARED ${LIB_SOURCES})
 set_target_properties(libedict PROPERTIES OUTPUT_NAME "edict")
 target_compile_options(libedict PRIVATE -Wall -Wextra -Werror -Wno-unused-parameter)
 target_link_libraries(libedict PRIVATE pthread PRIVATE cartographer PUBLIC reflect)
+target_link_libraries(libedict PUBLIC agentc_treesitter)
 
 # Create executable
 add_executable(edict
@@ -72,15 +74,17 @@ add_executable(edict_tests
     tests/root1_await_scheduler_test.cpp
     tests/static_declaration_image_test.cpp
     tests/static_slot_table_image_test.cpp
+    tests/treesitter_edict_test.cpp
 )
 target_compile_definitions(edict_tests PRIVATE
     TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../cartographer/tests"
     TEST_BUILD_DIR="${CMAKE_BINARY_DIR}/cartographer"
     TEST_EDICT_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
     TEST_EDICT_BIN_DIR="${CMAKE_CURRENT_BINARY_DIR}"
+    TEST_ROOT_BUILD_DIR="${CMAKE_BINARY_DIR}"
 )
 target_link_libraries(edict_tests libedict cartographer kanren gtest gtest_main pthread)
-add_dependencies(edict_tests edict edict_worker_exec agentmath_poc agentthreads_poc)
+add_dependencies(edict_tests edict edict_worker_exec agentmath_poc agentthreads_poc tree_sitter_edict)
 add_test(NAME edict_tests COMMAND edict_tests)
 
 add_executable(splice_test tests/splice_test.cpp)

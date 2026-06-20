@@ -228,6 +228,13 @@ void EdictVM::loadCoreBuiltins() {
     addBuiltinThunk(dictVal, "freeze", VMOP_FREEZE);
     addBuiltinThunk(dictVal, "to_json", VMOP_TO_JSON);
     addBuiltinThunk(dictVal, "from_json", VMOP_FROM_JSON);
+
+    // G094: Tree-sitter AST builtins
+    auto tsCapsule = agentc::createNullValue();
+    addBuiltinThunk(tsCapsule, "load", VMOP_TS_LOAD);
+    addBuiltinThunk(tsCapsule, "parse", VMOP_TS_PARSE);
+    addBuiltinThunk(tsCapsule, "list", VMOP_TS_LIST);
+    agentc::addNamedItem(dictVal, "treesitter", tsCapsule);
 }
 
 void EdictVM::installBootstrapImportCapsule() {

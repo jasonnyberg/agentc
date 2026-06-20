@@ -27,6 +27,9 @@
 #include "edict_compiler.h"
 #include "../core/root1_resource_broker.h"
 
+// G094: Tree-sitter bridge
+#include "../treesitter/tree_sitter_bridge.h"
+
 namespace agentc::edict {
 
 class EdictREPL;
@@ -153,6 +156,9 @@ public:
     std::unique_ptr<agentc::cartographer::Mapper> mapper;
     std::unique_ptr<agentc::cartographer::FFI> ffi;
     std::unique_ptr<agentc::cartographer::CartographerService> cartographer;
+
+    // G094: Tree-sitter AST bridge
+    std::unique_ptr<agentc::treesitter::TreeSitterBridge> tsBridge_;
 
     // Await scheduler for await! builtin.  Set externally (e.g. by main.cpp)
     // session restore alongside the scheduler state.
@@ -289,6 +295,11 @@ private:
     void op_TO_JSON();
     void op_FROM_JSON();
     void op_AWAIT();
+
+    // G094: Tree-sitter AST operations
+    void op_TS_LOAD();
+    void op_TS_PARSE();
+    void op_TS_LIST();
 
     // Cursor navigation ops (registered via registerCursorOperations)
     void op_CURSOR_DOWN();  // Move cursor to first child; push bool result
