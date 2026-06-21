@@ -30,6 +30,9 @@ target_link_libraries(demo_rewrite_language libedict cartographer kanren pthread
 add_executable(demo_cognitive_core_validation demo_cognitive_core_validation.cpp)
 target_link_libraries(demo_cognitive_core_validation libedict cartographer kanren pthread)
 
+add_executable(demo_composite_speculation_logic_ffi demo_composite_speculation_logic_ffi.cpp)
+target_link_libraries(demo_composite_speculation_logic_ffi libedict cartographer kanren pthread)
+
 add_executable(demo_arena_metadata_persistence demo_arena_metadata_persistence.cpp)
 target_link_libraries(demo_arena_metadata_persistence reflect pthread)
 

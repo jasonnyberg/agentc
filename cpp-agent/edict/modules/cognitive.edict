@@ -1,0 +1,100 @@
+# cognitive.edict — G095 reusable cognitive task scaffolds
+#
+# Pure Edict helpers for persistent task-state objects.  The first complete
+# scaffold is an investigation state machine; companion constructors describe
+# the code-review and refactor-plan shapes so LLM-authored Edict can use the
+# same schema family before richer transitions are added.
+
+{} @cognitive
+
+[
+    @goal
+    {"kind": "cognitive_scaffold", "scaffold": "investigation", "status": "open", "goal": "", "hypotheses": [], "findings": [], "concerns": [], "refactor_steps": [], "success_criteria": ["record hypotheses", "attach evidence", "mark verified or rejected", "serialize state for handoff"], "log": []} @state
+    goal @state.goal
+    /
+    {"event": "created", "scaffold": "investigation"} @entry
+    goal @entry.goal
+    /
+    entry ^state.log^
+    state
+] @cognitive.investigation_new
+
+[
+    @claim @id @state
+    {"id": "", "claim": "", "status": "open", "evidence": []} @hypothesis
+    id @hypothesis.id
+    /
+    claim @hypothesis.claim
+    /
+    hypothesis ^state.hypotheses^
+    {"event": "hypothesis_added", "id": ""} @entry
+    id @entry.id
+    /
+    entry ^state.log^
+    state
+] @cognitive.investigation_add_hypothesis
+
+[
+    @evidence @id @state
+    {"hypothesis_id": "", "evidence": "", "status": "observed"} @finding
+    id @finding.hypothesis_id
+    /
+    evidence @finding.evidence
+    /
+    finding ^state.findings^
+    {"event": "evidence_added", "id": ""} @entry
+    id @entry.id
+    /
+    entry ^state.log^
+    state
+] @cognitive.investigation_add_evidence
+
+[
+    @verdict @id @state
+    {"hypothesis_id": "", "verdict": "", "status": "closed"} @finding
+    id @finding.hypothesis_id
+    /
+    verdict @finding.verdict
+    /
+    finding ^state.findings^
+    verdict @state.status
+    /
+    {"event": "hypothesis_marked", "id": "", "verdict": ""} @entry
+    id @entry.id
+    /
+    verdict @entry.verdict
+    /
+    entry ^state.log^
+    state
+] @cognitive.investigation_mark
+
+[
+    @scope
+    {"kind": "cognitive_scaffold", "scaffold": "code_review", "status": "open", "scope": "", "concerns": [], "evidence": [], "success_criteria": ["each concern names evidence", "verification status is explicit", "resolved concerns stay inspectable"]} @state
+    scope @state.scope
+    /
+    state
+] @cognitive.code_review_new
+
+[
+    @scope
+    {"kind": "cognitive_scaffold", "scaffold": "refactor_plan", "status": "open", "scope": "", "steps": [], "checkpoints": [], "success_criteria": ["steps are dependency ordered", "checkpoint/rollback notes are per file", "verification command is attached before completion"]} @state
+    scope @state.scope
+    /
+    state
+] @cognitive.refactor_plan_new
+
+[
+    @verify_command @path @description @id @state
+    {"id": "", "description": "", "path": "", "verify": "", "status": "pending", "depends_on": []} @step
+    id @step.id
+    /
+    description @step.description
+    /
+    path @step.path
+    /
+    verify_command @step.verify
+    /
+    step ^state.steps^
+    state
+] @cognitive.refactor_plan_add_step
