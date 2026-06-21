@@ -236,6 +236,17 @@ void EdictVM::loadCoreBuiltins() {
     addBuiltinThunk(tsCapsule, "list", VMOP_TS_LIST);
     addBuiltinThunk(tsCapsule, "diff", VMOP_TS_DIFF);
     agentc::addNamedItem(dictVal, "treesitter", tsCapsule);
+
+    // G094.5: Knowledge graph builtins
+    auto kgCapsule = agentc::createNullValue();
+    addBuiltinThunk(kgCapsule, "create", VMOP_KG_CREATE);
+    addBuiltinThunk(kgCapsule, "add_node", VMOP_KG_ADD_NODE);
+    addBuiltinThunk(kgCapsule, "add_edge", VMOP_KG_ADD_EDGE);
+    addBuiltinThunk(kgCapsule, "get_node", VMOP_KG_GET_NODE);
+    addBuiltinThunk(kgCapsule, "query", VMOP_KG_QUERY);
+    addBuiltinThunk(kgCapsule, "nodes", VMOP_KG_LIST_NODES);
+    addBuiltinThunk(kgCapsule, "edges", VMOP_KG_LIST_EDGES);
+    agentc::addNamedItem(dictVal, "kgraph", kgCapsule);
 }
 
 void EdictVM::installBootstrapImportCapsule() {

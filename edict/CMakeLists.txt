@@ -30,6 +30,7 @@ set(LIB_SOURCES
     edict_repl.cpp
     block_accumulator.cpp
     edict_vm_treesitter.cpp
+    edict_vm_knowledge_graph.cpp
 )
 
 # Create library

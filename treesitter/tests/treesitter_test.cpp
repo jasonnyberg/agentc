@@ -420,3 +420,116 @@ TEST(StructuralDiffTest, SummaryStringIsHumanReadable) {
     EXPECT_NE(summary.find("changes"), std::string::npos);
     EXPECT_NE(summary.find("added"), std::string::npos);
 }
+
+// ---------------------------------------------------------------------------
+// Knowledge graph tests (G094.5)
+// ---------------------------------------------------------------------------
+
+#include "knowledge_graph.h"
+
+using agentc::knowledge::KnowledgeGraph;
+
+TEST(KnowledgeGraphTest, CreateEmptyGraph) {
+    auto graph = KnowledgeGraph::create();
+    ASSERT_TRUE(graph);
+    EXPECT_EQ(KnowledgeGraph::nodeCount(graph), 0u);
+    EXPECT_EQ(KnowledgeGraph::edgeCount(graph), 0u);
+}
+
+TEST(KnowledgeGraphTest, AddAndRetrieveNode) {
+    auto graph = KnowledgeGraph::create();
+    KnowledgeGraph::addNode(graph, "function_main");
+    EXPECT_TRUE(KnowledgeGraph::hasNode(graph, "function_main"));
+    EXPECT_EQ(KnowledgeGraph::nodeCount(graph), 1u);
+
+    auto node = KnowledgeGraph::getNode(graph, "function_main");
+    EXPECT_TRUE(node);
+}
+
+TEST(KnowledgeGraphTest, AddNodeWithProperties) {
+    auto graph = KnowledgeGraph::create();
+    auto props = agentc::createNullValue();
+    agentc::addNamedItem(props, "line", agentc::createStringValue("42"));
+    agentc::addNamedItem(props, "file", agentc::createStringValue("main.c"));
+    KnowledgeGraph::addNode(graph, "func", props);
+
+    auto node = KnowledgeGraph::getNode(graph, "func");
+    ASSERT_TRUE(node);
+    auto lineItem = node->find("line");
+    ASSERT_TRUE(lineItem && lineItem->getValue());
+    auto lineVal = lineItem->getValue(false, false);
+    std::string lineStr(static_cast<char*>(lineVal->getData()), lineVal->getLength());
+    EXPECT_EQ(lineStr, "42");
+}
+
+TEST(KnowledgeGraphTest, AddAndQueryEdges) {
+    auto graph = KnowledgeGraph::create();
+    KnowledgeGraph::addNode(graph, "a");
+    KnowledgeGraph::addNode(graph, "b");
+    KnowledgeGraph::addNode(graph, "c");
+    KnowledgeGraph::addEdge(graph, "a", "calls", "b");
+    KnowledgeGraph::addEdge(graph, "a", "calls", "c");
+    KnowledgeGraph::addEdge(graph, "b", "imports", "c");
+
+    EXPECT_EQ(KnowledgeGraph::edgeCount(graph), 3u);
+
+    // Query all edges from "a"
+    auto aCalls = KnowledgeGraph::queryEdges(graph, "a", "", "");
+    ASSERT_TRUE(aCalls && aCalls->isListMode());
+    size_t count = 0;
+    aCalls->forEachList([&](CPtr<agentc::ListreeValueRef>&) { ++count; }, false);
+    EXPECT_EQ(count, 2u);
+
+    // Query specific relation
+    auto imports = KnowledgeGraph::queryEdges(graph, "", "imports", "");
+    count = 0;
+    imports->forEachList([&](CPtr<agentc::ListreeValueRef>&) { ++count; }, false);
+    EXPECT_EQ(count, 1u);
+
+    // Query specific target
+    auto toC = KnowledgeGraph::queryEdges(graph, "", "", "c");
+    count = 0;
+    toC->forEachList([&](CPtr<agentc::ListreeValueRef>&) { ++count; }, false);
+    EXPECT_EQ(count, 2u);
+}
+
+TEST(KnowledgeGraphTest, ListNodes) {
+    auto graph = KnowledgeGraph::create();
+    KnowledgeGraph::addNode(graph, "x");
+    KnowledgeGraph::addNode(graph, "y");
+
+    auto nodes = KnowledgeGraph::listNodes(graph);
+    ASSERT_TRUE(nodes && nodes->isListMode());
+    size_t count = 0;
+    nodes->forEachList([&](CPtr<agentc::ListreeValueRef>&) { ++count; }, false);
+    EXPECT_EQ(count, 2u);
+}
+
+TEST(KnowledgeGraphTest, RemoveNodeAndConnectedEdges) {
+    auto graph = KnowledgeGraph::create();
+    KnowledgeGraph::addNode(graph, "a");
+    KnowledgeGraph::addNode(graph, "b");
+    KnowledgeGraph::addEdge(graph, "a", "calls", "b");
+
+    EXPECT_TRUE(KnowledgeGraph::removeNode(graph, "a"));
+    EXPECT_FALSE(KnowledgeGraph::hasNode(graph, "a"));
+    EXPECT_EQ(KnowledgeGraph::edgeCount(graph), 0u);
+}
+
+TEST(KnowledgeGraphTest, GraphIsJsonSerializable) {
+    auto graph = KnowledgeGraph::create();
+    KnowledgeGraph::addNode(graph, "func");
+    KnowledgeGraph::addEdge(graph, "func", "calls", "helper");
+
+    // Verify the graph has the expected structure
+    auto nodes = KnowledgeGraph::listNodes(graph);
+    ASSERT_TRUE(nodes);
+    auto edges = KnowledgeGraph::listEdges(graph);
+    ASSERT_TRUE(edges);
+
+    // The graph should be a tree with "nodes" and "edges" fields
+    auto nodesItem = graph->find("nodes");
+    ASSERT_TRUE(nodesItem);
+    auto edgesItem = graph->find("edges");
+    ASSERT_TRUE(edgesItem);
+}

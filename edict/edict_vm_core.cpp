@@ -2156,6 +2156,8 @@ int EdictVM::runCodeLoop(size_t stopCodeDepth, bool markCompleteOnDrain) {
         &&op_FROM_JSON,
         &&op_AWAIT,
         &&op_TS_LOAD, &&op_TS_PARSE, &&op_TS_LIST, &&op_TS_DIFF,
+        &&op_KG_CREATE, &&op_KG_ADD_NODE, &&op_KG_ADD_EDGE, &&op_KG_GET_NODE,
+        &&op_KG_QUERY, &&op_KG_LIST_NODES, &&op_KG_LIST_EDGES,
     };
     // Verify dispatch table has exactly one entry per opcode. If this fires,
     // an opcode was added to VMOpcode without a corresponding dispatch entry.
@@ -2340,6 +2342,13 @@ op_AWAIT: op_AWAIT(); goto op_epilogue;
         op_TS_PARSE: op_TS_PARSE(); goto op_epilogue;
         op_TS_LIST: op_TS_LIST(); goto op_epilogue;
         op_TS_DIFF: op_TS_DIFF(); goto op_epilogue;
+        op_KG_CREATE: op_KG_CREATE(); goto op_epilogue;
+        op_KG_ADD_NODE: op_KG_ADD_NODE(); goto op_epilogue;
+        op_KG_ADD_EDGE: op_KG_ADD_EDGE(); goto op_epilogue;
+        op_KG_GET_NODE: op_KG_GET_NODE(); goto op_epilogue;
+        op_KG_QUERY: op_KG_QUERY(); goto op_epilogue;
+        op_KG_LIST_NODES: op_KG_LIST_NODES(); goto op_epilogue;
+        op_KG_LIST_EDGES: op_KG_LIST_EDGES(); goto op_epilogue;
 op_INVALID: setError("Op " + std::to_string(op)); goto op_epilogue;
 op_epilogue:
         if (allow_rewrite_epilogue && !(state & (VM_ERROR | VM_YIELD | VM_SCANNING))) applyRewriteLoop();

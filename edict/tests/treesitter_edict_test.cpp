@@ -146,3 +146,49 @@ TEST_F(TreeSitterEdictTest, StructuralDiffIdenticalNoChanges) {
     std::string result = executeAndPopString(vm, compiler, src);
     EXPECT_EQ(result, "[]");
 }
+
+// ---------------------------------------------------------------------------
+// Knowledge graph Edict-level tests (G094.5)
+// ---------------------------------------------------------------------------
+
+TEST_F(TreeSitterEdictTest, KnowledgeGraphCreateAndAddNode) {
+    EdictVM vm;
+    EdictCompiler compiler;
+
+    // Create graph, add a node, list nodes
+    std::string src = "kgraph.create! @g g 'main_func kgraph.add_node! g kgraph.nodes! to_json!";
+    std::string result = executeAndPopString(vm, compiler, src);
+    EXPECT_NE(result.find("main_func"), std::string::npos);
+}
+
+TEST_F(TreeSitterEdictTest, KnowledgeGraphAddEdgeAndQuery) {
+    EdictVM vm;
+    EdictCompiler compiler;
+
+    // Create graph, add nodes, add edge, query
+    vm.execute(compiler.compile(
+        "kgraph.create! @g "
+        "g 'a kgraph.add_node! "
+        "g 'b kgraph.add_node! "
+        "g 'a 'calls 'b kgraph.add_edge!"));
+
+    auto result = executeAndPopString(vm, compiler,
+        "g 'a 'calls 'b kgraph.query! to_json!");
+    EXPECT_NE(result.find("calls"), std::string::npos);
+    EXPECT_NE(result.find("\"a\""), std::string::npos);
+    EXPECT_NE(result.find("\"b\""), std::string::npos);
+}
+
+TEST_F(TreeSitterEdictTest, KnowledgeGraphGetNode) {
+    EdictVM vm;
+    EdictCompiler compiler;
+
+    vm.execute(compiler.compile(
+        "kgraph.create! @g g 'myfunc kgraph.add_node!"));
+
+    // Get the node — should be non-null
+    std::string result = executeAndPopString(vm, compiler,
+        "g 'myfunc kgraph.get_node! to_json!");
+    // A null node would be "null", a real node would be "{}" or have properties
+    EXPECT_NE(result, "null");
+}

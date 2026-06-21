@@ -24,6 +24,7 @@ set_target_properties(tree_sitter_edict PROPERTIES
 add_library(agentc_treesitter SHARED
     tree_sitter_bridge.cpp
     structural_diff.cpp
+    knowledge_graph.cpp
 )
 target_include_directories(agentc_treesitter
     PUBLIC

@@ -131,6 +131,15 @@ enum VMOpcode {
     VMOP_TS_LIST,       // Push list of loaded language names
     VMOP_TS_DIFF,       // Structural diff: lang old_source new_source -- diff_list
 
+    // G094.5: Knowledge graph operations
+    VMOP_KG_CREATE,     // Create empty knowledge graph
+    VMOP_KG_ADD_NODE,   // graph name [properties] -- graph
+    VMOP_KG_ADD_EDGE,   // graph from relation to [properties] -- graph
+    VMOP_KG_GET_NODE,   // graph name -- node_properties (or null)
+    VMOP_KG_QUERY,      // graph from relation to -- edge_list
+    VMOP_KG_LIST_NODES, // graph -- node_name_list
+    VMOP_KG_LIST_EDGES, // graph -- edge_list
+
     // Number of opcodes (must be last)
     VMOP_COUNT
 };

@@ -302,6 +302,15 @@ private:
     void op_TS_LIST();
     void op_TS_DIFF();
 
+    // G094.5: Knowledge graph operations
+    void op_KG_CREATE();
+    void op_KG_ADD_NODE();
+    void op_KG_ADD_EDGE();
+    void op_KG_GET_NODE();
+    void op_KG_QUERY();
+    void op_KG_LIST_NODES();
+    void op_KG_LIST_EDGES();
+
     // Cursor navigation ops (registered via registerCursorOperations)
     void op_CURSOR_DOWN();  // Move cursor to first child; push bool result
     void op_CURSOR_UP();    // Move cursor to parent; push bool result
