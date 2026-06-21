@@ -90,16 +90,15 @@ None.
 
 ## Knowledge Inventory
 
-### Goals — incomplete priority view (10)
+### Goals — incomplete priority view (9)
 - 🔗[G078 — Edict-Resident Agent Loop Consolidation](./Knowledge/Goals/G078-EdictResidentAgentLoopConsolidation/index.md) — active parent track.
 - 🔗[G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design](./Knowledge/Goals/G110-EventfdEpollMicroVmIpcDesign/index.md) — active design/prototype track for brokered waitables, resource ownership, and mailbox IPC.
 - 🔗[G091 — Intern Worker Concurrency MVP](./Knowledge/Goals/G091-InternWorkerConcurrencyMvp/index.md) — active local-intern worker architecture slice; async `intern_start!` / `intern_sync!` / `intern_cancel!`, backpressure, retained terminal statuses, explicit drop/abandon semantics, and non-retroactive cancellation landed; deeper worker cleanup remains.
 - 🔗[G099 — Intern Task Quality Contracts](./Knowledge/Goals/G099-InternTaskQualityContracts/index.md) — active first minimal bounded/checkable async intern contract validators.
-- 🔗[G094 — Curated Native Cognitive Capability Libraries](./Knowledge/Goals/G094-CuratedNativeCognitiveLibraries/index.md) — **COMPLETE**; tree-sitter AST bridge, structural diff engine, and persistent knowledge graph delivered as Edict cognitive capabilities.
 - 🔗[G095 — Edict Cognitive Skill Scaffolds](./Knowledge/Goals/G095-EdictCognitiveSkillScaffolds/index.md) — planned investigation/review/refactor scaffolds.
 - 🔗[G097 — Composite Speculation + Logic + FFI Demo](./Knowledge/Goals/G097-CompositeSpeculationLogicFfiDemo/index.md) — planned integrated showcase/demo.
 - 🔗[G098 — Architectural Vision Work Product](./Knowledge/Goals/G098-ArchitecturalVisionWorkProduct/index.md) — planned durable work product for the extracted architecture summary.
-- 🔗[G075 — Speculative Edict Native Architectures](./Knowledge/Goals/G075-SpeculativeEdictArchitectures/index.md) — deferred speculative reasoning architecture.
+- 🔗[G075 — Speculative Edict Native Architectures](./Knowledge/Goals/G075-SpeculativeEdictNativeArchitectures/index.md) — deferred speculative reasoning architecture.
 - 🔗[G093 — Reference-Scoped ReadOnly Sharing](./Knowledge/Goals/G093-ReferenceScopedReadOnlySharing/index.md) — deferred finer-grained ReadOnly/shadowing refinement.
 
 ### WorkProducts — active references (18)
