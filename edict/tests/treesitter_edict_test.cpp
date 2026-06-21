@@ -123,3 +123,26 @@ TEST_F(TreeSitterEdictTest, ParsedAstCanBeJsonSerialized) {
     EXPECT_NE(result.find("type"), std::string::npos);
     EXPECT_NE(result.find("translation_unit"), std::string::npos);
 }
+
+TEST_F(TreeSitterEdictTest, StructuralDiffFromEdict) {
+    EdictVM vm;
+    EdictCompiler compiler;
+    vm.execute(compiler.compile("'c treesitter.load!"));
+
+    // Diff two C source strings — the result should be a non-empty list
+    std::string src = "'c \"int x;\" \"int x; int y;\" treesitter.diff! @d d to_json!";
+    std::string result = executeAndPopString(vm, compiler, src);
+    // Should contain diff entries (added)
+    EXPECT_NE(result.find("added"), std::string::npos);
+}
+
+TEST_F(TreeSitterEdictTest, StructuralDiffIdenticalNoChanges) {
+    EdictVM vm;
+    EdictCompiler compiler;
+    vm.execute(compiler.compile("'c treesitter.load!"));
+
+    // Diff identical sources — result should be an empty array
+    std::string src = "'c \"int x;\" \"int x;\" treesitter.diff! to_json!";
+    std::string result = executeAndPopString(vm, compiler, src);
+    EXPECT_EQ(result, "[]");
+}

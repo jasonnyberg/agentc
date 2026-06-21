@@ -21,7 +21,10 @@ set_target_properties(tree_sitter_edict PROPERTIES
 )
 
 # Build the C++ bridge library
-add_library(agentc_treesitter SHARED tree_sitter_bridge.cpp)
+add_library(agentc_treesitter SHARED
+    tree_sitter_bridge.cpp
+    structural_diff.cpp
+)
 target_include_directories(agentc_treesitter
     PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}

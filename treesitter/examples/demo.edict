@@ -1,0 +1,52 @@
+# G094 Tree-Sitter Cognitive Capability Demo
+#
+# This script demonstrates how an LLM agent can use tree-sitter
+# capabilities from Edict to parse and analyze source code.
+#
+# Usage:
+#   AGENTC_BUILD_DIR=<build_dir> ./build/edict/edict -e "$(cat demo.edict)"
+
+# --- Setup: Load the C parser ---
+'c treesitter.load!
+
+# --- Example 1: Parse and inspect C source ---
+'c "int main() { return 42; }" treesitter.parse! @ast
+
+# Show the root node type
+ast.type .
+# => translation_unit
+
+# Show JSON representation
+ast to_json! .
+# => {"type":"translation_unit","start_byte":"0",...}
+
+# --- Example 2: Structural diff ---
+# An agent can compare two versions of source code
+# to understand what changed at the AST level.
+'c "int x;" "int x; int y;" treesitter.diff! @diff
+
+# Show the diff as JSON
+diff to_json! .
+# => [{"kind":"added","type":"declaration",...}]
+
+# --- Example 3: Parse Python ---
+'python treesitter.load!
+'python "def hello():\n    return 42" treesitter.parse! @pyast
+pyast.type .
+# => module
+
+# --- Example 4: List all loaded languages ---
+treesitter.list! to_json! .
+# => ["c","python"]
+
+# --- Summary ---
+# The treesitter builtin capsule provides three cognitive operations:
+#   treesitter.load!   — load a language parser
+#   treesitter.parse!  — parse source code into a navigable AST
+#   treesitter.diff!   — structural diff between two source versions
+#
+# An agent uses these instead of regex-based reasoning when it needs
+# precise code structure understanding, e.g.:
+#   - "What functions were added in this commit?"
+#   - "Does this code contain a return statement?"
+#   - "Where is the variable 'x' declared?"

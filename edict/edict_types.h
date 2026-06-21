@@ -129,6 +129,7 @@ enum VMOpcode {
     VMOP_TS_LOAD,       // Load a tree-sitter language parser by name
     VMOP_TS_PARSE,      // Parse source code with loaded language, push AST Listree
     VMOP_TS_LIST,       // Push list of loaded language names
+    VMOP_TS_DIFF,       // Structural diff: lang old_source new_source -- diff_list
 
     // Number of opcodes (must be last)
     VMOP_COUNT

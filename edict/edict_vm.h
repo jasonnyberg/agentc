@@ -300,6 +300,7 @@ private:
     void op_TS_LOAD();
     void op_TS_PARSE();
     void op_TS_LIST();
+    void op_TS_DIFF();
 
     // Cursor navigation ops (registered via registerCursorOperations)
     void op_CURSOR_DOWN();  // Move cursor to first child; push bool result

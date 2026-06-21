@@ -234,6 +234,7 @@ void EdictVM::loadCoreBuiltins() {
     addBuiltinThunk(tsCapsule, "load", VMOP_TS_LOAD);
     addBuiltinThunk(tsCapsule, "parse", VMOP_TS_PARSE);
     addBuiltinThunk(tsCapsule, "list", VMOP_TS_LIST);
+    addBuiltinThunk(tsCapsule, "diff", VMOP_TS_DIFF);
     agentc::addNamedItem(dictVal, "treesitter", tsCapsule);
 }
 

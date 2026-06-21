@@ -311,3 +311,112 @@ TEST(TreeSitterTest, ParsedAstCanBeJsonSerialized) {
     EXPECT_NE(json.find("children"), std::string::npos);
     EXPECT_NE(json.find("start_byte"), std::string::npos);
 }
+
+// ---------------------------------------------------------------------------
+// Structural diff tests (G094.4)
+// ---------------------------------------------------------------------------
+
+#include "structural_diff.h"
+
+using agentc::treesitter::StructuralDiff;
+using agentc::treesitter::DiffResult;
+using agentc::treesitter::DiffEntry;
+
+TEST(StructuralDiffTest, IdenticalSourcesProduceNoChanges) {
+    TreeSitterBridge bridge;
+    std::string errorMsg;
+    ASSERT_TRUE(bridge.loadLanguageByName("c", errorMsg));
+
+    std::string source = "int x = 42;";
+    auto result = StructuralDiff::diff(bridge, "c", source, source, errorMsg);
+    EXPECT_FALSE(result.hasChanges());
+}
+
+TEST(StructuralDiffTest, AddedNodeDetected) {
+    TreeSitterBridge bridge;
+    std::string errorMsg;
+    ASSERT_TRUE(bridge.loadLanguageByName("c", errorMsg));
+
+    std::string oldSource = "int x;";
+    std::string newSource = "int x; int y;";
+    auto result = StructuralDiff::diff(bridge, "c", oldSource, newSource, errorMsg);
+    EXPECT_TRUE(result.hasChanges());
+
+    // Should have at least one Added entry
+    bool hasAdded = false;
+    for (const auto& e : result.entries) {
+        if (e.kind == DiffEntry::Added) hasAdded = true;
+    }
+    EXPECT_TRUE(hasAdded);
+}
+
+TEST(StructuralDiffTest, RemovedNodeDetected) {
+    TreeSitterBridge bridge;
+    std::string errorMsg;
+    ASSERT_TRUE(bridge.loadLanguageByName("c", errorMsg));
+
+    std::string oldSource = "int x; int y;";
+    std::string newSource = "int x;";
+    auto result = StructuralDiff::diff(bridge, "c", oldSource, newSource, errorMsg);
+    EXPECT_TRUE(result.hasChanges());
+
+    // Should have at least one Removed entry
+    bool hasRemoved = false;
+    for (const auto& e : result.entries) {
+        if (e.kind == DiffEntry::Removed) hasRemoved = true;
+    }
+    EXPECT_TRUE(hasRemoved);
+}
+
+TEST(StructuralDiffTest, ModifiedNodeDetected) {
+    TreeSitterBridge bridge;
+    std::string errorMsg;
+    ASSERT_TRUE(bridge.loadLanguageByName("c", errorMsg));
+
+    std::string oldSource = "int x = 1;";
+    std::string newSource = "int x = 2;";
+    auto result = StructuralDiff::diff(bridge, "c", oldSource, newSource, errorMsg);
+    EXPECT_TRUE(result.hasChanges());
+
+    // Should have at least one Modified or Removed+Added pair
+    bool hasChange = false;
+    for (const auto& e : result.entries) {
+        if (e.kind == DiffEntry::Modified || e.kind == DiffEntry::Removed || e.kind == DiffEntry::Added) {
+            hasChange = true;
+        }
+    }
+    EXPECT_TRUE(hasChange);
+}
+
+TEST(StructuralDiffTest, DiffResultConvertsToListree) {
+    TreeSitterBridge bridge;
+    std::string errorMsg;
+    ASSERT_TRUE(bridge.loadLanguageByName("c", errorMsg));
+
+    std::string oldSource = "int x;";
+    std::string newSource = "int x; int y;";
+    auto result = StructuralDiff::diff(bridge, "c", oldSource, newSource, errorMsg);
+    ASSERT_TRUE(result.hasChanges());
+
+    auto listree = StructuralDiff::toListree(result);
+    ASSERT_TRUE(listree);
+    ASSERT_TRUE(listree->isListMode());
+
+    // Count entries
+    size_t count = 0;
+    listree->forEachList([&](CPtr<agentc::ListreeValueRef>&) { ++count; }, false);
+    EXPECT_EQ(count, result.entries.size());
+}
+
+TEST(StructuralDiffTest, SummaryStringIsHumanReadable) {
+    TreeSitterBridge bridge;
+    std::string errorMsg;
+    ASSERT_TRUE(bridge.loadLanguageByName("c", errorMsg));
+
+    std::string oldSource = "int x;";
+    std::string newSource = "int x; int y;";
+    auto result = StructuralDiff::diff(bridge, "c", oldSource, newSource, errorMsg);
+    std::string summary = StructuralDiff::toSummary(result);
+    EXPECT_NE(summary.find("changes"), std::string::npos);
+    EXPECT_NE(summary.find("added"), std::string::npos);
+}

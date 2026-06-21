@@ -7,6 +7,7 @@
 
 #include "edict_vm.h"
 #include "../treesitter/tree_sitter_bridge.h"
+#include "../treesitter/structural_diff.h"
 #include "../listree/listree.h"
 #include <filesystem>
 #include <cstdlib>
@@ -88,6 +89,35 @@ void EdictVM::op_TS_LIST() {
         agentc::addListItem(list, agentc::createStringValue(lang));
     }
     pushData(list);
+}
+
+void EdictVM::op_TS_DIFF() {
+    auto newSourceVal = popData();
+    auto oldSourceVal = popData();
+    auto langVal = popData();
+
+    std::string langName, oldSource, newSource;
+    if (!tsValueToString(langVal, langName)) {
+        setError("TS_DIFF expects language name string");
+        return;
+    }
+    if (!tsValueToString(oldSourceVal, oldSource)) {
+        setError("TS_DIFF expects old source code string");
+        return;
+    }
+    if (!tsValueToString(newSourceVal, newSource)) {
+        setError("TS_DIFF expects new source code string");
+        return;
+    }
+
+    std::string errorMsg;
+    auto diffResult = agentc::treesitter::StructuralDiff::diff(
+        *tsBridge_, langName, oldSource, newSource, errorMsg);
+    if (!errorMsg.empty()) {
+        setError("TS_DIFF failed: " + errorMsg);
+        return;
+    }
+    pushData(agentc::treesitter::StructuralDiff::toListree(diffResult));
 }
 
 } // namespace agentc::edict
