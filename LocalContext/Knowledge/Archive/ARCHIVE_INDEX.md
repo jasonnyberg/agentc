@@ -1,11 +1,38 @@
 # Archive Index
 
 Retired items. Files preserved in Archive/ subdirectories.
-Last updated: 2026-05-28
+Last updated: 2026-06-21
 
 ## Goals
 | Archived | ID | Title | Status | Summary |
 |---|---|---|---|---|
+| 2026-06-21 | G074 | Real-time FFI Token Streaming | Complete | SSE/streaming provider worker, `agentc_call_stream!`/`agentc_stream_sync!`, live Google/Gemma smoke |
+| 2026-06-21 | G078 | Edict-Resident Agent Loop Consolidation | Complete | Edict owns provider/session/tool/context; C++ retains transport/credentials/lifecycle; catalog-driven rehydration |
+| 2026-06-21 | G079 | Edict Agent Loop Tool Support | Complete | `agentc_tools` with file read/write/replace/shell helpers; `llm.edict` provider tools attachment |
+| 2026-06-21 | G080 | LLM REPL Context Management | Complete | Provider-owned `context_reset!`/`context_inspect!` plus REPL slash commands `/reset`, `/clear`, `/context`, `/inspect` |
+| 2026-06-21 | G084 | Remove Dead Dictionary Payload | Complete | Removed unused dictionary payload slot from ListreeItem |
+| 2026-06-21 | G085 | Split Edict VM Translation Unit | Complete | EdictVM split into core/ffi/bootstrap/treesitter/knowledge-graph translation units |
+| 2026-06-21 | G086 | Live Google LLM Regression Coverage | Complete | Live Google/Gemma request/response regression tests |
+| 2026-06-21 | G087 | Prefer Adjacent Eval Sigil | Complete | Adjacent `word!` spelling documented as canonical; `!` as separate token retained for compatibility |
+| 2026-06-21 | G088 | Refresh README Current State | Complete | README updated to reflect current architecture and capabilities |
+| 2026-06-21 | G089 | Remove Edict Pop Keyword | Complete | `pop` removed; bare `/` is the documented stack discard |
+| 2026-06-21 | G090 | User-Oriented README | Complete | README targets potential users with AgentC's unique value, applications, and maturity expectations |
+| 2026-06-21 | G091 | Intern Worker Concurrency MVP | Complete | Blocking/async intern dispatch, lifecycle/drop/abandon, cancellation checkpoints, private cleanup boundary |
+| 2026-06-21 | G092 | Cartographer FFI Re-entrancy Metadata | Complete | 8 capability fields, Cartographer import classification, validation rejecting missing fields |
+| 2026-06-21 | G094 | Curated Native Cognitive Libraries | Complete | Tree-sitter grammar, C++ bridge, Edict builtins, structural diff, persistent knowledge graph |
+| 2026-06-21 | G095 | Edict Cognitive Skill Scaffolds | Complete | `cognitive.edict` module with investigation/code-review/refactor-plan scaffolds, JSON-serializable state |
+| 2026-06-21 | G096 | Authoritative mmap Session Resume | Complete | Deterministic root/session restore, file-backed slab[0], scheduler persistence, layered static mount restore |
+| 2026-06-21 | G097 | Composite Speculation + Logic + FFI Demo | Complete | `demo_composite_speculation_logic_ffi` composing Cartographer FFI + miniKanren + durable Listree state |
+| 2026-06-21 | G098 | Architectural Vision Work Product | Complete | `WP-AgentCArchitecturalVisionInternConcurrency-2026-06-21.md` preserving full architectural vision and roadmap |
+| 2026-06-21 | G099 | Intern Task Quality Contracts | Complete | Bounded task schemas, gather/classify/filter examples, dispatch rejection, evidence/confidence result validators |
+| 2026-06-21 | G100 | Edict Isolation Contract Hardening | Complete | Isolated-call parent-binding protection, non-leaking thunk locals, explicit context-mutation test |
+| 2026-06-21 | G101 | Direct Edict Tool-Emission Path | Complete | `agentc_direct_action!` with `read_file` whitelist, denied-operation envelopes, helper-equivalence tests |
+| 2026-06-21 | G102 | Edict Session ID Startup Flag | Complete | `--session ID` creates/resumes root scopes under `/tmp/session/<id>/` |
+| 2026-06-21 | G103 | Build-Time Static Core Declaration Image MVP | Complete | Static declaration images, slot-table section descriptors, mmap read-only mounting |
+| 2026-06-21 | G104 | Immutable Code Object / Activation Frame Split | Complete | `makeCodeFrame()` immutable code objects, `code_ips_` activation-local IPs, recursive freeze on binary thunks |
+| 2026-06-21 | G106 | Root1 Slab Advertisement Registry | Complete | Logical publication layer registry, manifest/hash/root validation, owner/lease/epoch lifecycle |
+| 2026-06-21 | G108 | Cursor-Scoped Traversal Visit Bitmaps | Complete | Per-slab bitmaps replacing unordered_set; ~2KB/slab dense vs ~40B/node; benchmark under 10ms |
+| 2026-06-21 | G110 | Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design | Complete | Eventfd/epoll broker, mailbox descriptors, resource keys/grants, await!, scheduler save/load, publication registry |
 | 2026-05-28 | G105 | ReadOnly Static Slab Ownership Model | Complete | Immortal static slab model, mount lease/registry, PROT_READ mmap safety proven |
 | 2026-05-28 | G107 | Process-Isolated Micro-VM Interns | Complete | Fork/exec workers, independent G103 image mounting, borrowed bytecode slab execution, documented handle/capability policy (inherited/rehydrated/blocked) |
 | 2026-05-28 | G109 | Listree ReadOnly Mutation Surface Hardening | Complete | Frozen-tree removal/item-history gaps closed for public VM/Cursor paths |
