@@ -1,6 +1,6 @@
 # Goal: G099 — Intern Task Quality Contracts
 
-**Status**: MVP COMPLETE / STABLE
+**Status**: COMPLETE
 **Created**: 2026-05-14  
 **Parent**: 🔗[G091 — Intern Worker Concurrency MVP](../G091-InternWorkerConcurrencyMvp/index.md)
 
@@ -75,6 +75,11 @@ The result envelope should reserve future slab publication metadata even while J
 
 Intern workers are bounded evidence gatherers, classifiers, filters, compressors, or context proxies. They may propose facts with evidence and confidence, but they do not own architecture decisions, multi-file design authority, durable state mutation, provider/runtime handles, or coordinator root merges. The coordinator must validate contracts and decide whether any returned facts are trustworthy enough to merge.
 
+## Completion Summary — 2026-06-21
+G099 is complete for the intern task quality-contract MVP. The verified contract layer includes bounded task schemas with `limits` and `expect`, safe gather/classify/filter examples, `intern.validate_task_contract!`, `intern.validate_status_envelope!`, `intern.validate_result_contract!`, `intern.validate_trusted_result!`, async `intern_start!` pre-dispatch rejection for malformed/over-broad tasks, and coordinator-side result trust checks for missing success/evidence, insufficient evidence, missing confidence, and low confidence. Richer arbitrary JSON-schema/result-shape validation and automatic coordinator merge refusal remain optional future policy, not open G099 acceptance criteria.
+
+Verification evidence: `InternWorkerTest.*:Root1AwaitSchedulerTest.*:Root1PrimitiveModuleTest.*:EdictVM.YieldedExecutionCanResumeCurrentCodeFrame` passed 39/39 on 2026-06-21, including all current G099 validator and dispatch-enforcement tests.
+
 ## Implementation Progress — 2026-05-19
 
 Confidence/evidence policy slice landed:
@@ -113,14 +118,14 @@ First contract-validation slice landed in `intern.edict`:
 - Did: Added first result-validation helper surface, `intern.validate_result_contract!`, backed by the worker primitive substrate for robust nested-field checks. It accepts `{ "expect": ..., "envelope": ... }`, returns `state: "result_valid"` when a complete result has success evidence and evidence entries, and rejects missing envelope state/result/success/evidence with structured `result_error` codes.
 - Did: Added confidence/evidence-threshold policy to result validation: `expect.min_evidence_count` rejects sparse evidence, `expect.min_confidence` rejects missing or low confidence using `low < medium < high`, and `intern.validate_trusted_result!` provides the opt-in coordinator-side wrapper over an expectation object plus a sync/run envelope.
 - Decided: Mandatory enforcement starts at `intern_start!` because background jobs consume broker/waitable capacity; blocking `intern_run!` remains permissive until examples and result validation are stronger. Result validation remains opt-in/coordinator-side rather than automatically mutating `intern_sync!` terminal envelopes; callers decide whether a completed intern result is trusted enough to merge.
-- Remaining: Richer schema/shape checks beyond `result.ok` + `result.evidence`, optional higher-level coordinator policy around automatic merge refusal, and deciding whether `intern_run!` should opt into strict contracts by default later.
-- Next: Reassess whether to continue G099 with result-shape schema checks or pivot back to G091 deeper worker lifecycle/private arena cleanup.
+- Remaining: None for the G099 MVP. Richer schema/shape checks beyond `result.ok` + `result.evidence`, automatic merge refusal, or strict `intern_run!` contracts are future policy options.
+- Next: Proceed to G095 cognitive skill scaffolds now that worker quality-contract MVP coverage is stable.
 
 ### 2026-05-18
 - Did: Added first Edict-level contract validators in `intern.edict` and regression coverage in `InternWorkerTest.InternContractValidatorsCheckTaskAndStatusShape`.
 - Decided: Keep the first validators opt-in/helper-level rather than enforcing them in `intern_run!` / `intern_start!` immediately, so the public module-backed worker surface remains compatible while contract shape is refined.
-- Remaining: Safe task-class examples, result validation beyond public envelope shape, and low-confidence/malformed-result rejection.
-- Next: Add gather/classify/filter contract examples and first result-validation helper for expected result shape/success evidence.
+- Resolved by later 2026-05-19 and 2026-06-21 closeout: safe task-class examples, result validation beyond envelope shape, and low-confidence/malformed-result rejection are complete for the G099 MVP.
+- Next: Historical note superseded; current next goal is G095 after G091/G099 closeout.
 
 ## Acceptance Criteria
 - [x] Intern tasks have explicit, machine-checkable success criteria in the first helper layer (`expect.success_field`).

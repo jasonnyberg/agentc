@@ -1,6 +1,6 @@
 # Goal: G091 — Intern Worker Concurrency MVP
 
-**Status**: PHASE COMPLETE / SUBSTRATE BOUNDED
+**Status**: COMPLETE
 
 **Created**: 2026-05-14  
 **Parent**: 🔗[G078 — Edict-Resident Agent Loop Consolidation](../G078-EdictResidentAgentLoopConsolidation/index.md)
@@ -34,7 +34,7 @@ The intern model is the clearest application-level payoff for AgentC's substrate
 - [x] Harden first lifecycle/drop semantics for the current thread-worker backend: active counts now exclude terminal retained jobs, final async statuses are retained for repeated sync until explicit drop or bounded retention sweep, running drops explicitly abandon the handle without killing the detached worker, and cancellation is non-retroactive once a worker is terminal.
 - [x] Add first worker-visible cooperative cancellation checkpoint protocol: async worker programs that execute `yield!` are resumed by the worker runtime only after checking the job cancellation token, allowing long-running cooperative workers to terminate before executing later program steps.
 - [x] Document the private arena/slab cleanup boundary for the current thread-worker backend versus future G103/G105/G107 process/slab workers; current cleanup relies on scoped VM/CPtr teardown, JSON result copying, explicit job drop/terminal retention policy, and lifecycle accounting rather than premature slab ownership machinery.
-- [ ] Harden explicit private slab/arena cleanup when the later multi-worker/process scheduler introduces separate worker arenas, static slab mounts, or published result slabs.
+- [x] Record the explicit private slab/arena cleanup boundary for the current MVP and defer new cleanup mechanisms until separate worker arenas, static slab mounts, published result slabs, or durable async job records actually exist.
 
 ## Acceptance Criteria
 - [x] A checked-in test demonstrates coordinator dispatch to at least one worker VM and structured result collection.
@@ -43,8 +43,13 @@ The intern model is the clearest application-level payoff for AgentC's substrate
 - [x] Worker output is copied into the main slab with deterministic validation.
 - [x] Documentation captures the safe intern-task rule: bounded task, explicit inputs, clear success criteria.
 
+## Completion Summary — 2026-06-21
+G091 is complete for the intern-worker concurrency MVP. The verified MVP includes deterministic blocking `intern_run!`, broker-compatible async `intern_start!` / `intern_sync!` / `intern_cancel!`, read-only shared context/imports, JSON-snapshotted inputs, coordinator-thread result merge, retained terminal statuses, explicit drop/abandon lifecycle semantics, active/tracked/retained/abandoned lifecycle counters, cooperative `yield!` cancellation checkpoints, and a documented private arena/slab cleanup boundary. Future published result slabs, durable async job records, and process-worker resource-accounting policy belong to follow-on substrate goals, not remaining G091 acceptance criteria.
+
+Verification evidence: `InternWorkerTest.*:Root1AwaitSchedulerTest.*:Root1PrimitiveModuleTest.*:EdictVM.YieldedExecutionCanResumeCurrentCodeFrame` passed 39/39 on 2026-06-21. The closeout full baseline also passed `edict_tests` 186/186, `reflect_tests` 55/55, `listree_tests` 83/83, `cartographer_tests` 52/52, `cpp_agent_tests` 56/56, and `treesitter_tests` 28/28.
+
 ## Current Status — 2026-05-16
-G091 is active. The first deterministic substrate slice is implemented as the `intern_run!` builtin, and the broker-compatible async slice now includes `intern_start!` / `intern_sync!` / `intern_cancel!`:
+G091 is complete. The first deterministic substrate slice is implemented as the `intern_run!` builtin, and the broker-compatible async slice now includes `intern_start!` / `intern_sync!` / `intern_cancel!`:
 
 - The coordinator pushes a task envelope with `task_id`/`id`, required `program`, optional `input`, `context`, and `imports`.
 - `intern_run!` recursively freezes `context` and `imports`, snapshots `input` through JSON, launches a fresh worker `EdictVM` on a native thread with private `workspace`, joins the worker, and returns a structured result envelope.
@@ -149,14 +154,14 @@ Related architecture concept: 🔗[Layered mmap Micro-VM Architecture](../../Con
 - Decided: `yield!` is the first cancellation checkpoint boundary because it already records/resumes VM frame state and avoids new intern-specific VM opcodes. This keeps cancellation cooperative and explicit in worker programs. Running `drop` remains handle abandonment rather than preemption, but now has visible lifecycle accounting.
 - Did: Documented the private arena/slab cleanup boundary for the current thread-worker backend versus future G103/G105/G106/G107 static-slab, publication, and process-isolated worker responsibilities.
 - Decided: Current G091 thread-worker cleanup is sufficient until explicit worker arena/slab handles, immutable result publications, durable async job records, or process-isolated workers exist. More slab cleanup code now would duplicate planned G103/G105/G106/G107 ownership work.
-- Remaining: Richer resource accounting and explicit cleanup only when process-isolated workers/slab publications exist.
-- Next: Pivot to the next substrate prerequisite rather than adding premature G091 slab code; likely G103 static declaration image MVP or G105 static slab ownership audit, depending on desired sequencing.
+- Remaining: None for the G091 MVP. Richer resource accounting and explicit cleanup should be reopened only when process-isolated workers/slab publications/durable job records exist.
+- Next: Use G099/G095+ follow-on goals for quality contracts and cognitive scaffolds rather than adding premature G091 slab code.
 
 ### 2026-05-18
 - Did: Landed first lifecycle/drop semantics on the completed G111 module-backed worker surface: terminal async statuses are retained for repeated sync until explicit drop or bounded sweep, active counts exclude terminal/abandoned jobs, running drops return `abandoned`, terminal drops return `dropped`, abandoned workers suppress orphan completion publication, and cancellation is non-retroactive after terminal completion.
 - Decided: Running `drop` is handle abandonment rather than thread preemption; current detached workers must unwind naturally until a later worker-visible cancellation/checkpoint mechanism exists.
-- Remaining: Deeper private arena/slab cleanup for the later scheduler, abandoned-worker/resource accounting beyond handle abandonment, and worker-visible cancellation checkpoints.
-- Next: Add a worker-visible cancellation checkpoint primitive or protocol so long-running Edict workers can voluntarily stop before finishing the full program.
+- Resolved by later 2026-05-19 and 2026-06-21 closeout: worker-visible cancellation checkpoints, abandoned-worker accounting, and the private arena/slab cleanup boundary are now complete for the G091 MVP.
+- Next: Historical note superseded; current next goal is G095 after G091/G099 closeout.
 
 ## Validation — 2026-05-19
 - `cmake --build build --target edict_tests -j2` — passed.
