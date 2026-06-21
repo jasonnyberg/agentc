@@ -1086,6 +1086,16 @@ TEST(SessionStateStoreTest, FileBackedVmWithSchedulerSurvivesSessionSaveLoad) {
                        "agentc_filebacked_vm_scheduler_save_test").string();
     std::filesystem::remove_all(base);
 
+    // This test specifically validates the file-backed slab[0] path.  Keep it
+    // independent from earlier tests in the same process that may have already
+    // consumed heap-backed slab slots before file-backed mode is configured.
+    Allocator<agentc::ListreeValue>::getAllocator().resetForTests();
+    Allocator<agentc::ListreeValueRef>::getAllocator().resetForTests();
+    Allocator<CLL<agentc::ListreeValueRef>>::getAllocator().resetForTests();
+    Allocator<agentc::ListreeItem>::getAllocator().resetForTests();
+    Allocator<AATree<agentc::ListreeItem>>::getAllocator().resetForTests();
+    BlobAllocator::getAllocator().resetForTests();
+
     // ── Phase 1: Create state, save via file-backed path ──
     {
         agentc::runtime::SessionStateStore store(base);

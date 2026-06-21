@@ -14,51 +14,6 @@ namespace {
 
 using json = nlohmann::json;
 
-json provider_contract_json_for(const std::string& provider) {
-    if (provider == "local") {
-        return json{{"id", "local"},
-                    {"family", "openai-compatible"},
-                    {"runtime_provider", "local"},
-                    {"default_model", "qwen"},
-                    {"request_contract", "canonical-chat-v1"},
-                    {"transport_api", "openai-completions"},
-                    {"message_field", "content"},
-                    {"response_text_path", "message.text"},
-                    {"capabilities", json{{"streaming", "true"}, {"system_prompt", "true"}, {"history", "true"}}}};
-    }
-    if (provider == "openai") {
-        return json{{"id", "openai"},
-                    {"family", "openai-compatible"},
-                    {"runtime_provider", "openai"},
-                    {"default_model", "gpt-4.1"},
-                    {"request_contract", "canonical-chat-v1"},
-                    {"transport_api", "openai-completions"},
-                    {"message_field", "content"},
-                    {"response_text_path", "message.text"},
-                    {"capabilities", json{{"streaming", "true"}, {"system_prompt", "true"}, {"history", "true"}}}};
-    }
-    if (provider == "google") {
-        return json{{"id", "google"},
-                    {"family", "gemini-generate-content"},
-                    {"runtime_provider", "google"},
-                    {"default_model", "gemini-3.1-pro-preview"},
-                    {"request_contract", "canonical-chat-v1"},
-                    {"transport_api", "google-gemini-cli"},
-                    {"message_field", "parts[].text"},
-                    {"response_text_path", "message.text"},
-                    {"capabilities", json{{"streaming", "true"}, {"system_prompt", "true"}, {"history", "true"}}}};
-    }
-    return json{{"id", provider},
-                {"family", "custom"},
-                {"runtime_provider", provider},
-                {"default_model", ""},
-                {"request_contract", "canonical-chat-v1"},
-                {"transport_api", "runtime-native"},
-                {"message_field", "content"},
-                {"response_text_path", "message.text"},
-                {"capabilities", json{{"streaming", "true"}, {"system_prompt", "true"}, {"history", "true"}}}};
-}
-
 
 CPtr<agentc::ListreeValue> json_value_or_throw(const json& value, const char* label) {
     auto out = agentc::fromJson(value.dump());
@@ -115,6 +70,97 @@ std::string shell_literal(const std::string& value) {
     return "[" + value + "]";
 }
 
+std::filesystem::path discover_provider_contracts_module_path() {
+    const auto cwd = std::filesystem::current_path();
+    const auto exePath = executable_path_or_empty();
+    const auto exeDir = exePath.empty() ? std::filesystem::path() : exePath.parent_path();
+    const auto buildDir = exeDir.filename() == "cpp-agent" ? exeDir.parent_path() : exeDir;
+    return first_existing_path_or_throw(
+        {cwd / "cpp-agent" / "edict" / "modules" / "agentc_provider_contracts.edict",
+         buildDir.parent_path() / "cpp-agent" / "edict" / "modules" / "agentc_provider_contracts.edict"},
+        "agentc_provider_contracts.edict module");
+}
+
+std::string provider_spec_word(const std::string& provider) {
+    if (provider.empty() || provider == "google") return "google";
+    if (provider == "local") return "local";
+    if (provider == "openai") return "openai";
+    if (provider == "openai-codex") return "openai_codex";
+    return "unknown";
+}
+
+std::string extract_json_object_before_marker(const std::string& source,
+                                              const std::string& marker) {
+    const auto markerPos = source.find(marker);
+    if (markerPos == std::string::npos) {
+        throw std::runtime_error("provider catalog marker not found: " + marker);
+    }
+    const auto blockLineStart = source.rfind("\n[", markerPos);
+    if (blockLineStart == std::string::npos) {
+        throw std::runtime_error("provider catalog block start not found for: " + marker);
+    }
+    const auto blockStart = blockLineStart + 1;
+    const auto objectStart = source.find('{', blockStart);
+    if (objectStart == std::string::npos || objectStart > markerPos) {
+        throw std::runtime_error("provider catalog JSON object not found for: " + marker);
+    }
+
+    int depth = 0;
+    bool inString = false;
+    bool escaped = false;
+    for (size_t i = objectStart; i < source.size(); ++i) {
+        const char ch = source[i];
+        if (inString) {
+            if (escaped) {
+                escaped = false;
+            } else if (ch == '\\') {
+                escaped = true;
+            } else if (ch == '"') {
+                inString = false;
+            }
+            continue;
+        }
+        if (ch == '"') {
+            inString = true;
+        } else if (ch == '{') {
+            ++depth;
+        } else if (ch == '}') {
+            --depth;
+            if (depth == 0) {
+                return source.substr(objectStart, i - objectStart + 1);
+            }
+        }
+    }
+    throw std::runtime_error("provider catalog JSON object is unterminated for: " + marker);
+}
+
+json provider_contract_json_from_edict(const std::string& provider) {
+    const auto source = read_text_file_or_throw(discover_provider_contracts_module_path());
+    const auto word = provider_spec_word(provider);
+    const auto marker = std::string("] @agentc_provider_") + word + "_spec";
+    auto spec = json::parse(extract_json_object_before_marker(source, marker));
+    if (word == "unknown") {
+        spec["id"] = provider;
+        spec["runtime_provider"] = provider;
+    }
+    return spec;
+}
+
+json edict_runtime_config_json(const std::string& provider, const std::string& model) {
+    auto spec = provider_contract_json_from_edict(provider);
+    json runtimeConfig = {
+        {"default_provider", spec.value("runtime_provider", provider)},
+        {"default_model", model.empty() ? spec.value("default_model", std::string()) : model},
+        {"provider_contract", spec}
+    };
+    return runtimeConfig;
+}
+
+CPtr<agentc::ListreeValue> edict_runtime_config_value(const std::string& provider,
+                                                       const std::string& model) {
+    return json_value_or_throw(edict_runtime_config_json(provider, model), "Edict provider runtime config");
+}
+
 
 json runtime_rehydration_metadata(const json& /*base_runtime_config*/,
                                   const VmRuntimeImportArtifacts& artifacts,
@@ -166,6 +212,11 @@ std::string config_default_or(const json& config, const char* key, const char* f
 nlohmann::json make_default_agent_root(const std::string& system_prompt,
                                        const std::string& default_provider,
                                        const std::string& default_model) {
+    // Keep this cold-start skeleton allocation-neutral: callers may invoke it
+    // after file-backed allocators are configured, and building it through a
+    // temporary VM would allocate into the active session allocator.  The
+    // semantic provider defaults and provider_contract are filled from Edict's
+    // provider catalog by rehydrate_vm_runtime_state() on the actual session VM.
     return json{
         {"conversation", {
             {"system_prompt", system_prompt},
@@ -183,7 +234,7 @@ nlohmann::json make_default_agent_root(const std::string& system_prompt,
         {"runtime", {
             {"default_provider", default_provider},
             {"default_model", default_model},
-            {"provider_contract", provider_contract_json_for(default_provider)}
+            {"provider_contract", nullptr}
         }},
         {"loop", {
             {"status", "ready"},
@@ -311,31 +362,45 @@ void rehydrate_vm_runtime_state(agentc::edict::EdictVM& vm,
         }
     }
 
-    // Ensure default_provider exists
-    auto provider_item = runtime->find("default_provider");
-    if (!provider_item || !provider_item->getValue(false, false) || provider_item->getValue(false, false)->isListMode()) {
-        auto provider_val = agentc::createStringValue(config_default_or(base_runtime_config, "default_provider", "google"));
-        if (provider_item) {
-            runtime->addItemValue(provider_item, provider_val, true);
+    const auto runtime_json = json_from_value_or_throw(runtime, "runtime config");
+    auto string_field = [](const json& object, const char* key, const std::string& fallback) -> std::string {
+        return object.contains(key) && object[key].is_string() ? object[key].get<std::string>() : fallback;
+    };
+    const std::string requested_provider = string_field(
+        runtime_json, "default_provider", config_default_or(base_runtime_config, "default_provider", ""));
+    const std::string requested_model = string_field(
+        runtime_json, "default_model", config_default_or(base_runtime_config, "default_model", ""));
+
+    // Fill missing runtime defaults and provider_contract from the Edict provider
+    // catalog.  C++ may pass explicit config overrides, but it no longer mirrors
+    // provider semantic defaults or request-contract fields itself.
+    auto runtime_config_ltv = edict_runtime_config_value(requested_provider, requested_model);
+    if (!runtime_config_ltv) {
+        throw std::runtime_error("Edict provider runtime config construction returned null");
+    }
+    const auto resolved_runtime_json = json_from_value_or_throw(runtime_config_ltv, "Edict provider runtime config");
+    auto set_runtime_string = [&](const char* key, const std::string& value) {
+        auto item = runtime->find(key);
+        auto val = agentc::createStringValue(value);
+        if (item) {
+            runtime->addItemValue(item, val, true);
         } else {
-            agentc::addNamedItem(runtime, "default_provider", provider_val);
+            agentc::addNamedItem(runtime, key, val);
         }
+    };
+    if (!runtime_json.contains("default_provider") || requested_provider.empty()) {
+        set_runtime_string("default_provider", string_field(resolved_runtime_json, "default_provider", requested_provider));
+    }
+    if (!runtime_json.contains("default_model") || requested_model.empty()) {
+        set_runtime_string("default_model", string_field(resolved_runtime_json, "default_model", requested_model));
     }
 
-    // Ensure default_model exists
-    auto model_item = runtime->find("default_model");
-    if (!model_item || !model_item->getValue(false, false) || model_item->getValue(false, false)->isListMode()) {
-        auto model_val = agentc::createStringValue(config_default_or(base_runtime_config, "default_model", "gemini-3.1-pro-preview"));
-        if (model_item) {
-            runtime->addItemValue(model_item, model_val, true);
-        } else {
-            agentc::addNamedItem(runtime, "default_model", model_val);
-        }
-    }
-
-    const std::string provider_name = config_default_or(base_runtime_config, "default_provider", "google");
     auto provider_contract_item = runtime->find("provider_contract");
-    auto provider_contract_ltv = json_value_or_throw(provider_contract_json_for(provider_name), "provider contract");
+    auto provider_contract_ref = runtime_config_ltv->find("provider_contract");
+    if (!provider_contract_ref || !provider_contract_ref->getValue(false, false)) {
+        throw std::runtime_error("Edict provider runtime config is missing provider_contract");
+    }
+    auto provider_contract_ltv = provider_contract_ref->getValue(false, false);
     if (provider_contract_item) {
         runtime->addItemValue(provider_contract_item, provider_contract_ltv, true);
     } else {

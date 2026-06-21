@@ -157,6 +157,35 @@ TEST(AgentRootVmOpsTest, RehydratesTransientRuntimeStateExplicitlyOnStartup) {
     EXPECT_EQ(rehydrated["conversation"]["messages"][1]["text"].get<std::string>(), "world");
 }
 
+TEST(AgentRootVmOpsTest, RehydrateFillsMissingRuntimeDefaultsFromEdictCatalog) {
+    nlohmann::json root = {
+        {"conversation", {
+            {"system_prompt", "system"},
+            {"messages", nlohmann::json::array()},
+            {"assistant_text", ""}
+        }},
+        {"runtime", nlohmann::json::object()},
+        {"loop", {{"status", "ready"}}}
+    };
+
+    auto vm = makeVm(root);
+    agentc::runtime::rehydrate_vm_runtime_state(
+        *vm,
+        nlohmann::json::object(),
+        mockRuntimeArtifacts(),
+        "startup-fresh",
+        "");
+
+    const auto rehydrated = nlohmann::json::parse(agentc::toJson(vm->getCursor().getValue()));
+    ASSERT_TRUE(rehydrated["runtime"].is_object());
+    EXPECT_EQ(rehydrated["runtime"]["default_provider"].get<std::string>(), "google");
+    EXPECT_EQ(rehydrated["runtime"]["default_model"].get<std::string>(), "gemini-3.1-pro-preview");
+    ASSERT_TRUE(rehydrated["runtime"]["provider_contract"].is_object());
+    EXPECT_EQ(rehydrated["runtime"]["provider_contract"]["id"].get<std::string>(), "google");
+    EXPECT_EQ(rehydrated["runtime"]["provider_contract"]["transport_api"].get<std::string>(),
+              "google-gemini-cli");
+}
+
 TEST(AgentRootVmOpsTest, RunTurnCanInvokeRuntimeThroughImportedVmBindings) {
     auto root = agentc::runtime::make_default_agent_root("system", "google", "gemini-3.1-pro-preview");
     root["runtime"]["default_provider"] = "mock";

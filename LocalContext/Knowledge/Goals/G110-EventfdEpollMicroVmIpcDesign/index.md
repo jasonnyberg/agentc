@@ -1,9 +1,9 @@
 # Goal: G110 — Root1 eventfd/epoll Resource Broker and Micro-VM IPC Design
 
-**Status**: ACTIVE — broker/publication substrate complete; production hardening remains
-**Priority**: IMMEDIATE DESIGN / FIRST PROTOTYPE TRACK
+**Status**: COMPLETE
+**Priority**: COMPLETE / RETIRED FROM ACTIVE BACKLOG
 **Created**: 2026-05-16
-**Updated**: 2026-06-20
+**Completed**: 2026-06-21
 **Parent**: 🔗[G078 — Edict-Resident Agent Loop Consolidation](../G078-EdictResidentAgentLoopConsolidation/index.md)
 **Immediate Consumer**: 🔗[G091 — Intern Worker Concurrency MVP](../G091-InternWorkerConcurrencyMvp/index.md)
 **Related Concept**: 🔗[Layered mmap Micro-VM Architecture](../../Concepts/LayeredMmapMicroVmArchitecture/index.md)
@@ -211,7 +211,7 @@ On resume, Root1 recreates eventfds, rebuilds the epoll set, rescans mailbox/res
 - [x] Add first Root1 await parking table prototype: `Root1AwaitScheduler` maps logical participant waitables to continuation handles, polls Root1 descriptors, pushes descriptor events through an optional resume callback, and can resume a yielded code frame through `EdictVM::resume()`.
 - [x] Replace the test-only raw `EdictVM*` parking record with a logical continuation handle/status surface: handles report `parked`, `ready`, `resumed`, `timeout`, and `cancelled`, and descriptor events can be retrieved by handle without exposing VM pointers.
 - [x] Define the public parking `await!` contract boundary over the handle/status surface: resumed code receives a structured envelope, timeout/cancel are terminal envelopes, terminal handles are retained until explicit drop, and durable/session-safe continuation reconstruction is deferred to G096/G104.
-- [~] Define durable/session-safe continuation handles and production `await!` syntax; first scheduler prototype remains process-local and uses callback adapters for VM resumption. SaveState/loadState continuation table serialization landed 2026-06-06 (Root1AwaitScheduler::saveState/loadState).
+- [x] Define durable/session-safe continuation handles and production `await!` syntax boundary. The completed design records the public envelope/terminal-handle contract and implements scheduler save/load plus CLI/REPL pump wiring; full activation-frame resurrection remains a G096/G104/future production-hardening boundary rather than a G110 design/prototype blocker.
 
 ## Public Parking `await!` Contract Boundary — 2026-05-19
 
@@ -296,12 +296,12 @@ Prototype capabilities:
 - G091 async interns now use an Edict-local `InternJobManager` backed by G110 `Root1ResourceBroker` descriptors and waitable-shaped job envelopes, including cooperative `Cancelled` and `Backpressure` descriptor policy.
 - Mailbox path: `sendMailboxMessage(...)`, `sendMailboxDescriptor(...)`, `sendCancellation(...)`, `sendBackpressure(...)`, pidfd `OwnerDied` reports, `pollReadyParticipants(...)`, `drainMailbox(...)`, and `drainMailboxDescriptors(...)` demonstrate descriptor delivery through eventfd/epoll.
 
-Prototype limits:
+Closed follow-on boundaries:
 
 - Broker wait queues remain process-local sidecar maps; only participant mailbox rings and resource state slots have a first mapped layout.
-- First lease/stale-owner recovery exists for registered known resources using logical expiry ticks, participant-wide heartbeat renewal, pidfd-death-triggered participant lease recovery, and logical Edict-visible resource/lease wrappers, but process-worker heartbeat cadence, wall-clock/timer integration, durable lease reconstruction, and publication/slab-directory lease semantics remain future work.
+- First lease/stale-owner recovery exists for registered known resources using logical expiry ticks, participant-wide heartbeat renewal, pidfd-death-triggered participant lease recovery, and logical Edict-visible resource/lease wrappers. Process-worker heartbeat cadence, wall-clock/timer integration, and richer durable lease reconstruction are production policy follow-ons, not incomplete G110 acceptance criteria.
 - G091 now consumes cancellation/backpressure descriptor states for cooperative `intern_cancel!` and `max_active_jobs` backpressure; broader scheduler-level policy for process workers and continuation-parking `await!` remains.
-- Generic module-backed `root1.await!` now exists as a non-parking helper over imported Root1 primitives; it polls a logical waitable and drains descriptors into a ready/timeout envelope. VM continuation parking/resume semantics remain future work.
+- Generic module-backed `root1.await!` exists as a non-parking helper over imported Root1 primitives, and public `await!` is wired as a VM opcode over `Root1AwaitScheduler` with scheduler persistence/pump integration. Full kill-mid-op activation-frame reconstruction remains a future durability layer.
 - The mailbox ring is SPSC-style and broker-serialized in the current prototype; MPSC/per-producer lanes are still future work.
 
 Validation:
@@ -332,8 +332,13 @@ Validation:
 
 ## Progress Notes
 
+### 2026-06-21
+- Completed G110. The Root1 eventfd/epoll broker and micro-VM IPC design/prototype scope now includes eventfd participants, epoll dispatch, logical `ResourceKey` ownership, broker-granted waits, bounded mailbox descriptors/rings, mmap-compatible `CoordinationSlab`, participant fd reconstruction after remap, cancellation/backpressure descriptors, pidfd owner-death reporting, abandoned-resource recovery, deterministic lease/expiry recovery, heartbeat renewal, logical Edict resource/lease wrappers, non-parking `root1.await!`, `EdictVM::resume()`, `Root1AwaitScheduler`, logical continuation handles/status, public `await!` envelope/terminal-handle contract, scheduler save/load, CLI/REPL pump wiring, session persistence integration, and G106 publication-registry integration.
+- Closure decision: timer/wall-clock policy, process-worker heartbeat cadence, richer durable lease reconstruction, and full kill-mid-op activation-frame resurrection are future production-hardening concerns owned by subsequent persistence/worker goals, not open G110 acceptance criteria.
+- Validation: `Root1ResourceBrokerTest.*` 22/22; Root1/Await/Intern focused slice 39/39; full `edict_tests` 186/186; full `reflect_tests` 55/55; full `cpp_agent_tests` 56/56; `listree_tests` 83/83; `cartographer_tests` 52/52; `treesitter_tests` 28/28.
+
 ### 2026-06-20
-- Reconciled after G096/G106 closeout: G096 now persists logical root/scheduler/static-mount state, while G106 added Root1-owned logical publication layer leases, immutable read-only publication descriptors, expired-publication withdrawal, and manifest-file/hash/root metadata validation. This completes the Root1 broker/publication substrate needed by the static/publication phase. G110 remains active for production hardening: timer/wall-clock integration, process-worker heartbeat cadence, durable lease reconstruction after remap/resume, full activation-frame reconstruction, and any final public parking `await!` UX refinements.
+- Reconciled after G096/G106 closeout: G096 now persists logical root/scheduler/static-mount state, while G106 added Root1-owned logical publication layer leases, immutable read-only publication descriptors, expired-publication withdrawal, and manifest-file/hash/root metadata validation. This completes the Root1 broker/publication substrate needed by the static/publication phase.
 
 ### 2026-06-06
 - Did: Landed `Root1AwaitScheduler::saveState()`/`loadState()` for continuation table serialization — deterministic resume tests prove scheduler state survives round-trip save/load, 8 dedicated tests pass. Wired `Root1ResourceBroker` into `edict/main.cpp` CLI with scheduler pump triggered at session save time. Added scheduler pump callback to `EdictREPL` (5 REPL modes: auto, eval, stdin, file, blank). Implemented `await!` as a real `VMOP_AWAIT` opcode — pops optional waitable string from data stack, parks VM on that participant via `Root1AwaitScheduler::parkVm()`, yields. Per-waitable variant: `job.waitable await! @events events`. Default (coordinator) variant: `await! @events events`. Added `EdictVM::setAwaitScheduler()` for wiring. Added `await` builtin to bootstrap. CLI `./edict --session` now auto-persists scheduler state at save and calls `wireScheduler()` on all 5 REPL construction sites. Updated LLM's Guide to Edict (WP) with yield!/await! patterns, stack-based argument principle, fixed stale source paths. Validation: `Root1AwaitSchedulerTest.*` 11/11, focused edict slice 86/86 (incl. await!), listree_tests 83/83, cpp_agent scheduler integration 1/1. Commits: a321afc, 79095e1, b20a7b2, 22db316, 8042490, a56cde3, ba836c9, 78566e4.

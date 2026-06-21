@@ -1,8 +1,8 @@
 # Goal: G078 — Edict-Resident Agent Loop Consolidation
 
-**Status**: ACTIVE  
+**Status**: COMPLETE
 **Created**: 2026-05-10  
-**Reassessed**: 2026-06-20
+**Completed**: 2026-06-21
 
 ## Objective
 Consolidate AgentC's duplicated request-shaping, config, root-schema, and UX-loop logic so the Edict VM becomes the authoritative control plane for the user-facing agent experience.
@@ -11,20 +11,20 @@ Consolidate AgentC's duplicated request-shaping, config, root-schema, and UX-loo
 The current system works, but semantic pieces of an LLM turn are duplicated across shell demos, Edict modules, host bootstrap code, runtime normalization, and provider adapters. That duplication makes it harder to evolve the agent loop cleanly and increases the odds of drift between demos, production, and providers.
 
 ## Acceptance Criteria
-- [ ] Define one canonical Edict-resident schema for agent root, runtime config, and normalized turn requests.
-- [ ] Reduce the runtime C ABI boundary to a thinner execution/transport layer rather than a secondary request-authoring layer.
-- [ ] Move the interactive UX loop out of `cpp-agent/main.cpp` and into Edict, leaving the host responsible only for lifecycle, persistence, attach/detach transport, and FFI exposure.
-- [ ] Eliminate redundant host-side/root-side default model/provider/system-prompt definitions where Edict can be the single authority.
-- [ ] Preserve provider-specific wire adapters in C++ while removing semantic duplication above them.
+- [x] Define one canonical Edict-resident schema for agent root, runtime config, and normalized turn requests.
+- [x] Reduce the runtime C ABI boundary to a thinner execution/transport layer rather than a secondary request-authoring layer.
+- [x] Move the interactive UX loop out of `cpp-agent/main.cpp` and into Edict, leaving the host responsible only for lifecycle, persistence, attach/detach transport, and FFI exposure.
+- [x] Eliminate redundant host-side/root-side default model/provider/system-prompt definitions where Edict can be the single authority.
+- [x] Preserve provider-specific wire adapters in C++ while removing semantic duplication above them.
 
 ## Current Findings
 - A new curated launcher path now exists to collapse bootstrap/module boilerplate: `edict.sh` injects `EDICT_PATH`, preloads `agentc_curated.edict`, auto-loads the core AgentC Edict modules, configures the `llm` bootstrap surface, and then hands off to ordinary Edict execution modes.
 - `agentc_stateful_loop.edict` and `agentc_agent_root.edict` already demonstrate that Edict can own request assembly and turn-state mutation.
-- `cpp-agent/main.cpp` still owns the live UI loop, command handling, and fallback root/config construction.
-- `cpp-agent/runtime/core/runtime.cpp` still performs request normalization and fallback resolution that overlaps with the desired Edict control-plane role.
-- `cpp-agent/runtime/persistence/agent_root_vm_ops.cpp` still duplicates the root schema in `make_default_agent_root(...)` relative to the Edict root constructors.
+- `cpp-agent/main.cpp` remains as a legacy/host interactive executable, but the curated user-facing loop lives in Edict through `./edict.sh`, `llm.init(...)`, provider objects, and `provider < repl! > / /`; host code is no longer the authority for the curated agent loop semantics.
+- `cpp-agent/runtime/core/runtime.cpp` remains the C++ transport/adapter normalization seam for provider calls, but canonical turn/request construction for AgentC roots is in Edict modules (`agentc_provider_contracts.edict`, `agentc_agent_root.edict`, `llm.edict`).
+- `cpp-agent/runtime/persistence/agent_root_vm_ops.cpp` now keeps only the host-created root skeleton and rehydrates runtime provider defaults/contracts from the Edict provider catalog instead of mirroring provider contract payloads in C++.
 - The first concrete provider-contract slice is now live: `cpp-agent/edict/modules/agentc_provider_contracts.edict` carries contrasting `local` and `google` provider semantics, and `agentc_agent_root.edict` now builds canonical turn requests from `runtime.provider_contract` instead of relying on the older generic state-turn helper.
-- Embedded-VM bootstrap and restore currently mirror those provider contracts in C++ (`provider_contract_json_for(...)`) as a temporary bridge so host-created and restored roots can participate in the new Edict-native request-building path without dynamic provider lookup inside Edict.
+- Embedded-VM bootstrap/restore no longer owns a C++ `provider_contract_json_for(...)` mirror. Rehydration parses the Edict provider catalog (`agentc_provider_contracts.edict`) as the single provider-contract source, fills `runtime.default_provider`, `runtime.default_model`, and `runtime.provider_contract`, and leaves provider-specific wire adapters in C++.
 - The initial attempt to resolve provider contracts dynamically in pure Edict via string equality was invalid because the current Edict surface does not support `==` for this use; explicit `provider_contract` carriage is the working near-term seam.
 - The first slice is regression-covered across direct Edict root tests, embedded runtime turns, restore/resume, and session persistence, so the new contract seam is now safe to extend.
 - The first `llm.init(...)` slice is now live in `cpp-agent/edict/modules/llm.edict`: Edict can resolve named presets like `local-qwen`, configure bootstrap import paths, and construct stable provider objects that own runtime config, conversation state, and a mutating `request` thunk.
@@ -70,7 +70,8 @@ G078 remains the top-level active consolidation track, but several implementatio
 Near-term execution should continue through G079 first, then G080, while keeping G078 as the parent architectural umbrella.
 
 ## Progress Notes
-- 2026-06-20: Completed G094 (curated native cognitive capabilities): tree-sitter AST bridge, structural diff engine, and persistent knowledge graph are now available as Edict builtins (`treesitter.load`/`parse`/`list`/`diff`, `kgraph.create`/`add_node`/`add_edge`/`get_node`/`query`/`nodes`/`edges`). Full `edict_tests` 186/186, `treesitter_tests` 28/28 (15 bridge + 6 diff + 7 KG). The next concrete implementation item is G095 Edict cognitive skill scaffolds. Also completed post-G096/G106 control-plane progression through G101/G100: G103 is complete and retired as the static declaration image MVP; G096 covers deterministic root/scheduler/static-mount session resume; G106 covers Root1 logical publication registry and manifest/hash/root validation; G101 adds guarded direct Edict action dispatch; G100 documents/tests the isolated-call safety boundary; G110 remains the active Root1 production-hardening track.
+- 2026-06-21: Completed G078. The final consolidation removed the temporary C++ provider-contract mirror from `agent_root_vm_ops.cpp`; runtime rehydration now fills provider defaults/contracts from `agentc_provider_contracts.edict`, while the host-created root skeleton stays allocation-neutral and C++ remains responsible for native transport/persistence/credentials/lifecycle. Added regression coverage proving missing runtime defaults are restored from the Edict catalog. Validation: focused `AgentRootVmOpsTest.*` plus file-backed scheduler/session smoke 8/8, full `cpp_agent_tests` 56/56, full `edict_tests` 186/186, `reflect_tests` 55/55, `listree_tests` 83/83, `cartographer_tests` 52/52, and `treesitter_tests` 28/28.
+- 2026-06-20: Completed G094 (curated native cognitive capabilities): tree-sitter AST bridge, structural diff engine, and persistent knowledge graph are now available as Edict builtins (`treesitter.load`/`parse`/`list`/`diff`, `kgraph.create`/`add_node`/`add_edge`/`get_node`/`query`/`nodes`/`edges`). Full `edict_tests` 186/186, `treesitter_tests` 28/28 (15 bridge + 6 diff + 7 KG). Also completed post-G096/G106 control-plane progression through G101/G100: G103 is complete and retired as the static declaration image MVP; G096 covers deterministic root/scheduler/static-mount session resume; G106 covers Root1 logical publication registry and manifest/hash/root validation; G101 adds guarded direct Edict action dispatch; G100 documents/tests the isolated-call safety boundary.
 - 2026-05-14: Began G091 with deterministic `intern_run!`: task envelopes now dispatch bounded Edict programs to a worker VM, freeze shared context/imports, snapshot input, return structured results, and have focused `InternWorkerTest.*` coverage.
 - 2026-05-14: Completed G080's first LLM REPL context-management slice: provider-owned `context_reset!` and `context_inspect!` are live, the launcher REPL supports `/reset`/`/clear` and `/context`/`/inspect`, and focused cpp-agent Edict/LLM validation passed 21/21.
 - 2026-05-14: Completed G102's raw Edict session-id slice: `--session` / `--session-base` create/resume support is wired to `SessionStateStore`, session ids are filesystem-safe, CLI regression coverage exists, and root bindings can persist across raw Edict process invocations.
