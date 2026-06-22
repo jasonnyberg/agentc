@@ -6,6 +6,7 @@ Last updated: 2026-06-21
 ## Goals
 | Archived | ID | Title | Status | Summary |
 |---|---|---|---|---|
+| 2026-06-21 | G093 | Reference-Scoped ReadOnly Sharing | Complete | Explicit overlay dictionaries (7 VM opcodes), shadow/fallthrough lookup, coordinator isolation, ReadOnly preservation |
 | 2026-06-21 | G074 | Real-time FFI Token Streaming | Complete | SSE/streaming provider worker, `agentc_call_stream!`/`agentc_stream_sync!`, live Google/Gemma smoke |
 | 2026-06-21 | G078 | Edict-Resident Agent Loop Consolidation | Complete | Edict owns provider/session/tool/context; C++ retains transport/credentials/lifecycle; catalog-driven rehydration |
 | 2026-06-21 | G079 | Edict Agent Loop Tool Support | Complete | `agentc_tools` with file read/write/replace/shell helpers; `llm.edict` provider tools attachment |
