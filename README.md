@@ -3,12 +3,13 @@
 AgentC is an experimental runtime for agents that need more than prompt text, JSON tool
 calls, and short-lived scratchpads. It gives an agent a persistent memory graph, a compact
 native language ("Edict", for Executable Dictionary), rollback-safe execution, dynamic
-access to C/C++ capabilities, and embedded logic programming in one substrate.
+access to C/C++ capabilities, embedded logic programming, cognitive skill scaffolds, and
+local worker agents in one substrate.
 
-Edict, AgentC's VM language, becomes the
+Edict, AgentC's VM language, is the
 agent control plane. Provider sessions, tool use, context management, speculative branches,
-and delegated worker agents should move into the VM. C++ remains the native layer for memory,
-persistence, credentials, transports, and unsafe system capabilities.
+delegated worker agents, and cognitive state machines all live inside the VM. C++ remains the
+native layer for memory, persistence, credentials, transports, and unsafe system capabilities.
 
 AgentC is currently an internal-alpha research prototype. It is useful for experimentation and
 for building early agent loops, but interfaces are still evolving.
@@ -33,6 +34,8 @@ AgentC is designed for applications where an agent should be able to:
   ordering, or API-shape matching.
 - **Delegate narrow work to local worker agents** without spending the primary model's context
   window on file reading, filtering, or summarization.
+- **Maintain structured cognitive state** (hypotheses, evidence, findings) across turns using
+  durable scaffold objects that serialize to JSON.
 
 AgentC is not just another chat wrapper. It is a candidate operating environment for agents
 whose memory, actions, constraints, and provider state should live together.
@@ -44,9 +47,9 @@ whose memory, actions, constraints, and provider state should live together.
 ### Persistent cognitive memory
 
 AgentC stores state in arena-backed Listree nodes. Pointers are relative offsets, so state can
-be persisted through file-backed slabs and restored without reconstructing an object graph. The
-long-term goal is simple: kill an agent mid-task, restart it, and continue from the same
-cognitive state.
+be persisted through file-backed slabs and restored without reconstructing an object graph.
+Named sessions (`edict --session ID`) survive process restart through deterministic
+root/scheduler/static-mount resume.
 
 ### O(1) speculative execution
 
@@ -74,6 +77,18 @@ miniKanren is embedded alongside Edict. Logic queries share the same memory subs
 the same rollback mechanics. Constraint solving can be part of the agent's thought process, not
 an external microservice.
 
+### Cognitive skill scaffolds
+
+Reusable Edict-level state machines for investigation, code review, and refactor planning.
+Scaffold state is ordinary Listree — it serializes with `to_json!`, survives across VM
+executes, and can be snapshot/restored for branch isolation.
+
+### Reference-scoped ReadOnly sharing
+
+Overlay dictionaries let worker agents shadow specific keys on a frozen shared configuration
+without mutating the coordinator's state. The frozen base stays ReadOnly; the worker's shadow
+values are mutable and inspectable through `overlay.commit!`.
+
 ---
 
 ## Applications AgentC Is Aimed At
@@ -86,6 +101,7 @@ an external microservice.
 | Long-running research agents | Intermediate findings can live in structured memory, not only in transcript text. |
 | Local intern agents | Secondary models can gather, filter, and summarize while the primary model decides. |
 | Constraint-heavy automation | miniKanren can solve bounded dependency/order/matching problems explicitly. |
+| Multi-branch reasoning | Speculative execution with slab rollback enables ToT/MCTS-style exploration (future). |
 
 ---
 
@@ -98,7 +114,8 @@ Agent / user intent
         │
         ▼
 Edict control plane
-  provider loops, tools, memory updates, speculation, logic calls
+  provider loops, tools, memory updates, speculation, logic calls,
+  cognitive scaffolds, overlay dictionaries, intern worker dispatch
         │
         ▼
 Persistent Listree state
@@ -106,12 +123,13 @@ Persistent Listree state
         │
         ▼
 Native substrate
-  mmap/slabs, C/C++ FFI, provider transports, credentials, file/shell helpers
+  mmap/slabs, C/C++ FFI, provider transports, credentials, file/shell helpers,
+  Root1 eventfd/epoll broker, process-isolated workers
 ```
 
 The important shift is that the agent is not just asking a host process to run tools. The agent
 can increasingly *own the loop* inside Edict: maintain provider state, mutate structured memory,
-call native code, probe branches, and decide what to keep.
+call native code, probe branches, delegate to workers, and decide what to keep.
 
 ---
 
@@ -274,6 +292,51 @@ provider < [/tmp/agentc-note.txt] tools.read_file! @last_tool > / /
 provider.last_tool.content print
 ```
 
+### 6. Cognitive skill scaffolds
+
+Investigation, code-review, and refactor-plan state machines with JSON-serializable state:
+
+```edict
+"parser-regression" cognitive.investigation_new! @investigation
+investigation "H1" "cache-stale" cognitive.investigation_add_hypothesis! @investigation
+investigation "H1" "edict/tests/vm_stack_tests.cpp:136" cognitive.investigation_add_evidence! @investigation
+investigation to_json! @snapshot
+snapshot print
+```
+
+### 7. Overlay dictionaries for worker-local shadow values
+
+Workers can shadow specific keys on a frozen shared configuration without mutating the
+coordinator's state:
+
+```edict
+{"model": "gpt-4", "temperature": "0.7"} @config
+config freeze! @frozen_config
+frozen_config overlay.new! @worker_view
+worker_view "temperature" "0.2" overlay.set! @worker_view
+worker_view "temperature" overlay.get! print
+worker_view "model" overlay.get! print
+frozen_config.temperature print
+```
+
+Expected output:
+
+```text
+0.2
+gpt-4
+0.7
+```
+
+### 8. Composite FFI + logic + state
+
+```bash
+./build/demo/demo_composite_speculation_logic_ffi
+```
+
+This demo composes Cartographer-imported native FFI (`add(10,32)=42`), a miniKanren query
+parameterized by the native result, and durable Listree state commitment in one deterministic
+script.
+
 ---
 
 ## Current State
@@ -281,24 +344,29 @@ provider.last_tool.content print
 AgentC is usable today as an experimental local runtime with these working surfaces:
 
 - Edict compiler, VM, REPL, contexts, rewrite rules, transactions, and `speculate [...]`.
-- `edict --session ID` startup flag for named session create/resume under `/tmp/session/<id>/` by default.
-- Persistent Listree/slab substrate with file-backed persistence work underway.
-- Cartographer FFI imports for C/C++ headers and shared libraries.
+- `edict --session ID` for named session create/resume with deterministic root/scheduler/static-mount restore.
+- Persistent Listree/slab substrate with file-backed persistence and mmap-backed session resume.
+- Cartographer FFI imports for C/C++ headers and shared libraries, with re-entrancy capability metadata.
 - Embedded miniKanren runtime with Edict-callable query evaluation.
+- Tree-sitter bridge: `treesitter.load!`/`parse!`/`list!`/`diff!` for AST parsing and structural diffing.
+- Persistent knowledge graph: `kgraph.create!`/`add_node!`/`add_edge!`/`get_node!`/`query!`/`nodes!`/`edges!`.
+- Cognitive skill scaffolds: investigation, code-review, and refactor-plan state machines with JSON serialization.
+- Overlay dictionaries: `overlay.new!`/`set!`/`get!`/`has!`/`keys!`/`shadow_keys!`/`commit!` for reference-scoped ReadOnly sharing.
 - Curated `edict.sh` launcher and Edict modules under `cpp-agent/edict/modules/`.
-- Provider objects via `llm.init(...)` for local OpenAI-compatible models, Google/Gemini/Gemma,
-  and OpenAI Codex.
+- Provider objects via `llm.init(...)` for local OpenAI-compatible models, Google/Gemini/Gemma, and OpenAI Codex.
 - File/shell helper surface attached to provider objects.
 - Streaming provider path using background native workers and main-thread synchronization.
-- First thread-helper proof of concept: fresh worker VMs plus explicit shared cells.
+- Intern worker substrate: `intern_run!` (blocking), `intern_start!`/`intern_sync!`/`intern_cancel!` (async), with quality contracts and backpressure.
+- Process-isolated workers: thread, fork, and fork/exec backends with independently mounted static declaration images.
+- Root1 eventfd/epoll resource broker with mailbox descriptors, `await!`, and scheduler persistence.
+- Composite demos: `demo_composite_speculation_logic_ffi`, `demo_overlay_dictionary`, `demo_cognitive_core_validation`.
 
 Maturity notes:
 
 - This is an alpha research system, not a stable packaged product.
 - Examples are intended to run from a built checkout.
 - Provider availability depends on credentials and local model/runtime configuration.
-- Focused validation passes; some broad legacy test paths still contain active-investigation
-  FFI callback/parser-map failures.
+- Full validation baseline: `edict_tests` 198/198, `reflect_tests` 55/55, `listree_tests` 83/83, `cartographer_tests` 52/52, `cpp_agent_tests` 56/56, `treesitter_tests` 28/28.
 
 ---
 
@@ -317,7 +385,8 @@ Good intern tasks are bounded and checkable:
 | Compression | Summarize a large diff into semantic changes. |
 | Context proxy | Hold a large context and answer factual questions about it. |
 
-The landed substrate includes module-backed deterministic `intern_run!` plus the first async job surface. In bare Edict, load `worker.edict` / `intern.edict` over the worker primitive import before using these words:
+The landed substrate includes module-backed deterministic `intern_run!` plus async job dispatch.
+Load `worker.edict` / `intern.edict` over the worker primitive import before using these words:
 
 ```edict
 -- task envelope shape: task_id, program, input, context, optional imports
@@ -330,48 +399,61 @@ job.job_id intern_cancel! @cancel_status
 
 `intern_run!` freezes `context` and `imports`, snapshots `input`, launches a fresh worker
 `EdictVM` with a private `workspace`, executes the bounded Edict `program`, joins the worker,
-and returns a structured envelope with `ok`, `task_id`, `state`, `result`, `error`, and
-`safety` fields. `intern_start!` uses the same boundary but returns a broker-shaped waitable;
-`intern_sync!` drains running/final status on the coordinator thread; `intern_cancel!` is a plain
-module-backed Edict word that requests cooperative cancellation. Worker results are copied
-back through JSON only on the coordinator
-thread; the coordinator decides what to merge. Async tasks can also use `max_active_jobs` for
-first-pass backpressure.
+and returns a structured envelope. Workers can also run as forked or fork/exec processes with
+independently mounted static declaration images (G107). Quality contracts enforce bounded task
+schemas and result trust validators (G099). Overlay dictionaries provide reference-scoped
+ReadOnly sharing so workers can shadow specific keys without mutating coordinator state (G093).
 
-The target architecture remains:
+The target architecture:
 
 1. A coordinator VM owns the mutable root state.
-2. Shared context/import tables are marked read-only before dispatch.
-3. Each worker gets a fresh EdictVM and private workspace.
-4. Re-entrant native tools can be shared; stateful provider handles remain coordinator-owned or
-   are cloned per worker.
+2. Shared context/import tables are marked read-only before dispatch; workers can use overlay
+   dictionaries for per-key shadow values.
+3. Each worker gets a fresh EdictVM and private workspace (thread, fork, or fork/exec).
+4. Re-entrant native tools can be shared; stateful provider handles remain coordinator-owned.
 5. Workers return structured findings; the coordinator decides what to merge.
-
-Existing pieces now include read-only Listree flags, deterministic and async intern workers,
-fresh worker VMs, shared cells, stream queues, local provider presets, and provider-attached
-tools. The full multi-intern scheduler and live local-model intern execution remain future work.
 
 ---
 
 ## Roadmap
 
-### Near term
+### Completed
 
-- Provider context management beyond the landed reset/inspect slice: trim and summarize conversation state.
+- Edict-resident agent loop consolidation (G078): provider/session/tool/context semantics.
+- Intern worker concurrency MVP (G091): blocking/async dispatch, lifecycle/drop/abandon, cancellation.
+- Reference-scoped ReadOnly sharing (G093): overlay dictionaries with 7 VM opcodes.
+- Curated native cognitive libraries (G094): tree-sitter, structural diff, knowledge graph.
+- Cognitive skill scaffolds (G095): investigation/code-review/refactor-plan state machines.
+- Authoritative mmap session resume (G096): deterministic root/scheduler/static-mount restore.
+- Composite speculation + logic + FFI demo (G097).
+- Architectural vision work product (G098).
+- Intern task quality contracts (G099): bounded schemas, dispatch rejection, result validators.
+- Edict isolation contract hardening (G100).
+- Direct Edict tool-emission path (G101).
+- Session ID startup flag (G102).
+- Static declaration image MVP (G103), immutable code objects (G104), ReadOnly slab ownership (G105).
+- Root1 slab advertisement registry (G106).
+- Process-isolated micro-VM interns (G107): thread/fork/exec workers.
+- Cursor-scoped traversal visit bitmaps (G108).
+- Listree ReadOnly mutation surface hardening (G109).
+- Root1 eventfd/epoll resource broker and micro-VM IPC design (G110).
+- Root1/worker primitive FFI and Edict intern surface migration (G111).
+
+### Remaining
+
+- **G075 — Speculative Edict Native Architectures** (deferred): ToT/MCTS/ReAct-style multi-branch
+  speculation using slab snapshot/rollback. The prerequisite control-plane stability and worker
+  isolation are now in place. Activate when a concrete multi-branch reasoning demonstration is
+  needed.
+
+### Future work (not yet formalized as goals)
+
+- Published result slabs: zero-copy immutable result sharing through Root1-advertised slab publications.
+- Durable async job records: intern job state surviving process restart.
+- Full activation-frame resurrection: kill-mid-op serialization and stable cross-version code-object identity.
+- Shared-arena sidecar handoff: whole-VM/root restore across processes.
+- Cartographer as general capability service: mature sidecar protocol and full binary introspection.
 - Better user-facing examples and notebook-style executable docs.
-- More complete Edict ownership of agent root/session lifecycle.
-- Hardened validation and cleanup of remaining legacy FFI test failures.
-- Harden the first practical worker-agent scheduler on top of `intern_run!`, async intern jobs,
-  fresh VMs, read-only sharing, cancellation/backpressure descriptors, and result queues.
-
-### Longer term
-
-- Durable mmap-backed resume for long-running agents.
-- Curated native capability libraries for structural diffing, AST transforms, knowledge graphs,
-  and repository analysis.
-- Cartographer re-entrancy annotations so imported symbols can be safely shared across worker
-  sandboxes.
-- Multi-agent local execution where primary agents spend tokens deciding, not gathering.
 - A tighter application-facing API around Edict-owned provider/session/tool loops.
 
 ---
@@ -387,6 +469,7 @@ cartographer/   Runtime C/C++ header import and FFI machinery
 kanren/         Embedded miniKanren runtime
 extensions/     File/shell/helper libraries importable from Edict
 listree/        Persistent tree/list/value substrate
+treesitter/     Tree-sitter grammar and bridge for AST parsing/diffing
 demo/           Demonstrations and shell smoke tests
 LocalContext/   Project memory, design notes, goals, and current status
 ```
@@ -398,4 +481,4 @@ LocalContext/   Project memory, design notes, goals, and current status
 - [`LocalContext/Dashboard.md`](LocalContext/Dashboard.md) — current project state and latest validation baseline
 - [`LocalContext/Knowledge/WorkProducts/edict_language_reference.md`](LocalContext/Knowledge/WorkProducts/edict_language_reference.md) — detailed Edict language reference
 - [`LocalContext/Knowledge/WorkProducts/WP-LlmsGuideToEdictVm-2026-05-10/index.md`](LocalContext/Knowledge/WorkProducts/WP-LlmsGuideToEdictVm-2026-05-10/index.md) — LLM-oriented Edict/VM guide
-- [`LocalContext/Knowledge/WorkProducts/WP-EdictResidentAgentLoopConsolidation-2026-05-10/index.md`](LocalContext/Knowledge/WorkProducts/WP-EdictResidentAgentLoopConsolidation-2026-05-10/index.md) — Edict-resident agent loop plan
+- [`LocalContext/Knowledge/WorkProducts/WP-AgentCArchitecturalVisionInternConcurrency-2026-06-21.md`](LocalContext/Knowledge/WorkProducts/WP-AgentCArchitecturalVisionInternConcurrency-2026-06-21.md) — architectural vision and intern concurrency model
