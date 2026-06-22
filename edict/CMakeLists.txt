@@ -31,6 +31,7 @@ set(LIB_SOURCES
     block_accumulator.cpp
     edict_vm_treesitter.cpp
     edict_vm_knowledge_graph.cpp
+    edict_vm_overlay.cpp
 )
 
 # Create library
@@ -77,6 +78,7 @@ add_executable(edict_tests
     tests/static_slot_table_image_test.cpp
     tests/treesitter_edict_test.cpp
     tests/cognitive_scaffold_test.cpp
+    tests/overlay_dictionary_test.cpp
 )
 target_compile_definitions(edict_tests PRIVATE
     TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../cartographer/tests"

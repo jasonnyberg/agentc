@@ -311,6 +311,15 @@ private:
     void op_KG_LIST_NODES();
     void op_KG_LIST_EDGES();
 
+    // G093: Overlay dictionary operations
+    void op_OVERLAY_NEW();
+    void op_OVERLAY_SET();
+    void op_OVERLAY_GET();
+    void op_OVERLAY_HAS();
+    void op_OVERLAY_KEYS();
+    void op_OVERLAY_SHADOW_KEYS();
+    void op_OVERLAY_COMMIT();
+
     // Cursor navigation ops (registered via registerCursorOperations)
     void op_CURSOR_DOWN();  // Move cursor to first child; push bool result
     void op_CURSOR_UP();    // Move cursor to parent; push bool result

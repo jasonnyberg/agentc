@@ -140,6 +140,15 @@ enum VMOpcode {
     VMOP_KG_LIST_NODES, // graph -- node_name_list
     VMOP_KG_LIST_EDGES, // graph -- edge_list
 
+    // G093: Overlay dictionary operations
+    VMOP_OVERLAY_NEW,       // frozen_shared -- overlay
+    VMOP_OVERLAY_SET,       // overlay key value -- overlay
+    VMOP_OVERLAY_GET,       // overlay key -- value
+    VMOP_OVERLAY_HAS,       // overlay key -- ok
+    VMOP_OVERLAY_KEYS,      // overlay -- key_list
+    VMOP_OVERLAY_SHADOW_KEYS, // overlay -- shadow_key_list
+    VMOP_OVERLAY_COMMIT,    // overlay -- shadows
+
     // Number of opcodes (must be last)
     VMOP_COUNT
 };

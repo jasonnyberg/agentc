@@ -2158,6 +2158,8 @@ int EdictVM::runCodeLoop(size_t stopCodeDepth, bool markCompleteOnDrain) {
         &&op_TS_LOAD, &&op_TS_PARSE, &&op_TS_LIST, &&op_TS_DIFF,
         &&op_KG_CREATE, &&op_KG_ADD_NODE, &&op_KG_ADD_EDGE, &&op_KG_GET_NODE,
         &&op_KG_QUERY, &&op_KG_LIST_NODES, &&op_KG_LIST_EDGES,
+        &&op_OVERLAY_NEW, &&op_OVERLAY_SET, &&op_OVERLAY_GET, &&op_OVERLAY_HAS,
+        &&op_OVERLAY_KEYS, &&op_OVERLAY_SHADOW_KEYS, &&op_OVERLAY_COMMIT,
     };
     // Verify dispatch table has exactly one entry per opcode. If this fires,
     // an opcode was added to VMOpcode without a corresponding dispatch entry.
@@ -2349,6 +2351,13 @@ op_AWAIT: op_AWAIT(); goto op_epilogue;
         op_KG_QUERY: op_KG_QUERY(); goto op_epilogue;
         op_KG_LIST_NODES: op_KG_LIST_NODES(); goto op_epilogue;
         op_KG_LIST_EDGES: op_KG_LIST_EDGES(); goto op_epilogue;
+        op_OVERLAY_NEW: op_OVERLAY_NEW(); goto op_epilogue;
+        op_OVERLAY_SET: op_OVERLAY_SET(); goto op_epilogue;
+        op_OVERLAY_GET: op_OVERLAY_GET(); goto op_epilogue;
+        op_OVERLAY_HAS: op_OVERLAY_HAS(); goto op_epilogue;
+        op_OVERLAY_KEYS: op_OVERLAY_KEYS(); goto op_epilogue;
+        op_OVERLAY_SHADOW_KEYS: op_OVERLAY_SHADOW_KEYS(); goto op_epilogue;
+        op_OVERLAY_COMMIT: op_OVERLAY_COMMIT(); goto op_epilogue;
 op_INVALID: setError("Op " + std::to_string(op)); goto op_epilogue;
 op_epilogue:
         if (allow_rewrite_epilogue && !(state & (VM_ERROR | VM_YIELD | VM_SCANNING))) applyRewriteLoop();

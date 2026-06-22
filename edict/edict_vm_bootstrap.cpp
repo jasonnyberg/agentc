@@ -247,6 +247,17 @@ void EdictVM::loadCoreBuiltins() {
     addBuiltinThunk(kgCapsule, "nodes", VMOP_KG_LIST_NODES);
     addBuiltinThunk(kgCapsule, "edges", VMOP_KG_LIST_EDGES);
     agentc::addNamedItem(dictVal, "kgraph", kgCapsule);
+
+    // G093: Overlay dictionary builtins
+    auto overlayCapsule = agentc::createNullValue();
+    addBuiltinThunk(overlayCapsule, "new", VMOP_OVERLAY_NEW);
+    addBuiltinThunk(overlayCapsule, "set", VMOP_OVERLAY_SET);
+    addBuiltinThunk(overlayCapsule, "get", VMOP_OVERLAY_GET);
+    addBuiltinThunk(overlayCapsule, "has", VMOP_OVERLAY_HAS);
+    addBuiltinThunk(overlayCapsule, "keys", VMOP_OVERLAY_KEYS);
+    addBuiltinThunk(overlayCapsule, "shadow_keys", VMOP_OVERLAY_SHADOW_KEYS);
+    addBuiltinThunk(overlayCapsule, "commit", VMOP_OVERLAY_COMMIT);
+    agentc::addNamedItem(dictVal, "overlay", overlayCapsule);
 }
 
 void EdictVM::installBootstrapImportCapsule() {

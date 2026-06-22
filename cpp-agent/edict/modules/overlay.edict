@@ -1,0 +1,58 @@
+# overlay.edict — G093 Reference-Scoped ReadOnly Sharing via Explicit Overlay Dictionaries
+#
+# An overlay dictionary provides shared frozen structure with worker-local
+# shadow values.  The frozen shared base is never mutated; shadow overrides
+# live in a mutable local object.  Lookup checks shadows first, then falls
+# through to the frozen shared base.
+#
+# Public words:
+#   overlay.new!          ( frozen_shared -- overlay )
+#   overlay.set!          ( overlay key value -- overlay )
+#   overlay.get!          ( overlay key -- value )
+#   overlay.has!          ( overlay key -- ok )
+#   overlay.shadow_keys!  ( overlay -- shadows )
+#   overlay.commit!       ( overlay -- shadows )
+#   overlay.to_json!      ( overlay -- json_string )
+
+{} @overlay
+
+[
+    @frozen_shared
+    {"shared": null, "shadows": {}} @state
+    frozen_shared @state.shared
+    /
+    state
+] @overlay.new
+
+[
+    @value @key @state
+    value @state.shadows
+    key @state.shadows
+    /
+    state
+] @overlay.set
+
+[
+    @key @state
+    key state.shadows
+] @overlay.get
+
+[
+    @key @state
+    key state.shadows
+] @overlay.has
+
+[
+    @state
+    state.shadows
+] @overlay.shadow_keys
+
+[
+    @state
+    state.shadows
+] @overlay.commit
+
+[
+    @state
+    state.shadows
+] @overlay.to_json
