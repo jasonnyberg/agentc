@@ -1,31 +1,26 @@
 # Dashboard
 
 **Project**: AgentC / J3
-**Last Updated**: 2026-06-21
+**Last Updated**: 2026-06-24
 
 ## Current Focus
 AgentC/J3 is an internal-alpha persistent cognition runtime. The Edict-resident control-plane track is complete: Edict owns provider/session/tool/context semantics through the curated launcher, provider objects, root/request construction, direct-action wrappers, intern-worker public words, cognitive capability libraries, cognitive skill scaffolds, and overlay dictionaries for reference-scoped ReadOnly sharing. C++ remains the native transport, persistence, credential, provider-adapter, Root1 broker, and lifecycle substrate.
 
-A new TinyCC native-interoperability planning track has been created from `~/ffi_alternative.txt`. It is explicitly **additive**: Cartographer + clang/libffi remains the existing native library import/reflection mechanism, while TinyCC/libtcc is planned as a second mechanism for runtime-generated C adapters that compile in memory and are invoked through fixed, directly-callable native signatures. G075 remains the long-arc speculative Edict architecture goal.
+A complete additive TinyCC runtime substrate is now in place through G116. AgentC exposes `AGENTC_ENABLE_TCC` plus `AGENTC_TCC_ROOT`, consumes a local `~/tinycc` PIC build, compiles and invokes fixed-ABI generated C through `agentc_tcc_worker_exec`, exposes an additive `tcc.*` surface in Edict, and supports isolated helper-exec success / compile-error / missing-entry / runtime-failure / timeout / cancellation / crash envelopes plus explicit symbol allowlisting. Cartographer + clang/libffi remain unchanged as the existing native import/reflection path. G117 is now technically unblocked but remains deferred until downstream DeltaGUI adapter exploration is requested; G075 remains the long-arc speculative Edict architecture goal.
 
 ## Incomplete Goals — Priority Order
 
-1. 🔗[G112 — TinyCC Build Probe and Native Compile Spike](./Knowledge/Goals/G112-TinyccBuildProbeNativeCompileSpike/index.md) — **PLANNED**; optional libtcc CMake probe plus in-memory compile/direct-call smoke.
-2. 🔗[G113 — AgentC TCC Fixed-ABI Runtime Service](./Knowledge/Goals/G113-AgentcTccFixedAbiRuntimeService/index.md) — **PLANNED**; process-local `TccCompilerService` with fixed `agentc_tcc_entry(agentc_tcc_call*)` ABI.
-3. 🔗[G114 — Edict TCC Surface and Module Wrappers](./Knowledge/Goals/G114-EdictTccSurfaceModuleWrappers/index.md) — **PLANNED**; expose additive `tcc.*` words without touching `resolver.*` / Cartographer.
-4. 🔗[G115 — Isolated TCC Micro-VM Execution Service](./Knowledge/Goals/G115-IsolatedTccMicroVmExecutionService/index.md) — **PLANNED**; compile+execute generated C inside process-isolated workers with crash/timeout envelopes.
-5. 🔗[G116 — TCC Native Symbol Cache and C ABI Bridge](./Knowledge/Goals/G116-TccNativeSymbolCacheCAbiBridge/index.md) — **PLANNED**; whitelisted `dlopen`/`dlsym` + `tcc_add_symbol` bridge for controlled host functions.
-6. 🔗[G075 — Speculative Edict Native Architectures](./Knowledge/Goals/G075-SpeculativeEdictArchitectures/index.md) — **DEFERRED**; long-arc ToT/MCTS/ReAct-style native speculation after a concrete demonstration need appears.
-7. 🔗[G117 — DeltaGUI Backend Tool Adapter Exploration](./Knowledge/Goals/G117-DeltaGuiBackendToolAdapterExploration/index.md) — **DEFERRED**; downstream C ABI façade over selected `~/DeltaGUI` backend capabilities after the core TCC substrate exists.
+1. 🔗[G117 — DeltaGUI Backend Tool Adapter Exploration](./Knowledge/Goals/G117-DeltaGuiBackendToolAdapterExploration/index.md) — **DEFERRED**; downstream DeltaGUI capability inventory / minimal AgentC-side `extern "C"` façade, now unblocked by the complete core TinyCC substrate.
+2. 🔗[G075 — Speculative Edict Native Architectures](./Knowledge/Goals/G075-SpeculativeEdictArchitectures/index.md) — **DEFERRED**; long-arc ToT/MCTS/ReAct-style native speculation after a concrete demonstration need appears.
 
 ### Blocked
-No active blockers. Full `edict_tests` green (198/198). `treesitter_tests` 28/28 (15 bridge + 6 diff + 7 KG).
+No active blockers. Core TinyCC substrate goals G112-G116 are complete; latest validation: `TccRuntimeTest.*` 12/12, full `./build/edict/edict_tests` 210/210, and `AGENTC_ENABLE_TCC=OFF` still builds `edict_tests` in `build-no-tcc`.
 
 ## Active Context
 - **Completed goals retired and archived**: G074, G078, G079, G080, G084, G085, G086, G087, G088, G089, G090, G091, G092, G093, G094, G095, G096, G097, G098, G099, G100, G101, G102, G103, G104, G105, G106, G107, G108, G109, G110, and G111 are complete and archived in `LocalContext/Knowledge/Archive/Goals/`; see 🔗[Archive Index](./Knowledge/Archive/ARCHIVE_INDEX.md). Older completed goals G068, G071, G072, G073, G076, G077, G081, G082, and G083 were archived in prior passes.
 
-- **TinyCC native interop planning track added (G112–G117)**: 📄[WP — TinyCC Native Interoperability Plan](./Knowledge/WorkProducts/WP_G112_TinyccNativeInteropPlan.md) distills `~/ffi_alternative.txt`, current Cartographer/FFI architecture, and the installed libtcc API into an additive plan. TinyCC compiles C, not C++; C++ interop should flow through `extern "C"` façades / whitelisted `tcc_add_symbol` registration, while Cartographer remains the clang/libffi reflection path.
-- **Local TinyCC evidence**: `/usr/include/libtcc.h` and `/usr/lib64/libtcc.a` are present; a host smoke program linked libtcc statically and executed an in-memory compiled function pointer successfully (`add42(10,32)=84`).
+- **TinyCC core track is complete through G116**: G112-G116 now have passing code/test evidence, though the goal directories remain in the active tree pending later archive cleanup. `edict/CMakeLists.txt` exposes `AGENTC_ENABLE_TCC` and `AGENTC_TCC_ROOT`; `edict/tcc_runtime.*`, `edict/tcc_worker_exec_main.cpp`, `edict/tcc_worker_native.cpp`, and `edict/edict_vm_tcc.cpp` provide the runtime/helper/Edict surface; `edict/tests/tcc_runtime_test.cpp` and `tcc_test_adapter.cpp` verify the path. Cartographer/libffi remains the existing import/reflection mechanism.
+- **Local TinyCC build evidence**: `~/tinycc` now supports `./configure --enable-static-pic`, and the working local runtime path uses `./configure --enable-static-pic --with-selinux && make libtcc.a libtcc1.a`. A shared-object probe linked successfully against the local PIC `libtcc.a`, while the system `/usr/lib64/libtcc.a` still fails the same shared-link use as non-PIC. `agentc_tcc_worker_exec` now sets its lib path from `AGENTC_TCC_ROOT`, so local `libtcc1.a` is found at runtime.
 - **Edict provider surface**: `llm.init(name)` returns stable provider objects. Current request pattern is `provider < [prompt] request! > / /`; launcher-backed REPL pattern is `provider < repl! > / /`. G080 added provider-owned `context_reset!` / `context_inspect!` plus REPL slash commands `/reset`, `/clear`, `/context`, and `/inspect`.
 - **Intern worker / micro-VM substrate**: module-backed Edict has `intern_run!`, `intern_start!`, `intern_sync!`, and `intern_cancel!` via imported worker primitives and `worker.edict` / `intern.edict`. Workers can run as thread workers, forked processes, or fork/exec processes with independently mounted static declaration images (G107). Quality contracts enforce bounded task schemas and result trust validators (G099). Overlay dictionaries provide reference-scoped ReadOnly sharing for worker-local shadow values (G093). The Root1 eventfd/epoll broker provides mailbox descriptors, resource keys/grants, `await!`, and scheduler persistence (G110).
 - **Curated launcher**: `./edict.sh` injects `EDICT_PATH`, imports global `ext`/`runtimeffi` bindings for curated `agentc.edict` wrappers, preloads `agentc_curated.edict`, configures the `llm` bootstrap surface, and defaults to `EDICT_AUTO_CHAT=1` with `EDICT_DEFAULT_PRESET=local-qwen`. Set `EDICT_AUTO_CHAT=0` for raw curated Edict execution.
@@ -38,38 +33,23 @@ No active blockers. Full `edict_tests` green (198/198). `treesitter_tests` 28/28
 - **Cognitive skill scaffolds (G095)**: `cognitive.edict` module provides investigation, code-review, and refactor-plan state machines with JSON-serializable state.
 - **Overlay dictionaries (G093)**: `overlay.new!`/`set!`/`get!`/`has!`/`keys!`/`shadow_keys!`/`commit!` as 7 VM opcodes. Workers shadow keys on a mutable local dict while the frozen shared base stays ReadOnly.
 - **Architectural vision (G098)**: `WP-AgentCArchitecturalVisionInternConcurrency-2026-06-21.md` preserves the full architectural vision, intern concurrency model, application patterns, implementation boundary, and roadmap.
-- **Validation baseline from latest implementation pass**: G093 closeout passed focused OverlayDictionary 8/8 + demo PASS. Full `edict_tests` 198/198, `reflect_tests` 55/55, `listree_tests` 83/83, `cartographer_tests` 52/52, `cpp_agent_tests` 56/56, `treesitter_tests` 28/28.
+- **Validation baseline from latest implementation pass**: TinyCC focused coverage now passes `TccRuntimeTest.*` 12/12, including compile error, missing entry symbol, unauthorized symbol relocation failure, helper-exec isolation success, runtime failure, timeout, cancellation, crash containment, and Edict builtin surface coverage. Full `./build/edict/edict_tests` passes 210/210, and a separate `build-no-tcc` configuration still builds `edict_tests` with `AGENTC_ENABLE_TCC=OFF`.
 - **Documentation direction**: README targets potential users with AgentC's unique value, applications, runnable patterns, maturity expectations, and roadmap. 🔗[WP — LLM's Guide to Edict and the VM](./Knowledge/WorkProducts/WP-LlmsGuideToEdictVm-2026-05-10/index.md) and 🔗[Edict Language Reference](./Knowledge/WorkProducts/edict_language_reference.md) remain the key LLM-facing deep references. 🔗[WP — AgentC Architectural Vision & Intern Concurrency Model](./Knowledge/WorkProducts/WP-AgentCArchitecturalVisionInternConcurrency-2026-06-21.md) is the authoritative roadmap reference.
-- **Incomplete backlog priority**: current order is G112 → G113 → G114 → G115 → G116 → G075 → G117. G075 remains the long-arc speculative-architecture goal; G117 is deliberately downstream of the TinyCC substrate and DeltaGUI C ABI façade design. G078, G091, G093, G094, G095, G097, G098, G099, and G110 are COMPLETE and archived.
+- **Incomplete backlog priority**: current order is G117 → G075. Core TinyCC goals G112-G116 are complete but not yet archived; G117 is now technically unblocked, while G075 remains the long-arc speculative-architecture goal.
 
 ## Handoff Note
 
 **Project**: AgentC/J3 is an internal-alpha persistent cognition runtime. Edict is the authoritative agent control plane over a C++ persistence/transport/concurrency substrate.
 
-**Current State**: All planned priority goals are complete and archived. The completed track includes:
-- G078: Edict-resident agent loop consolidation (provider/session/tool/context semantics)
-- G091: Intern worker concurrency MVP (blocking/async dispatch, lifecycle/drop/abandon, cancellation)
-- G093: Reference-scoped ReadOnly sharing via explicit overlay dictionaries (7 VM opcodes)
-- G094: Curated native cognitive libraries (tree-sitter, structural diff, knowledge graph)
-- G095: Edict cognitive skill scaffolds (investigation/code-review/refactor-plan)
-- G096: Authoritative mmap session resume (deterministic root/scheduler/static-mount restore)
-- G097: Composite speculation + logic + FFI demo
-- G098: Architectural vision work product
-- G099: Intern task quality contracts
-- G100–G111: Isolation hardening, direct tool emission, session IDs, static declaration images, immutable code objects, ReadOnly slab ownership, Root1 publication registry, process-isolated workers, traversal bitmaps, ReadOnly mutation hardening, Root1 broker, worker primitive FFI migration
+**Current State**: Core TinyCC integration goals G112-G116 are complete. AgentC now has a verified fixed-ABI runtime service, additive `tcc.*` Edict surface, isolated helper-exec execution path, explicit symbol allowlisting, and a working local PIC TinyCC build path through `~/tinycc`.
 
-**Next Action**: Begin G112 when implementation resumes: add optional libtcc build detection and a minimal in-memory compile/direct-call smoke inside the repo. Keep Cartographer/libffi intact. G075 remains the long-arc speculative-architecture goal; do not start it until a concrete ToT/MCTS/ReAct demonstration is needed. Full baseline validation remains green from the latest implementation pass (edict_tests 198/198).
+**Next Action**: If TinyCC follow-on work continues, start G117 by inventorying candidate `~/DeltaGUI` backend capabilities and defining the smallest safe AgentC-side `extern "C"` façade. Keep Cartographer/libffi and TinyCC as separate native paths, and avoid touching `~/DeltaGUI` unless a tiny non-breaking seam is genuinely required.
 
 **Key Context**:
-- **TinyCC planning track is newly created.** G112–G116 define an additive libtcc path for runtime-generated C adapters: optional build probe, fixed ABI runtime service, Edict `tcc.*` surface, process-isolated execution, and whitelisted symbol cache/C ABI bridge. G117 defers DeltaGUI backend tool-adapter exploration until after the core substrate. 📄[WP — TinyCC Native Interoperability Plan](./Knowledge/WorkProducts/WP_G112_TinyccNativeInteropPlan.md).
-- **G093 is complete.** Explicit overlay dictionaries provide reference-scoped ReadOnly sharing: `overlay.new!`/`set!`/`get!`/`has!`/`keys!`/`shadow_keys!`/`commit!` as 7 new VM opcodes. Workers shadow keys on a mutable local dict while the frozen shared base stays ReadOnly. 📄[WP — G093](./Knowledge/WorkProducts/WP_G093_ReferenceScopedReadOnlySharing.md). Validation: OverlayDictionaryTest 8/8, `demo_overlay_dictionary` PASS.
-- **G098 is complete.** `WP-AgentCArchitecturalVisionInternConcurrency-2026-06-21.md` preserves the full architectural vision, intern concurrency model, application patterns, implementation boundary, and roadmap.
-- **G095 is complete.** `cognitive.edict` module provides investigation/code-review/refactor-plan scaffold constructors with stable Listree/JSON shapes.
-- **G097 is complete.** `demo_composite_speculation_logic_ffi` composes Cartographer-imported FFI + miniKanren + durable Listree state.
-- **G091 is complete.** Running `worker.edict_drop!` means handle abandonment, not thread preemption. Process-isolated workers (G107) support thread, fork, and fork/exec backends.
-- **G099 is complete.** Validators remain opt-in for blocking `intern_run!`; async `intern_start!` enforces the minimal task contract before dispatch.
-- **G107 is complete.** Process-isolated micro-VM interns support thread, fork, and fork/exec workers with independently mounted G103 static declaration images. Handle/capability policy: Inherited (frozen RO Listree), Rehydrated (JSON pipe/mmap), Blocked (fds/handles/credentials).
-- **G110 is complete.** Root1 has eventfd/epoll broker, mailbox descriptors, resource keys/grants, `await!`, scheduler save/load. Full activation-frame resurrection remains future work.
+- **Latest verification**: `./build/edict/edict_tests --gtest_filter=TccRuntimeTest.*` passes 12/12; full `./build/edict/edict_tests` passes 210/210; and a separate `build-no-tcc` configuration still builds `edict_tests` with `AGENTC_ENABLE_TCC=OFF`.
+- **Host linkage reality**: the system `/usr/lib64/libtcc.a` remains non-PIC for `libedict.so`; the supported AgentC path is a dedicated helper executable, not linking libtcc directly into `libedict`.
+- **Local development configuration**: `AGENTC_TCC_ROOT=/home/jwnyberg/tinycc` is the live TCC-on setup. `agentc_tcc_worker_exec` now sets its lib path from that root so local `libtcc1.a` is available at runtime.
+- **Downstream boundary**: G117 is now technically unblocked but still deferred until requested; continue using AgentC-side `extern "C"` adapters before touching `~/DeltaGUI`.
 
 **Do NOT**: Do not add new intern-specific VM opcodes, do not expose raw fds as durable Edict state, and do not pass stateful provider/runtime handles into intern worker context/imports. Full kill-mid-op activation-frame serialization and stable cross-version code-object identity remain future work.
 
@@ -80,14 +60,9 @@ None.
 
 ## Knowledge Inventory
 
-### Goals — incomplete priority view (7)
-- 🔗[G112 — TinyCC Build Probe and Native Compile Spike](./Knowledge/Goals/G112-TinyccBuildProbeNativeCompileSpike/index.md) — planned optional libtcc detection + direct-call smoke.
-- 🔗[G113 — AgentC TCC Fixed-ABI Runtime Service](./Knowledge/Goals/G113-AgentcTccFixedAbiRuntimeService/index.md) — planned fixed-entry C adapter runtime.
-- 🔗[G114 — Edict TCC Surface and Module Wrappers](./Knowledge/Goals/G114-EdictTccSurfaceModuleWrappers/index.md) — planned `tcc.*` Edict surface.
-- 🔗[G115 — Isolated TCC Micro-VM Execution Service](./Knowledge/Goals/G115-IsolatedTccMicroVmExecutionService/index.md) — planned process-isolated generated C execution.
-- 🔗[G116 — TCC Native Symbol Cache and C ABI Bridge](./Knowledge/Goals/G116-TccNativeSymbolCacheCAbiBridge/index.md) — planned whitelisted host-symbol bridge.
+### Goals — incomplete priority view (2)
+- 🔗[G117 — DeltaGUI Backend Tool Adapter Exploration](./Knowledge/Goals/G117-DeltaGuiBackendToolAdapterExploration/index.md) — deferred downstream DeltaGUI C ABI adapter exploration, now unblocked by the complete core TinyCC substrate.
 - 🔗[G075 — Speculative Edict Native Architectures](./Knowledge/Goals/G075-SpeculativeEdictArchitectures/index.md) — deferred speculative reasoning architecture (ToT/MCTS/ReAct).
-- 🔗[G117 — DeltaGUI Backend Tool Adapter Exploration](./Knowledge/Goals/G117-DeltaGuiBackendToolAdapterExploration/index.md) — deferred downstream DeltaGUI C ABI adapter exploration.
 
 ### WorkProducts — active references (23)
 - 🔗[AgentLang](./Knowledge/WorkProducts/AgentLang.md)
@@ -148,3 +123,5 @@ See 🔗[Timeline.md](./Timeline.md) for project history.
 - [x] Completed G093: explicit overlay dictionaries with 7 VM opcodes, 8 tests, acceptance-criteria demo, and WP_G093 design note
 - [x] Updated Dashboard and README to align with completed work and G075 as the remaining long-arc goal
 - [x] Created TinyCC native interop plan/goals from `~/ffi_alternative.txt`: WP_G112 plus G112–G117, preserving Cartographer/libffi as the existing path and defining TinyCC as an additive generated-C adapter mechanism.
+- [x] Advanced the TinyCC track from planning into a verified additive implementation slice: local `~/tinycc` PIC build support (`--enable-static-pic`), `AGENTC_ENABLE_TCC`/`AGENTC_TCC_ROOT`, helper-exec libtcc pathing, negative-path TCC tests, focused `TccRuntimeTest.*` 7/7, full `edict_tests` 205/205, and `AGENTC_ENABLE_TCC=OFF` build validation.
+- [x] Completed TinyCC core goals G113-G115: added explicit Edict lifecycle/error coverage plus isolated runtime-failure/cancel/crash tests, bringing `TccRuntimeTest.*` to 12/12 and full `edict_tests` to 210/210 while preserving the optional no-TCC build.

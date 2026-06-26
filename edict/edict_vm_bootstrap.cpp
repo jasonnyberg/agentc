@@ -258,6 +258,22 @@ void EdictVM::loadCoreBuiltins() {
     addBuiltinThunk(overlayCapsule, "shadow_keys", VMOP_OVERLAY_SHADOW_KEYS);
     addBuiltinThunk(overlayCapsule, "commit", VMOP_OVERLAY_COMMIT);
     agentc::addNamedItem(dictVal, "overlay", overlayCapsule);
+
+    // G112-G116: TinyCC generated-C interop builtins
+    auto tccCapsule = agentc::createNullValue();
+    addBuiltinThunk(tccCapsule, "available", VMOP_TCC_AVAILABLE);
+    addBuiltinThunk(tccCapsule, "compile", VMOP_TCC_COMPILE);
+    addBuiltinThunk(tccCapsule, "run", VMOP_TCC_RUN);
+    addBuiltinThunk(tccCapsule, "symbols", VMOP_TCC_SYMBOLS);
+    addBuiltinThunk(tccCapsule, "drop", VMOP_TCC_DROP);
+    addBuiltinThunk(tccCapsule, "start_isolated", VMOP_TCC_START_ISOLATED);
+    addBuiltinThunk(tccCapsule, "status", VMOP_TCC_STATUS);
+    addBuiltinThunk(tccCapsule, "collect", VMOP_TCC_COLLECT);
+    addBuiltinThunk(tccCapsule, "cancel", VMOP_TCC_CANCEL);
+    addBuiltinThunk(tccCapsule, "allow_process_symbol", VMOP_TCC_ALLOW_PROCESS_SYMBOL);
+    addBuiltinThunk(tccCapsule, "allow_library_symbol", VMOP_TCC_ALLOW_LIBRARY_SYMBOL);
+    addBuiltinThunk(tccCapsule, "clear_symbols", VMOP_TCC_CLEAR_SYMBOLS);
+    agentc::addNamedItem(dictVal, "tcc", tccCapsule);
 }
 
 void EdictVM::installBootstrapImportCapsule() {

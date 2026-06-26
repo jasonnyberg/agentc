@@ -7,3 +7,4 @@ edict/Makefile
 QChat
 HRM
 j2
+build-no-tcc

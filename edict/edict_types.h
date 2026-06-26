@@ -149,6 +149,20 @@ enum VMOpcode {
     VMOP_OVERLAY_SHADOW_KEYS, // overlay -- shadow_key_list
     VMOP_OVERLAY_COMMIT,    // overlay -- shadows
 
+    // G112-G116: TinyCC generated-C interop operations
+    VMOP_TCC_AVAILABLE,         // -- status_envelope
+    VMOP_TCC_COMPILE,           // source -- module_envelope
+    VMOP_TCC_RUN,               // module args -- result_envelope
+    VMOP_TCC_SYMBOLS,           // module -- symbols_envelope
+    VMOP_TCC_DROP,              // module -- status_envelope
+    VMOP_TCC_START_ISOLATED,    // module args timeout_ms -- job_envelope
+    VMOP_TCC_STATUS,            // job -- status_envelope
+    VMOP_TCC_COLLECT,           // job -- result_envelope
+    VMOP_TCC_CANCEL,            // job -- result_envelope
+    VMOP_TCC_ALLOW_PROCESS_SYMBOL, // symbol declaration -- status_envelope
+    VMOP_TCC_ALLOW_LIBRARY_SYMBOL, // library symbol declaration -- status_envelope
+    VMOP_TCC_CLEAR_SYMBOLS,     // -- status_envelope
+
     // Number of opcodes (must be last)
     VMOP_COUNT
 };

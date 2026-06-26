@@ -22,8 +22,18 @@ The user explicitly wants to think downstream about how AgentC applications coul
 - [ ] Demonstrate an AgentC/TCC adapter calling one façade function and returning a structured Listree/JSON result.
 - [ ] Document credential/state ownership boundaries for DeltaGUI backend access.
 
+## Progress
+
+### 2026-06-23
+- Added `edict/tests/tcc_test_adapter.cpp` as a stand-in AgentC-side `extern "C"` adapter probe so the G116 symbol-cache path can be validated without modifying `~/DeltaGUI`.
+- No DeltaGUI source has been touched yet; the actual backend inventory and façade selection remain deferred until the core TCC substrate ACs close.
+
+### 2026-06-24
+- Core TinyCC substrate goals G112-G116 are now complete and verified, so this goal's technical prerequisite is satisfied.
+- The goal remains deferred until the user wants the downstream DeltaGUI capability inventory / minimal `extern "C"` façade slice.
+
 ## Deferral Note
 
-Do not start this before the core TinyCC substrate exists. This is an application/integration goal, not part of the initial TCC runtime mechanism.
+The core TinyCC substrate now exists. Keep this deferred until the user wants downstream DeltaGUI adapter exploration; this remains an application/integration goal rather than part of the core TCC runtime mechanism.
 
 See 📄[WP — TinyCC Native Interoperability Plan](../../WorkProducts/WP_G112_TinyccNativeInteropPlan.md).

@@ -29,6 +29,7 @@
 
 // G094: Tree-sitter bridge
 #include "../treesitter/tree_sitter_bridge.h"
+#include "tcc_runtime.h"
 
 namespace agentc::edict {
 
@@ -159,6 +160,9 @@ public:
 
     // G094: Tree-sitter AST bridge
     std::unique_ptr<agentc::treesitter::TreeSitterBridge> tsBridge_;
+
+    // G112-G116: TinyCC generated-C runtime service
+    std::unique_ptr<agentc::edict::tcc::TccCompilerService> tccService_;
 
     // Await scheduler for await! builtin.  Set externally (e.g. by main.cpp)
     // session restore alongside the scheduler state.
@@ -319,6 +323,20 @@ private:
     void op_OVERLAY_KEYS();
     void op_OVERLAY_SHADOW_KEYS();
     void op_OVERLAY_COMMIT();
+
+    // G112-G116: TinyCC generated-C interop operations
+    void op_TCC_AVAILABLE();
+    void op_TCC_COMPILE();
+    void op_TCC_RUN();
+    void op_TCC_SYMBOLS();
+    void op_TCC_DROP();
+    void op_TCC_START_ISOLATED();
+    void op_TCC_STATUS();
+    void op_TCC_COLLECT();
+    void op_TCC_CANCEL();
+    void op_TCC_ALLOW_PROCESS_SYMBOL();
+    void op_TCC_ALLOW_LIBRARY_SYMBOL();
+    void op_TCC_CLEAR_SYMBOLS();
 
     // Cursor navigation ops (registered via registerCursorOperations)
     void op_CURSOR_DOWN();  // Move cursor to first child; push bool result

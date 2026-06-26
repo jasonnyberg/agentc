@@ -417,6 +417,7 @@ EdictVM::EdictVM(CPtr<agentc::ListreeValue> root, std::vector<CPtr<agentc::Listr
     cartographer = std::make_unique<agentc::cartographer::CartographerService>(*mapper, *ffi);
     startupTrace("vm-ctor-after-cartographer");
     tsBridge_ = std::make_unique<agentc::treesitter::TreeSitterBridge>();
+    tccService_ = std::make_unique<agentc::edict::tcc::TccCompilerService>();
     auto rootValue = cursor.getValue();
     initResources(rootValue);
     preload_imported_libraries(*this, rootValue);
@@ -2160,6 +2161,10 @@ int EdictVM::runCodeLoop(size_t stopCodeDepth, bool markCompleteOnDrain) {
         &&op_KG_QUERY, &&op_KG_LIST_NODES, &&op_KG_LIST_EDGES,
         &&op_OVERLAY_NEW, &&op_OVERLAY_SET, &&op_OVERLAY_GET, &&op_OVERLAY_HAS,
         &&op_OVERLAY_KEYS, &&op_OVERLAY_SHADOW_KEYS, &&op_OVERLAY_COMMIT,
+        &&op_TCC_AVAILABLE, &&op_TCC_COMPILE, &&op_TCC_RUN, &&op_TCC_SYMBOLS,
+        &&op_TCC_DROP, &&op_TCC_START_ISOLATED, &&op_TCC_STATUS, &&op_TCC_COLLECT,
+        &&op_TCC_CANCEL, &&op_TCC_ALLOW_PROCESS_SYMBOL,
+        &&op_TCC_ALLOW_LIBRARY_SYMBOL, &&op_TCC_CLEAR_SYMBOLS,
     };
     // Verify dispatch table has exactly one entry per opcode. If this fires,
     // an opcode was added to VMOpcode without a corresponding dispatch entry.
@@ -2358,6 +2363,18 @@ op_AWAIT: op_AWAIT(); goto op_epilogue;
         op_OVERLAY_KEYS: op_OVERLAY_KEYS(); goto op_epilogue;
         op_OVERLAY_SHADOW_KEYS: op_OVERLAY_SHADOW_KEYS(); goto op_epilogue;
         op_OVERLAY_COMMIT: op_OVERLAY_COMMIT(); goto op_epilogue;
+        op_TCC_AVAILABLE: op_TCC_AVAILABLE(); goto op_epilogue;
+        op_TCC_COMPILE: op_TCC_COMPILE(); goto op_epilogue;
+        op_TCC_RUN: op_TCC_RUN(); goto op_epilogue;
+        op_TCC_SYMBOLS: op_TCC_SYMBOLS(); goto op_epilogue;
+        op_TCC_DROP: op_TCC_DROP(); goto op_epilogue;
+        op_TCC_START_ISOLATED: op_TCC_START_ISOLATED(); goto op_epilogue;
+        op_TCC_STATUS: op_TCC_STATUS(); goto op_epilogue;
+        op_TCC_COLLECT: op_TCC_COLLECT(); goto op_epilogue;
+        op_TCC_CANCEL: op_TCC_CANCEL(); goto op_epilogue;
+        op_TCC_ALLOW_PROCESS_SYMBOL: op_TCC_ALLOW_PROCESS_SYMBOL(); goto op_epilogue;
+        op_TCC_ALLOW_LIBRARY_SYMBOL: op_TCC_ALLOW_LIBRARY_SYMBOL(); goto op_epilogue;
+        op_TCC_CLEAR_SYMBOLS: op_TCC_CLEAR_SYMBOLS(); goto op_epilogue;
 op_INVALID: setError("Op " + std::to_string(op)); goto op_epilogue;
 op_epilogue:
         if (allow_rewrite_epilogue && !(state & (VM_ERROR | VM_YIELD | VM_SCANNING))) applyRewriteLoop();
