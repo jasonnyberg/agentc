@@ -7,6 +7,8 @@
 
 #include "tcc_runtime.h"
 #include "agentc_tcc_api.h"
+#include "pipe_io.h"
+#include "tcc_shared.h"
 
 #include <cerrno>
 #include <cstdint>
@@ -114,17 +116,6 @@ void agentc_tcc_log(agentc_tcc_call* call, const char* message) {
 namespace agentc::edict::tcc {
 namespace {
 
-constexpr const char* kProcessOrigin = "<process>";
-constexpr const char* kModeCompile = "compile";
-constexpr const char* kModeRun = "run";
-
-struct BoundSymbol {
-    std::string name;
-    std::string declaration;
-    std::string origin;
-    const void* address = nullptr;
-};
-
 using AgentcTccEntry = int (*)(agentc_tcc_call*);
 
 struct TccModule {
@@ -154,84 +145,7 @@ void tccErrorCallback(void* opaque, const char* message) {
     }
 }
 
-bool writeAll(int fd, const void* data, std::size_t size) {
-    const auto* bytes = static_cast<const char*>(data);
-    std::size_t remaining = size;
-    while (remaining > 0) {
-        const ssize_t written = ::write(fd, bytes, remaining);
-        if (written < 0 && errno == EINTR) {
-            continue;
-        }
-        if (written <= 0) {
-            return false;
-        }
-        bytes += written;
-        remaining -= static_cast<std::size_t>(written);
-    }
-    return true;
-}
-
-bool readAll(int fd, void* data, std::size_t size) {
-    auto* bytes = static_cast<char*>(data);
-    std::size_t remaining = size;
-    while (remaining > 0) {
-        const ssize_t count = ::read(fd, bytes, remaining);
-        if (count < 0 && errno == EINTR) {
-            continue;
-        }
-        if (count <= 0) {
-            return false;
-        }
-        bytes += count;
-        remaining -= static_cast<std::size_t>(count);
-    }
-    return true;
-}
-
-bool writeString(int fd, const std::string& value) {
-    const uint64_t length = static_cast<uint64_t>(value.size());
-    return writeAll(fd, &length, sizeof(length)) &&
-           (value.empty() || writeAll(fd, value.data(), value.size()));
-}
-
-bool readString(int fd, std::string& value) {
-    uint64_t length = 0;
-    if (!readAll(fd, &length, sizeof(length))) {
-        return false;
-    }
-    value.assign(static_cast<std::size_t>(length), '\0');
-    return length == 0 || readAll(fd, value.data(), value.size());
-}
-
-bool writeStringVector(int fd, const std::vector<std::string>& values) {
-    const uint64_t count = static_cast<uint64_t>(values.size());
-    if (!writeAll(fd, &count, sizeof(count))) {
-        return false;
-    }
-    for (const auto& value : values) {
-        if (!writeString(fd, value)) {
-            return false;
-        }
-    }
-    return true;
-}
-
-bool readStringVector(int fd, std::vector<std::string>& values) {
-    uint64_t count = 0;
-    if (!readAll(fd, &count, sizeof(count))) {
-        return false;
-    }
-    values.clear();
-    values.reserve(static_cast<std::size_t>(count));
-    for (uint64_t i = 0; i < count; ++i) {
-        std::string value;
-        if (!readString(fd, value)) {
-            return false;
-        }
-        values.push_back(std::move(value));
-    }
-    return true;
-}
+// ── Wire protocol helpers (worker side) ──────────────────────────────────────
 
 bool writeBoundSymbols(int fd, const std::vector<BoundSymbol>& symbols) {
     const uint64_t count = static_cast<uint64_t>(symbols.size());
@@ -320,6 +234,8 @@ bool parseFdText(const char* text, int& fd) {
     return true;
 }
 
+// ── TCC compilation helpers ───────────────────────────────────────────────────
+
 std::string joinDiagnostics(const std::vector<std::string>& diagnostics) {
     std::ostringstream out;
     for (std::size_t i = 0; i < diagnostics.size(); ++i) {
@@ -329,65 +245,6 @@ std::string joinDiagnostics(const std::vector<std::string>& diagnostics) {
         out << diagnostics[i];
     }
     return out.str();
-}
-
-void closeDynamicLibraryHandles(const std::unordered_map<std::string, void*>& handles) {
-    for (const auto& [origin, handle] : handles) {
-        if (handle && origin != kProcessOrigin) {
-            ::dlclose(handle);
-        }
-    }
-}
-
-bool resolveSymbolSpecInCurrentProcess(const BoundSymbol& spec,
-                                       std::unordered_map<std::string, void*>& libraryHandles,
-                                       void*& processHandle,
-                                       BoundSymbol& resolved,
-                                       std::string& error) {
-    resolved = spec;
-    if (resolved.origin.empty()) {
-        error = "symbol '" + resolved.name + "' has no origin";
-        return false;
-    }
-
-    void* handle = nullptr;
-    if (resolved.origin == kProcessOrigin) {
-        if (!processHandle) {
-            processHandle = ::dlopen(nullptr, RTLD_NOW);
-            if (processHandle) {
-                libraryHandles[kProcessOrigin] = processHandle;
-            }
-        }
-        handle = processHandle;
-        if (!handle) {
-            error = ::dlerror() ? ::dlerror() : "dlopen(nullptr) failed";
-            return false;
-        }
-    } else {
-        auto existing = libraryHandles.find(resolved.origin);
-        if (existing != libraryHandles.end()) {
-            handle = existing->second;
-        } else {
-            handle = ::dlopen(resolved.origin.c_str(), RTLD_NOW | RTLD_LOCAL);
-            if (!handle) {
-                error = ::dlerror() ? ::dlerror()
-                                    : ("Failed to open library: " + resolved.origin);
-                return false;
-            }
-            libraryHandles[resolved.origin] = handle;
-        }
-    }
-
-    ::dlerror();
-    resolved.address = ::dlsym(handle, resolved.name.c_str());
-    const char* symError = ::dlerror();
-    if (!resolved.address || symError) {
-        error = symError ? symError
-                         : ("Failed to resolve symbol '" + resolved.name + "'");
-        resolved.address = nullptr;
-        return false;
-    }
-    return true;
 }
 
 std::string buildPrelude(const std::vector<BoundSymbol>& symbols) {
@@ -446,11 +303,11 @@ std::unique_ptr<TccModule> compileModule(const std::string& source,
     std::vector<BoundSymbol> resolvedSymbols;
     resolvedSymbols.reserve(symbolSpecs.size());
     for (const auto& spec : symbolSpecs) {
-        BoundSymbol resolved;
+        BoundSymbol resolved = spec;
         std::string error;
-        if (!resolveSymbolSpecInCurrentProcess(spec, localHandles,
-                                               processHandle, resolved, error)) {
-            closeDynamicLibraryHandles(localHandles);
+        if (!resolveSymbolOrigin(resolved, localHandles,
+                                 processHandle, &resolved.address, error)) {
+            closeLibraryHandles(localHandles);
             envelope.ok = false;
             envelope.status = "symbol_resolution_failed";
             envelope.error = error;
@@ -462,7 +319,7 @@ std::unique_ptr<TccModule> compileModule(const std::string& source,
     ErrorSink sink{&module->diagnostics};
     module->state = tcc_new();
     if (!module->state) {
-        closeDynamicLibraryHandles(localHandles);
+        closeLibraryHandles(localHandles);
         envelope.ok = false;
         envelope.status = "tcc_new_failed";
         envelope.error = "Failed to create libtcc state";
@@ -475,7 +332,7 @@ std::unique_ptr<TccModule> compileModule(const std::string& source,
         tcc_add_library_path(module->state, AGENTC_TCC_LIBRARY_ROOT);
     }
     if (tcc_set_output_type(module->state, TCC_OUTPUT_MEMORY) < 0) {
-        closeDynamicLibraryHandles(localHandles);
+        closeLibraryHandles(localHandles);
         envelope.ok = false;
         envelope.status = "output_type_failed";
         envelope.error = module->diagnostics.empty()
@@ -484,7 +341,7 @@ std::unique_ptr<TccModule> compileModule(const std::string& source,
         return nullptr;
     }
     if (tcc_add_include_path(module->state, AGENTC_TCC_API_INCLUDE_DIR) < 0) {
-        closeDynamicLibraryHandles(localHandles);
+        closeLibraryHandles(localHandles);
         module->diagnostics.push_back(
             std::string("Failed to add TCC include path: ") + AGENTC_TCC_API_INCLUDE_DIR);
         envelope.ok = false;
@@ -498,7 +355,7 @@ std::unique_ptr<TccModule> compileModule(const std::string& source,
     for (const auto& symbol : resolvedSymbols) {
         if (!symbol.address ||
             tcc_add_symbol(module->state, symbol.name.c_str(), symbol.address) < 0) {
-            closeDynamicLibraryHandles(localHandles);
+            closeLibraryHandles(localHandles);
             module->diagnostics.push_back("Failed to register host symbol: " + symbol.name);
             envelope.ok = false;
             envelope.status = "symbol_registration_failed";
@@ -510,7 +367,7 @@ std::unique_ptr<TccModule> compileModule(const std::string& source,
 
     const std::string payload = buildPrelude(symbolSpecs) + source;
     if (tcc_compile_string(module->state, payload.c_str()) < 0) {
-        closeDynamicLibraryHandles(localHandles);
+        closeLibraryHandles(localHandles);
         envelope.ok = false;
         envelope.status = "compile_error";
         envelope.error = joinDiagnostics(module->diagnostics);
@@ -518,7 +375,7 @@ std::unique_ptr<TccModule> compileModule(const std::string& source,
         return nullptr;
     }
     if (tcc_relocate(module->state) < 0) {
-        closeDynamicLibraryHandles(localHandles);
+        closeLibraryHandles(localHandles);
         envelope.ok = false;
         envelope.status = "relocate_error";
         envelope.error = joinDiagnostics(module->diagnostics);
@@ -529,7 +386,7 @@ std::unique_ptr<TccModule> compileModule(const std::string& source,
     module->entry = reinterpret_cast<AgentcTccEntry>(
         tcc_get_symbol(module->state, module->entrySymbol.c_str()));
     if (!module->entry) {
-        closeDynamicLibraryHandles(localHandles);
+        closeLibraryHandles(localHandles);
         envelope.ok = false;
         envelope.status = "missing_entry_symbol";
         envelope.error = "Compiled module did not export agentc_tcc_entry";

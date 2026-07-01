@@ -193,24 +193,32 @@ void EdictVM::op_TCC_RUN() {
     pushData(envelopeValue(tccService_->run(moduleId, args)));
 }
 
-void EdictVM::op_TCC_SYMBOLS() {
-    auto moduleValue = popData();
-    std::string moduleId;
-    if (!extractHandleId(moduleValue, "module_id", moduleId)) {
-        setError("tcc.symbols requires a module handle envelope with module_id");
+// Helper: pop an envelope, extract a handle field, call a service method,
+// push the result. Used by the five single-handle opcodes below.
+template <typename ServiceFn>
+static void dispatchHandleOp(EdictVM& vm,
+                              const std::string& field,
+                              const char* errorMsg,
+                              ServiceFn fn) {
+    auto handleValue = vm.popData();
+    std::string id;
+    if (!extractHandleId(handleValue, field, id)) {
+        vm.setError(errorMsg);
         return;
     }
-    pushData(envelopeValue(tccService_->listSymbols(moduleId)));
+    vm.pushData(envelopeValue(fn(id)));
+}
+
+void EdictVM::op_TCC_SYMBOLS() {
+    dispatchHandleOp(*this, "module_id",
+        "tcc.symbols requires a module handle envelope with module_id",
+        [this](const std::string& id) { return tccService_->listSymbols(id); });
 }
 
 void EdictVM::op_TCC_DROP() {
-    auto moduleValue = popData();
-    std::string moduleId;
-    if (!extractHandleId(moduleValue, "module_id", moduleId)) {
-        setError("tcc.drop requires a module handle envelope with module_id");
-        return;
-    }
-    pushData(envelopeValue(tccService_->drop(moduleId)));
+    dispatchHandleOp(*this, "module_id",
+        "tcc.drop requires a module handle envelope with module_id",
+        [this](const std::string& id) { return tccService_->drop(id); });
 }
 
 void EdictVM::op_TCC_START_ISOLATED() {
@@ -241,33 +249,21 @@ void EdictVM::op_TCC_START_ISOLATED() {
 }
 
 void EdictVM::op_TCC_STATUS() {
-    auto jobValue = popData();
-    std::string jobId;
-    if (!extractHandleId(jobValue, "job_id", jobId)) {
-        setError("tcc.status requires a job handle envelope with job_id");
-        return;
-    }
-    pushData(envelopeValue(tccService_->status(jobId)));
+    dispatchHandleOp(*this, "job_id",
+        "tcc.status requires a job handle envelope with job_id",
+        [this](const std::string& id) { return tccService_->status(id); });
 }
 
 void EdictVM::op_TCC_COLLECT() {
-    auto jobValue = popData();
-    std::string jobId;
-    if (!extractHandleId(jobValue, "job_id", jobId)) {
-        setError("tcc.collect requires a job handle envelope with job_id");
-        return;
-    }
-    pushData(envelopeValue(tccService_->collect(jobId)));
+    dispatchHandleOp(*this, "job_id",
+        "tcc.collect requires a job handle envelope with job_id",
+        [this](const std::string& id) { return tccService_->collect(id); });
 }
 
 void EdictVM::op_TCC_CANCEL() {
-    auto jobValue = popData();
-    std::string jobId;
-    if (!extractHandleId(jobValue, "job_id", jobId)) {
-        setError("tcc.cancel requires a job handle envelope with job_id");
-        return;
-    }
-    pushData(envelopeValue(tccService_->cancel(jobId)));
+    dispatchHandleOp(*this, "job_id",
+        "tcc.cancel requires a job handle envelope with job_id",
+        [this](const std::string& id) { return tccService_->cancel(id); });
 }
 
 void EdictVM::op_TCC_ALLOW_PROCESS_SYMBOL() {

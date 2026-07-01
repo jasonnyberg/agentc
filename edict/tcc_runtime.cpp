@@ -14,6 +14,8 @@
 // License along with AgentC. If not, see <https://www.gnu.org/licenses/>.
 
 #include "tcc_runtime.h"
+#include "pipe_io.h"
+#include "tcc_shared.h"
 
 #include <cerrno>
 #include <chrono>
@@ -47,16 +49,7 @@ namespace agentc::edict::tcc {
 namespace {
 
 using Clock = std::chrono::steady_clock;
-constexpr const char* kProcessOrigin = "<process>";
 constexpr const char* kExecLaunchMode = "exec";
-constexpr const char* kModeCompile = "compile";
-constexpr const char* kModeRun = "run";
-
-struct BoundSymbol {
-    std::string name;
-    std::string declaration;
-    std::string origin;
-};
 
 struct StoredModule {
     std::string id;
@@ -78,84 +71,7 @@ struct TccJob {
     TccEnvelope cached;
 };
 
-bool writeAll(int fd, const void* data, std::size_t size) {
-    const auto* bytes = static_cast<const char*>(data);
-    std::size_t remaining = size;
-    while (remaining > 0) {
-        const ssize_t written = ::write(fd, bytes, remaining);
-        if (written < 0 && errno == EINTR) {
-            continue;
-        }
-        if (written <= 0) {
-            return false;
-        }
-        bytes += written;
-        remaining -= static_cast<std::size_t>(written);
-    }
-    return true;
-}
-
-bool readAll(int fd, void* data, std::size_t size) {
-    auto* bytes = static_cast<char*>(data);
-    std::size_t remaining = size;
-    while (remaining > 0) {
-        const ssize_t count = ::read(fd, bytes, remaining);
-        if (count < 0 && errno == EINTR) {
-            continue;
-        }
-        if (count <= 0) {
-            return false;
-        }
-        bytes += count;
-        remaining -= static_cast<std::size_t>(count);
-    }
-    return true;
-}
-
-bool writeString(int fd, const std::string& value) {
-    const uint64_t length = static_cast<uint64_t>(value.size());
-    return writeAll(fd, &length, sizeof(length)) &&
-           (value.empty() || writeAll(fd, value.data(), value.size()));
-}
-
-bool readString(int fd, std::string& value) {
-    uint64_t length = 0;
-    if (!readAll(fd, &length, sizeof(length))) {
-        return false;
-    }
-    value.assign(static_cast<std::size_t>(length), '\0');
-    return length == 0 || readAll(fd, value.data(), value.size());
-}
-
-bool writeStringVector(int fd, const std::vector<std::string>& values) {
-    const uint64_t count = static_cast<uint64_t>(values.size());
-    if (!writeAll(fd, &count, sizeof(count))) {
-        return false;
-    }
-    for (const auto& value : values) {
-        if (!writeString(fd, value)) {
-            return false;
-        }
-    }
-    return true;
-}
-
-bool readStringVector(int fd, std::vector<std::string>& values) {
-    uint64_t count = 0;
-    if (!readAll(fd, &count, sizeof(count))) {
-        return false;
-    }
-    values.clear();
-    values.reserve(static_cast<std::size_t>(count));
-    for (uint64_t i = 0; i < count; ++i) {
-        std::string value;
-        if (!readString(fd, value)) {
-            return false;
-        }
-        values.push_back(std::move(value));
-    }
-    return true;
-}
+// ── Wire protocol helpers ─────────────────────────────────────────────────────
 
 bool writeBoundSymbols(int fd, const std::vector<BoundSymbol>& symbols) {
     const uint64_t count = static_cast<uint64_t>(symbols.size());
@@ -216,6 +132,8 @@ bool writeWorkerRequest(int fd,
            writeStringVector(fd, args);
 }
 
+// ── Envelope factories ────────────────────────────────────────────────────────
+
 std::string boolText(bool value) {
     return value ? "true" : "false";
 }
@@ -260,6 +178,23 @@ TccEnvelope jobNotFoundEnvelope(const std::string& jobId) {
     return envelope;
 }
 
+/// Build a failed-job envelope, stamping all standard job identity fields.
+TccEnvelope jobErrorEnvelope(const TccJob& job,
+                              const std::string& status,
+                              const std::string& error) {
+    TccEnvelope envelope;
+    envelope.available = true;
+    envelope.ok = false;
+    envelope.status = status;
+    envelope.error = error;
+    envelope.jobId = job.id;
+    envelope.moduleId = job.moduleId;
+    envelope.timeoutMs = job.timeoutMs;
+    envelope.handleKind = "tcc_job";
+    envelope.launchMode = kExecLaunchMode;
+    return envelope;
+}
+
 std::string workerAvailabilityError(bool built,
                                     const std::string& workerExecutablePath) {
     if (!built) {
@@ -275,56 +210,7 @@ std::string workerAvailabilityError(bool built,
     return {};
 }
 
-bool validateSymbolOrigin(const BoundSymbol& symbol,
-                          std::unordered_map<std::string, void*>& handles,
-                          void*& processHandle,
-                          std::string& error) {
-    void* handle = nullptr;
-    if (symbol.origin == kProcessOrigin) {
-        if (!processHandle) {
-            processHandle = ::dlopen(nullptr, RTLD_NOW);
-            if (processHandle) {
-                handles[kProcessOrigin] = processHandle;
-            }
-        }
-        handle = processHandle;
-        if (!handle) {
-            error = ::dlerror() ? ::dlerror() : "dlopen(nullptr) failed";
-            return false;
-        }
-    } else {
-        auto existing = handles.find(symbol.origin);
-        if (existing != handles.end()) {
-            handle = existing->second;
-        } else {
-            handle = ::dlopen(symbol.origin.c_str(), RTLD_NOW | RTLD_LOCAL);
-            if (!handle) {
-                error = ::dlerror() ? ::dlerror()
-                                    : ("Failed to open library: " + symbol.origin);
-                return false;
-            }
-            handles[symbol.origin] = handle;
-        }
-    }
-
-    ::dlerror();
-    void* resolved = ::dlsym(handle, symbol.name.c_str());
-    const char* symError = ::dlerror();
-    if (!resolved || symError) {
-        error = symError ? symError
-                         : ("Failed to resolve symbol '" + symbol.name + "'");
-        return false;
-    }
-    return true;
-}
-
-void closeValidationHandles(const std::unordered_map<std::string, void*>& handles) {
-    for (const auto& [origin, handle] : handles) {
-        if (handle && origin != kProcessOrigin) {
-            ::dlclose(handle);
-        }
-    }
-}
+// ── Worker launch / job lifecycle ─────────────────────────────────────────────
 
 bool launchWorker(const std::string& executablePath,
                   const std::string& mode,
@@ -440,15 +326,14 @@ void finalizeJob(TccJob& job, int waitStatus) {
     job.done = true;
     if (job.readFd >= 0) {
         if (!readEnvelope(job.readFd, job.cached)) {
-            job.cached.available = true;
-            job.cached.ok = false;
-            job.cached.status = WIFSIGNALED(waitStatus)
-                ? "runtime_signal"
-                : "worker_exit_without_result";
-            job.cached.error = WIFSIGNALED(waitStatus)
-                ? ("TCC worker died from signal " +
-                   std::to_string(WTERMSIG(waitStatus)))
-                : "TCC worker exited without producing a result envelope";
+            job.cached = jobErrorEnvelope(
+                job,
+                WIFSIGNALED(waitStatus) ? "runtime_signal"
+                                        : "worker_exit_without_result",
+                WIFSIGNALED(waitStatus)
+                    ? ("TCC worker died from signal " +
+                       std::to_string(WTERMSIG(waitStatus)))
+                    : "TCC worker exited without producing a result envelope");
             job.cached.signalNumber = WIFSIGNALED(waitStatus)
                 ? WTERMSIG(waitStatus)
                 : 0;
@@ -497,6 +382,33 @@ struct TccCompilerService::Impl {
     std::unordered_map<std::string, BoundSymbol> allowedSymbols;
     std::unordered_map<std::string, void*> validationHandles;
     void* processHandle = nullptr;
+
+    // Shared implementation for allowProcessSymbol / allowLibrarySymbol.
+    TccEnvelope allowSymbol(const std::string& name,
+                            const std::string& declaration,
+                            const std::string& origin) {
+        BoundSymbol symbol{name, declaration, origin};
+        std::string error;
+        if (!resolveSymbolOrigin(symbol, validationHandles,
+                                 processHandle, nullptr, error)) {
+            TccEnvelope envelope;
+            envelope.available = true;
+            envelope.ok = false;
+            envelope.status = "symbol_not_found";
+            envelope.error = error;
+            return envelope;
+        }
+
+        allowedSymbols[name] = std::move(symbol);
+        TccEnvelope envelope;
+        envelope.available = true;
+        envelope.ok = true;
+        envelope.status = "allowed";
+        envelope.entrySymbol = name;
+        envelope.handleKind = "tcc_symbol";
+        envelope.resultText = origin;
+        return envelope;
+    }
 };
 
 TccCompilerService::TccCompilerService()
@@ -518,7 +430,7 @@ TccCompilerService::~TccCompilerService() {
             job->readFd = -1;
         }
     }
-    closeValidationHandles(impl_->validationHandles);
+    closeLibraryHandles(impl_->validationHandles);
 }
 
 TccEnvelope TccCompilerService::availability() const {
@@ -711,15 +623,8 @@ TccEnvelope TccCompilerService::status(const std::string& jobId) {
                 job.readFd = -1;
             }
             job.done = true;
-            job.cached.available = true;
-            job.cached.ok = false;
-            job.cached.status = "timed_out";
-            job.cached.error = "TCC worker exceeded timeout";
-            job.cached.jobId = job.id;
-            job.cached.moduleId = job.moduleId;
-            job.cached.timeoutMs = job.timeoutMs;
-            job.cached.handleKind = "tcc_job";
-            job.cached.launchMode = kExecLaunchMode;
+            job.cached = jobErrorEnvelope(job, "timed_out",
+                                          "TCC worker exceeded timeout");
         }
     }
 
@@ -769,67 +674,20 @@ TccEnvelope TccCompilerService::cancel(const std::string& jobId) {
         job.readFd = -1;
     }
     job.done = true;
-    job.cached.available = true;
-    job.cached.ok = false;
-    job.cached.status = "cancelled";
-    job.cached.error = "TCC worker cancelled by coordinator";
-    job.cached.jobId = job.id;
-    job.cached.moduleId = job.moduleId;
-    job.cached.timeoutMs = job.timeoutMs;
-    job.cached.handleKind = "tcc_job";
-    job.cached.launchMode = kExecLaunchMode;
+    job.cached = jobErrorEnvelope(job, "cancelled",
+                                  "TCC worker cancelled by coordinator");
     return job.cached;
 }
 
 TccEnvelope TccCompilerService::allowProcessSymbol(const std::string& name,
                                                    const std::string& declaration) {
-    BoundSymbol symbol{name, declaration, kProcessOrigin};
-    std::string error;
-    if (!validateSymbolOrigin(symbol, impl_->validationHandles,
-                              impl_->processHandle, error)) {
-        TccEnvelope envelope;
-        envelope.available = true;
-        envelope.ok = false;
-        envelope.status = "symbol_not_found";
-        envelope.error = error;
-        return envelope;
-    }
-
-    impl_->allowedSymbols[name] = std::move(symbol);
-    TccEnvelope envelope;
-    envelope.available = true;
-    envelope.ok = true;
-    envelope.status = "allowed";
-    envelope.entrySymbol = name;
-    envelope.handleKind = "tcc_symbol";
-    envelope.resultText = kProcessOrigin;
-    return envelope;
+    return impl_->allowSymbol(name, declaration, kProcessOrigin);
 }
 
 TccEnvelope TccCompilerService::allowLibrarySymbol(const std::string& libraryPath,
                                                    const std::string& name,
                                                    const std::string& declaration) {
-    BoundSymbol symbol{name, declaration, libraryPath};
-    std::string error;
-    if (!validateSymbolOrigin(symbol, impl_->validationHandles,
-                              impl_->processHandle, error)) {
-        TccEnvelope envelope;
-        envelope.available = true;
-        envelope.ok = false;
-        envelope.status = "symbol_not_found";
-        envelope.error = error;
-        return envelope;
-    }
-
-    impl_->allowedSymbols[name] = std::move(symbol);
-    TccEnvelope envelope;
-    envelope.available = true;
-    envelope.ok = true;
-    envelope.status = "allowed";
-    envelope.entrySymbol = name;
-    envelope.handleKind = "tcc_symbol";
-    envelope.resultText = libraryPath;
-    return envelope;
+    return impl_->allowSymbol(name, declaration, libraryPath);
 }
 
 TccEnvelope TccCompilerService::clearAllowedSymbols() {
