@@ -204,9 +204,9 @@ Move untrusted compile+execute into process-isolated workers with structured res
 
 Add a controlled dlopen/dlsym symbol cache that registers whitelisted host functions into TCC via `tcc_add_symbol`; support C headers / virtual headers for exposed APIs.
 
-### G117 — DeltaGUI Backend Tool Adapter Exploration
+### G117 — AgentC / DeltaGUI Market Data Hub Integration
 
-Downstream exploration: expose selected `~/DeltaGUI` backend capabilities through a C ABI façade and make them usable from AgentC/TCC worker adapters.
+Downstream application/integration track: rebuild the DeltaGUI backend direction as an AgentC-hosted market-data pub/sub hub for provider subscription configuration, normalized stock/option events, configurable history, highlight publication, and DeltaGUI/agent subscribers. The original C ABI façade remains the first transitional bridge slice: expose one selected safe/read-only `~/DeltaGUI` or backend capability through an AgentC-owned `extern "C"` adapter and make it usable from isolated AgentC/TCC worker adapters.
 
 ## Interaction with G075
 
@@ -237,4 +237,4 @@ This gives a real executable foundation without disturbing Cartographer.
 - Should first Edict exposure be a bootstrap VM capsule (`tcc.compile!`) or an imported primitive module (`tcc.edict`) following the G111 pattern?
 - How much of the helper C API should be actual installed header vs virtual injected header?
 - Should worker-process isolation be mandatory before any Edict-facing `tcc.run!` is exposed, or can in-process execution exist behind `unsafe_extensions_allow!` for tests?
-- What is the smallest DeltaGUI C ABI façade worth exposing when that downstream work starts?
+- What is the smallest AgentC market-data hub slice worth building first: fixture/provider ingest and canonical event schemas, or a DeltaGUI/backend C ABI façade probe feeding the hub?
