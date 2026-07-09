@@ -200,6 +200,7 @@ Several parts of the AgentLang vision are already concrete enough to support aug
 *   **Rollbackable scratch execution:** `EdictVM` already supports isolated frames plus explicit transaction-style checkpoint, commit, and rollback behavior. This is directly useful for speculative planning and reversible internal reasoning.
 *   **Unified internal state:** `Listree` plus `Cursor` already provide a traversable memory model for tasks, hypotheses, file relationships, and execution context, instead of forcing everything through transient text or ad hoc JSON.
 *   **Dynamic native interop:** Cartographer plus libffi already provide a working path for reflecting selected native capabilities into the runtime.
+*   **Sandboxed generated C:** A second, independent native path now exists — the TinyCC service compiles agent-authored C at runtime behind a fixed C ABI, with explicit per-symbol allowlists and isolated worker-process execution (timeout, cancel, crash containment). The safety model for self-extending native capability is concrete, not aspirational. By design this path shares nothing with Cartographer/libffi.
 *   **Logic and rewrite primitives:** Mini-Kanren and runtime rewrite rules already exist as bounded reasoning and compression tools.
 *   **Allocator-layer persistence:** Persistence is now real at the slab boundary, including the first structured restore path for non-trivial Listree-side state.
 

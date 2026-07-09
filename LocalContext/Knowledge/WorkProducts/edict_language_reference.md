@@ -34,8 +34,10 @@
 20. [FFI Closures — Passing Edict as a C Callback](#20-ffi-closures--passing-edict-as-a-c-callback)
 21. [Unsafe Extensions Policy](#21-unsafe-extensions-policy)
 22. [Output](#22-output)
-23. [VM Resource Model (Advanced)](#23-vm-resource-model-advanced)
-24. [Opcode Quick Reference](#24-opcode-quick-reference)
+23. [Serialization & Immutability](#23-serialization--immutability)
+24. [Built-in Capsules: Tree-sitter, Knowledge Graph, Overlay, TinyCC](#24-built-in-capsules-tree-sitter-knowledge-graph-overlay-tinycc)
+25. [VM Resource Model (Advanced)](#25-vm-resource-model-advanced)
+26. [Opcode Quick Reference](#26-opcode-quick-reference)
 
 ---
 
@@ -118,6 +120,16 @@ agentc_test            # regression-test all wrappers (9/9 pass)
 agentc_demo            # show live output from each wrapper
 ```
 
+### Comments
+
+`#` starts a comment that runs to end of line — this is the **only** comment syntax:
+
+```edict
+'value @x   # bind "value" to x
+```
+
+Beware: `--` is **not** a comment marker. A stray `-- like this` in source is tokenized as ordinary words (`--`, `like`, `this`) and pushes them onto the stack.
+
 ---
 
 ## 3. The Stack — Core Mental Model
@@ -152,28 +164,35 @@ The stack grows upward; "top" is the most recently pushed item.
 Single-word string literals use the `'word` prefix form (single-quote immediately before the word):
 
 ```edict
-'hello           -- pushes the string "hello"
-'hello_world     -- pushes the string "hello_world"
-'/usr/lib/foo.so -- paths work fine
-'42              -- pushes the string "42"
+'hello           # pushes the string "hello"
+'hello_world     # pushes the string "hello_world"
+'/usr/lib/foo.so # paths work fine
+'42              # pushes the string "42"
 ```
 
 Multi-word string literals use square brackets `[...]`:
 
 ```edict
-[hello world]        -- pushes the string "hello world"
-[foo bar baz]        -- pushes "foo bar baz"
-[hello \"world\"]   -- escape sequences supported
+[hello world]        # pushes the string "hello world"
+[foo bar baz]        # pushes "foo bar baz"
+[hello \"world\"]   # escape sequences supported
 ```
 
-**Note:** Double quotes `"` are not special characters in Edict. A token like `"abc"` is a valid standalone literal, but it simply pushes the string value `"abc"` (literally including the double quotes!). Double quotes only act as string delimiters inside JSON object / array literals `{ "key": "value" }` (see §4.4).
+**Double-quoted strings** are also first-class top-level literals. `"multi word string"` pushes the content as a single string value *without* the quote delimiters. Backslash sequences inside are preserved literally (no escape processing at the top level):
+
+```edict
+"hello world" print   # prints: hello world
+"abc" @s s print      # prints: abc
+```
+
+Double quotes also act as string delimiters inside JSON object / array literals `{ "key": "value" }` (see §4.4).
 
 Numbers in edict source are **strings**. There are no native integer or double literal types in the VM. Numeric-looking tokens like `42` or `3.14` are pushed as strings:
 
 ```edict
-42        -- pushes the string "42"
--7        -- pushes the string "-7"
-3.14      -- pushes the string "3.14"
+42        # pushes the string "42"
+-7        # pushes the string "-7"
+3.14      # pushes the string "3.14"
 ```
 
 Arithmetic and numeric computation are performed by **native (FFI) functions**, not by edict opcodes. The VM passes string arguments to native functions; the FFI layer converts them to C integers or doubles at the call boundary.
@@ -186,27 +205,27 @@ The language represents booleans as truthy/falsy values; there is no separate bo
 |-------|-----------|
 | Null | false |
 | Empty list `[]` | false |
-| Empty string `[]` | false |
+| Empty string | false |
 | Any non-empty string | true |
 | Any list with items | true |
-| Any dict/object | true |
+| Dict/object (tree-mode value) | **false** |
 
-Note: the string `'0` is truthy (it is non-empty). Only the null value, empty list, and empty string are falsy.
+Note: the string `'0` is truthy (it is non-empty). A dict/object node is falsy under `test` because truthiness inspects the node's *direct* payload, which is empty for tree-mode containers — probe a specific key (or `to_json!` the node) instead of testing the dict itself.
 
 ### 4.3 Quoted Code Blocks (Thunks)
 
 Square brackets push their content as a **literal string**, not as code. The content is evaluated later with `!`.
 
 ```edict
-[hello world]       -- pushes the string "hello world" (not executed)
-[1 2 +]             -- pushes the string "1 2 +" (not executed yet)
+[hello world]       # pushes the string "hello world" (not executed)
+[1 2 +]             # pushes the string "1 2 +" (not executed yet)
 ```
 
 ### 4.4 JSON Object Literals (Dictionaries)
 
 ```edict
-{ "name": "alice", "age": "30" }   -- pushes a dictionary value
-{ "x": "1", "y": "2" }             -- multi-key dict
+{ "name": "alice", "age": "30" }   # pushes a dictionary value
+{ "x": "1", "y": "2" }             # multi-key dict
 ```
 
 ### 4.5 JSON Array Literals (Lists)
@@ -226,21 +245,21 @@ Arrays are only valid inside JSON object literals:
 
 ```edict
 'hello dup
--- stack: [ "hello", "hello" ]
+# stack: [ "hello", "hello" ]
 ```
 
 ### `swap` — Swap top two items
 
 ```edict
 'a 'b swap
--- stack: [ "a", "b" ]   (was [ "b", "a" ])
+# stack: [ "a", "b" ]   (was [ "b", "a" ])
 ```
 
 ### `/` (bare) — Discard the top
 
 ```edict
 'a 'b /
--- stack: [ "a" ]
+# stack: [ "a" ]
 ```
 
 Bare `/` is the only documented stack-discard spelling. The older English alias is intentionally not a compiler keyword. Bare `/` is distinct from `/name`, which removes a dictionary binding, and from no-space sigil chains such as `//name`.
@@ -253,23 +272,23 @@ Bare `/` is the only documented stack-discard spelling. The older English alias 
 
 ```edict
 'alice @name
--- assigns string "alice" to variable "name"
--- stack is now empty (value was consumed)
+# assigns string "alice" to variable "name"
+# stack is now empty (value was consumed)
 ```
 
 ### Lookup: plain identifier
 
 ```edict
 name
--- looks up "name" in the dictionary chain
--- pushes its value: "alice"
+# looks up "name" in the dictionary chain
+# pushes its value: "alice"
 ```
 
 **Soft failure:** If a symbol is not found, it pushes its own name as a string — there is no error:
 
 ```edict
 not_defined
--- stack: [ "not_defined" ]
+# stack: [ "not_defined" ]
 ```
 
 ### Removing a variable: `/name`
@@ -277,8 +296,8 @@ not_defined
 ```edict
 'hello @x
 /x
-x       -- falls back to pushing "x" (the string)
--- stack: [ "x" ]
+x       # falls back to pushing "x" (the string)
+# stack: [ "x" ]
 ```
 
 ### Concatenated prefix sigils: `/@name`
@@ -287,7 +306,7 @@ No-space prefix sigils apply to the same following identifier in left-to-right o
 
 ```edict
 [x]@a [y]/@a a
--- stack: [ "y" ]
+# stack: [ "y" ]
 ```
 
 `/@a` is not parsed as bare `/` followed by `@a`. It means: remove the current binding head for `a`, then assign the stack value to `a`. Intermediate `/` operations in a prefix chain preserve the live dictionary entry until the chain completes; a terminal `/name` still performs normal remove-and-cleanup behavior.
@@ -296,7 +315,7 @@ Chains are generalized:
 
 ```edict
 [x]@a [y]@a [z]@a //a a
--- stack: [ "x" ]
+# stack: [ "x" ]
 ```
 
 ### Tail-prefixed dictionary history: `-name`
@@ -305,30 +324,30 @@ A leading `-` on an identifier selects the **tail** of that dictionary item's va
 
 ```edict
 [x]@a [y]@a [z]@a a
--- stack: [ "z" ]  -- normal lookup reads the head/newest value
+# stack: [ "z" ]  # normal lookup reads the head/newest value
 
 [x]@a [y]@a [z]@a -a
--- stack: [ "x" ]  -- tail lookup reads the oldest value
+# stack: [ "x" ]  # tail lookup reads the oldest value
 ```
 
 The same tail selector applies to assignment and removal:
 
 ```edict
 [x]@a [y]@a [z]@a [t]@-a -a
--- stack: [ "t" ]  -- append t at the tail
+# stack: [ "t" ]  # append t at the tail
 
 [x]@a [y]@a [z]@a /-a -a
--- stack: [ "y" ]  -- remove old tail x, so y becomes the tail
+# stack: [ "y" ]  # remove old tail x, so y becomes the tail
 
 [x]@a [y]@a [z]@a [t]/@-a -a
--- stack: [ "t" ]  -- replace the tail x with t
+# stack: [ "t" ]  # replace the tail x with t
 ```
 
 If tail removals exhaust the history, the dictionary item is cleaned up:
 
 ```edict
 [x]@a [y]@a [z]@a ///-a strict! a
--- stack: [ null ]
+# stack: [ null ]
 ```
 
 ### Dotted paths
@@ -336,15 +355,38 @@ If tail removals exhaust the history, the dictionary item is cleaned up:
 ```edict
 { "a": { "b": "42" } } @obj
 obj
--- "obj.a.b" resolves via cursor's dotted-path navigation
+# "obj.a.b" resolves via cursor's dotted-path navigation
 ```
 
 ### Assigning with the stack form
 
 ```edict
-'value  'key  @
--- equivalent to: 'value @key
+'key  'value  @
+# equivalent to: 'value @key
 ```
+
+Bare `@` takes the **key first, then the value** in source order (the compiler emits a `SWAP` before `ASSIGN`).
+
+### Lookup modes: `lax!`, `strict!`, `strict_fail!`
+
+The unresolved-lookup behavior is configurable at runtime:
+
+```edict
+lax!           # default: unresolved name pushes its own name as a string
+strict!        # unresolved name pushes null (alias: strict_null!)
+strict_fail!   # unresolved name pushes null AND marks failure state
+               # (message: "unresolved symbol: <name>")
+```
+
+`strict_fail!` integrates missing lookups directly with `&`/`|` control flow:
+
+```edict
+strict_fail!
+[nosuch & ['resolved] print | ['missing] print]!
+# prints "'missing"
+```
+
+Use `lax` for symbolic/metaprogramming fallback, `strict` while debugging, and `strict_fail` when a missing binding should behave like a failed test.
 
 ---
 
@@ -356,14 +398,14 @@ Style: prefer adjacent eval spelling (`word!`, `module.word!`, `thunk!!`) in exa
 
 **Four dispatch phases (in order):**
 
-1. **Iterator fan-out**: if the value is a cursor (iterator), dispatch once per position
+1. **Iterator fan-out**: if the value is a cursor (iterator), dispatch once per position. (Advanced: `*name` lookups produce history iterators; note that evaluating one currently pushes each history value for evaluation rather than reliably executing stored thunks — treat this surface as experimental.)
 2. **Binary thunk**: if the value is a compiled code frame (built-in or lambda), execute it
 3. **FFI function**: if the value is an imported native function dict, call it via FFI
 4. **Source string**: if the value is a string (including `[bracketed]` thunks), compile and execute it
 
 ```edict
-['hello 'world]!    -- compile and run "'hello 'world"; stack: [ "world", "hello" ]
-dup!                  -- dup is a built-in thunk; stack: [ <top>, <top> ]
+['hello 'world]!    # compile and run "'hello 'world"; stack: [ "world", "hello" ]
+dup!                  # dup is a built-in thunk; stack: [ <top>, <top> ]
 ```
 
 ### Tail-call optimization
@@ -379,28 +421,28 @@ Brackets `[...]` push their content as a string without executing it. This is ho
 ```edict
 [print] @printer
 'hello printer!
--- prints "hello"
+# prints "hello"
 ```
 
 ```edict
 [dup] @twice
 'foo twice!
--- stack: [ "foo", "foo" ]
+# stack: [ "foo", "foo" ]
 ```
 
 ### Nested evaluation
 
 ```edict
 [[hello]!]!
--- outer! executes "[hello]!", which runs "hello" (a lookup)
--- stack: [ "hello" ]
+# outer! executes "[hello]!", which runs "hello" (a lookup)
+# stack: [ "hello" ]
 ```
 
 ### Storing and calling later
 
 ```edict
 ["do some work"] @task
--- ... later ...
+# ... later ...
 task!
 ```
 
@@ -417,8 +459,8 @@ Edict uses a **state-stack pattern** for conditionals, not bytecode jumps. The i
 ### `test` — consume top, mark as failure if falsy
 
 ```edict
-'1 test          -- truthy: state stack unchanged (continue normally)
-[]  test         -- falsy:  pushes [] to STATE stack (marks failure)
+'1 test          # truthy: state stack unchanged (continue normally)
+[]  test         # falsy:  pushes [] to STATE stack (marks failure)
 ```
 
 ### `&` — branch on state
@@ -433,39 +475,39 @@ When reached normally (no failure), `|` enters scan mode to skip the else-branch
 
 ```edict
 [oops] fail & [then] @res | [else] @res
--- fail pushes [oops] to STATE; & skips to |; else runs
--- res == "else"
+# fail pushes [oops] to STATE; & skips to |; else runs
+# res == "else"
 ```
 
 ### Full examples
 
 ```edict
--- if/then/else:
+# if/then/else:
 '1 test & ['yes] @result | ['no] @result
--- result == "yes"
+# result == "yes"
 
--- false branch:
+# false branch:
 [] test & ['yes] @result | ['no] @result
--- result == "no"
+# result == "no"
 
--- if only (no else):
+# if only (no else):
 '1 test & ['truthy] @result
--- result == "truthy"
+# result == "truthy"
 
--- if only with false condition: does nothing
+# if only with false condition: does nothing
 [] test & ['truthy] @result
--- result unset (resolves to "result" if accessed)
+# result unset (resolves to "result" if accessed)
 
--- explicit fail:
+# explicit fail:
 'bad fail & ['recovered] @result | ['failed] @result
--- result == "failed"
+# result == "failed"
 ```
 
 ### Nested conditionals
 
 ```edict
 '1 test & '1 test & ['inner] @res | ['skip] @res | ['skip] @res
--- both pass; res == "inner"
+# both pass; res == "inner"
 ```
 
 Scan mode tracks nesting depth, so nested `&`/`|` pairs are handled correctly.
@@ -482,9 +524,9 @@ The syntax `f([args...])` runs `f` in an **isolated stack frame** — arguments 
 [/] @f
 'parent_item
 f()
--- f runs `/` in an isolated frame (which starts empty)
--- `/` on an empty isolated frame is a no-op inside the frame
--- parent stack still has "parent_item"
+# f runs `/` in an isolated frame (which starts empty)
+# `/` on an empty isolated frame is a no-op inside the frame
+# parent stack still has "parent_item"
 ```
 
 ### Call with arguments
@@ -492,8 +534,8 @@ f()
 ```edict
 [!] @eval
 eval(['hello])
--- isolated frame has "hello", then! evaluates it
--- result "hello" is merged back to parent stack
+# isolated frame has "hello", then! evaluates it
+# result "hello" is merged back to parent stack
 ```
 
 ### Local variables stay local
@@ -501,9 +543,9 @@ eval(['hello])
 ```edict
 [] @f
 f(['hello] @x)
--- x is defined inside f's isolated frame
+# x is defined inside f's isolated frame
 x
--- parent scope doesn't have x; resolves to "x" (the string)
+# parent scope doesn't have x; resolves to "x" (the string)
 ```
 
 ### Results merge back
@@ -511,9 +553,9 @@ x
 ```edict
 [dup] @f
 f(['hello])
--- isolated frame: "hello" dup → "hello" "hello"
--- both merge back to parent
--- stack: [ "hello", "hello" ]
+# isolated frame: "hello" dup → "hello" "hello"
+# both merge back to parent
+# stack: [ "hello", "hello" ]
 ```
 
 ### Nested calls
@@ -522,8 +564,8 @@ f(['hello])
 [dup] @f
 [f!] @g
 g(['nested])
--- g's isolated frame: "nested", then f! which dups it
--- result: "nested" "nested" merged to parent
+# g's isolated frame: "nested", then f! which dups it
+# result: "nested" "nested" merged to parent
 ```
 
 ---
@@ -537,8 +579,8 @@ g(['nested])
   'local @x
   x
 >
--- scope produces "local" on the parent stack
--- x is not visible outside
+# scope produces "local" on the parent stack
+# x is not visible outside
 ```
 
 This is the basis for creating temporary namespaces and collecting results.
@@ -554,9 +596,9 @@ This is the basis for creating temporary namespaces and collecting results.
 [^collector^] @capture
 
 capture(1 2 3)
--- inside capture's isolated frame: items are 1, 2, 3
--- ^collector^ splices them into the list "collector"
--- collector.isListMode() == true and contains [1, 2, 3]
+# inside capture's isolated frame: items are 1, 2, 3
+# ^collector^ splices them into the list "collector"
+# collector.isListMode() == true and contains [1, 2, 3]
 collector
 ```
 
@@ -565,7 +607,7 @@ The pattern `^name^` is: push `'name`, then `SPLICE`. The splice op takes all it
 ### Bare `^`
 
 ```edict
-^ -- splices current frame into the top-of-stack node (no name lookup)
+^ # splices current frame into the top-of-stack node (no name lookup)
 ```
 
 ---
@@ -576,17 +618,17 @@ JSON syntax creates dictionary (tree-mode) Listree nodes:
 
 ```edict
 { "key": "value" }
--- stack: [ <dict: key="value"> ]
+# stack: [ <dict: key="value"> ]
 
 { "x": "1", "y": "2" }
--- stack: [ <dict: x="1", y="2"> ]
+# stack: [ <dict: x="1", y="2"> ]
 ```
 
 You can assign them to variables and look up keys:
 
 ```edict
 { "name": "bob", "score": "99" } @player
--- player is now a dictionary node
+# player is now a dictionary node
 ```
 
 ### Nested objects
@@ -607,7 +649,7 @@ When you use `<dict>`, that dict becomes the current innermost scope:
 
 ```edict
 { "greeting": "hello" } <
-  greeting   -- resolves to "hello" from the pushed dict scope
+  greeting   # resolves to "hello" from the pushed dict scope
 >
 ```
 
@@ -622,15 +664,15 @@ Internally, speculation now runs as **nested execution inside the current VM** r
 ```edict
 'baseline
 speculate [trial]
--- stack: [ "trial", "baseline" ]
--- "baseline" is unchanged; "trial" came from the speculation
+# stack: [ "trial", "baseline" ]
+# "baseline" is unchanged; "trial" came from the speculation
 ```
 
 ```edict
 'baseline
-speculate [swap]   -- swap fails on an empty speculative stack
--- stack: [ <null>, "baseline" ]
--- null indicates failure; baseline is preserved
+speculate [swap]   # swap fails on an empty speculative stack
+# stack: [ <null>, "baseline" ]
+# null indicates failure; baseline is preserved
 ```
 
 ### Use cases
@@ -656,10 +698,10 @@ speculate [
   {"pattern": ["x"], "replacement": ["rewritten"]} rewrite_define! /
   'x
 ]
--- returns "rewritten"
+# returns "rewritten"
 
 'x
--- outside the probe there is no rewrite rule, so this is still just "x"
+# outside the probe there is no rewrite rule, so this is still just "x"
 ```
 
 Nested speculation is isolated relative to its enclosing speculation too:
@@ -671,8 +713,8 @@ speculate [
   session speculate ['inner @mode] /
   session mode
 ]
--- returns "mode"
--- the inner probe rolled back before the outer probe continued
+# returns "mode"
+# the inner probe rolled back before the outer probe continued
 ```
 
 ---
@@ -685,7 +727,7 @@ Rewrite rules define **term-rewriting transformations** over the data stack. Aft
 
 ```edict
 { "pattern": ["x"], "replacement": ["w"] } rewrite_define!
--- registers: whenever "x" is on the stack, replace with "w"
+# registers: whenever "x" is on the stack, replace with "w"
 ```
 
 The rule object is returned on the stack after registration (discard it with `/` if not needed).
@@ -705,29 +747,29 @@ The rule object is returned on the stack after registration (discard it with `/`
 
 ```edict
 { "pattern": ["a", "b"], "replacement": ["b", "a"] } rewrite_define!
--- "a" "b" on stack becomes "b" "a"
+# "a" "b" on stack becomes "b" "a"
 ```
 
 ### Wildcard capture and substitution
 
 ```edict
 { "pattern": ["$1", "x"], "replacement": ["x", "$1"] } rewrite_define!
--- "tea" "x" → "x" "tea"   ($1 captures "tea")
+# "tea" "x" → "x" "tea"   ($1 captures "tea")
 ```
 
 ### Type-aware patterns
 
 ```edict
 { "pattern": ["#atom", "x"], "replacement": ["atom-hit"] } rewrite_define!
--- any atom value followed by "x" collapses to "atom-hit"
+# any atom value followed by "x" collapses to "atom-hit"
 ```
 
 ### Rewrite mode
 
 ```edict
-'auto    rewrite_mode!  -- default: auto-trigger after every instruction (up to 16 steps)
-'manual  rewrite_mode!  -- only trigger when rewrite_apply! is called
-'off     rewrite_mode!  -- never trigger
+'auto    rewrite_mode!  # default: auto-trigger after every instruction (up to 16 steps)
+'manual  rewrite_mode!  # only trigger when rewrite_apply! is called
+'off     rewrite_mode!  # never trigger
 ```
 
 ### Manual apply
@@ -737,35 +779,35 @@ The rule object is returned on the stack after registration (discard it with `/`
 { "pattern": ["x"], "replacement": ["hit"] } rewrite_define! /
 'x
 rewrite_apply!
--- stack: [ <trace object> ]
--- trace has: status="matched", index="0", mode="manual"
+# stack: [ <trace object> ]
+# trace has: status="matched", index="0", mode="manual"
 ```
 
 ### Listing rules
 
 ```edict
 rewrite_list!
--- returns a list of rule objects, each with: index, pattern, replacement
+# returns a list of rule objects, each with: index, pattern, replacement
 ```
 
 ### Removing a rule
 
 ```edict
 '0 rewrite_remove!
--- removes rule at index 0; returns the removed rule object
+# removes rule at index 0; returns the removed rule object
 ```
 
 ```edict
 '9 rewrite_remove!
--- out-of-range index → VM_ERROR: "rewrite rule index out of range"
+# out-of-range index → VM_ERROR: "rewrite rule index out of range"
 ```
 
 ### Trace inspection
 
 ```edict
 rewrite_trace!
--- returns the last rewrite trace object
--- has: status, reason, index, mode
+# returns the last rewrite trace object
+# has: status, reason, index, mode
 ```
 
 ### Preventing infinite loops
@@ -777,7 +819,7 @@ A self-referential rule (`"x" → "x"`) will not loop forever — the VM has a p
 ```edict
 { "pattern": ["dup", "dot", "sqrt"], "replacement": ["magnitude"] } rewrite_define!
 'dup 'dot 'sqrt
--- stack: [ "magnitude" ]   (rewritten automatically)
+# stack: [ "magnitude" ]   (rewritten automatically)
 ```
 
 ---
@@ -795,7 +837,7 @@ The examples below assume you have already imported `libkanren.so` and aliased i
 ```edict
 [./libkanren.so] [./kanren_runtime_ffi_poc.h] resolver.import! @logicffi
 logicffi.agentc_logic_eval_ltv @logic
-logic @logic_run   -- optional compatibility alias
+logic @logic_run   # optional compatibility alias
 ```
 
 ### Basic unification
@@ -803,7 +845,7 @@ logic @logic_run   -- optional compatibility alias
 ```edict
 { "fresh": ["q"], "where": [["==", "q", "tea"]], "results": ["q"] }
 logic!
--- stack: [ <list: ["tea"]> ]
+# stack: [ <list: ["tea"]> ]
 ```
 
 ### Disjunction with `conde`
@@ -818,7 +860,7 @@ logic!
   "results": ["q"]
 }
 logic!
--- stack: [ <list: ["tea", "coffee"]> ]
+# stack: [ <list: ["tea", "coffee"]> ]
 ```
 
 ### Membership relation
@@ -830,7 +872,7 @@ logic!
   "results": ["q"]
 }
 logic!
--- stack: [ <list: ["tea", "cake", "jam"]> ]
+# stack: [ <list: ["tea", "cake", "jam"]> ]
 ```
 
 ### Contradictory constraints → empty results
@@ -845,7 +887,7 @@ logic!
   "results": ["q"]
 }
 logic!
--- stack: [ <empty list> ]
+# stack: [ <empty list> ]
 ```
 
 ### Multi-variable results
@@ -856,7 +898,7 @@ logic!
   "where": [["conso", "head", "tail", ["tea", "cake"]]],
   "results": ["head", "tail"]
 } logic!
--- stack: [ <list: [["tea", ["cake"]]]> ]
+# stack: [ <list: [["tea", ["cake"]]]> ]
 ```
 
 ### Limiting results
@@ -868,7 +910,7 @@ logic!
   "results": ["q"],
   "limit": "2"
 } logic!
--- stack: [ <list: ["a", "b"]> ]
+# stack: [ <list: ["a", "b"]> ]
 ```
 
 ### Ordinary wrapper-based sugar
@@ -889,7 +931,7 @@ If you want a more call-shaped authoring style, define wrappers in ordinary Edic
 
 logic_spec(fresh(q) membero(q pair(tea cake)) results(q))
 logic_eval!
--- stack: [ <list: ["tea", "cake"]> ]
+# stack: [ <list: ["tea", "cake"]> ]
 ```
 
 The important architectural point is that `fresh(q)`, `membero(...)`, `results(...)`, and similar forms are now just user-defined wrapper code if you want them. The canonical runtime contract remains the object/Listree spec consumed by imported kanren.
@@ -982,12 +1024,12 @@ The lambda receives a **copy** of the VM; mutations never affect the original.
 The `cursor` capsule provides navigation over the Listree tree. Each operation pushes a boolean result (`'true` or `'false` as strings).
 
 ```edict
-cursor.down!   -- move to first child; push "true"/"false"
-cursor.up!     -- move to parent; push "true"/"false"
-cursor.next!   -- move to next sibling; push "true"/"false"
-cursor.prev!   -- move to previous sibling; push "true"/"false"
-cursor.get!    -- push current node's value onto the data stack
-cursor.set!    -- consume data stack top, assign to current node position
+cursor.down!   # move to first child; push "true"/"false"
+cursor.up!     # move to parent; push "true"/"false"
+cursor.next!   # move to next sibling; push "true"/"false"
+cursor.prev!   # move to previous sibling; push "true"/"false"
+cursor.get!    # push current node's value onto the data stack
+cursor.set!    # consume data stack top, assign to current node position
 ```
 
 ### Example: navigate and read
@@ -1018,9 +1060,9 @@ Edict can import C/C++ shared libraries at runtime using the **Cartographer** pa
 The VM automatically initializes two capsules at startup:
 
 ```edict
--- These are created automatically by the bootstrap prelude:
--- __bootstrap_import.curate_parser! @parser
--- __bootstrap_import.curate_resolver! @resolver
+# These are created automatically by the bootstrap prelude:
+# __bootstrap_import.curate_parser! @parser
+# __bootstrap_import.curate_resolver! @resolver
 ```
 
 After boot, `parser` and `resolver` are available in the global scope.
@@ -1029,23 +1071,23 @@ After boot, `parser` and `resolver` are available in the global scope.
 
 ```edict
 './libmylib.so resolver.load!
--- stack: [ <library handle or status> ]
+# stack: [ <library handle or status> ]
 ```
 
 ### Parse a header
 
 ```edict
 './mylib.h parser.map! @defs
--- defs now contains function definitions parsed from the header
+# defs now contains function definitions parsed from the header
 ```
 
 ### Call an imported function
 
 ```edict
 '10 '32 defs.add!
--- calls the native `add(int, int)` function with args "10" and "32"
--- the FFI layer converts the string arguments to C ints at the call boundary
--- stack: [ "42" ]
+# calls the native `add(int, int)` function with args "10" and "32"
+# the FFI layer converts the string arguments to C ints at the call boundary
+# stack: [ "42" ]
 ```
 
 ### Full import (parse + resolve in one step)
@@ -1053,7 +1095,7 @@ After boot, `parser` and `resolver` are available in the global scope.
 ```edict
 './libmylib.so './mylib.h resolver.import! @mylib
 '10 '32 mylib.add!
--- stack: [ "42" ]
+# stack: [ "42" ]
 ```
 
 After import, `mylib.__cartographer.status` reflects the import outcome.
@@ -1083,11 +1125,11 @@ For large libraries, import can run asynchronously:
 ```edict
 './mylib.h './libmylib.so resolver.import_deferred! @req
 
--- Poll status:
+# Poll status:
 req resolver.import_status! @status
--- status has: request_id, service_boundary, protocol, api_schema_format, status
+# status has: request_id, service_boundary, protocol, api_schema_format, status
 
--- Collect result when ready:
+# Collect result when ready:
 req resolver.import_collect! @mylib
 '10 '32 mylib.add!
 ```
@@ -1104,7 +1146,7 @@ resolved_json './libmylib.so resolver.import_resolved! @mylib
 
 ```edict
 './myfile.txt resolver.__native.read_text!
--- stack: [ <file contents as string> ]
+# stack: [ <file contents as string> ]
 ```
 
 ### Safety levels
@@ -1123,9 +1165,9 @@ Imported functions carry a `safety` metadata field:
 `ffi_closure` creates a native function pointer from an edict thunk, suitable for passing to C APIs that expect a callback.
 
 ```edict
--- Build a closure: (signature, edict-function) ffi_closure!
+# Build a closure: (signature, edict-function) ffi_closure!
 my_signature_node my_edict_fn ffi_closure!
--- stack: [ <raw native function pointer> ]
+# stack: [ <raw native function pointer> ]
 ```
 
 Inside the edict function invoked by the native caller:
@@ -1220,13 +1262,13 @@ coordinator VM. Do not pass stateful provider handles through `context`/`imports
 ### Example: wrap a computation
 
 ```edict
--- A thunk that adds its two args and returns the result
--- (arithmetic is performed by a native function imported via FFI)
+# A thunk that adds its two args and returns the result
+# (arithmetic is performed by a native function imported via FFI)
 [ARG0 ARG1 native_add! @RETURN] @my_adder
 
--- Build a C-callable closure:
+# Build a C-callable closure:
 my_signature my_adder ffi_closure!
--- returns a raw pointer that a C function can call
+# returns a raw pointer that a C function can call
 ```
 
 The signature node is a Listree dictionary that encodes the parameter and return types for libffi.
@@ -1238,16 +1280,16 @@ The signature node is a Listree dictionary that encodes the parameter and return
 By default, unsafe imported functions (those with `safety: "unsafe"` in their metadata) are blocked.
 
 ```edict
-unsafe_extensions_status!   -- push current status: "allow" or "block"
-unsafe_extensions_allow!    -- permit unsafe calls
-unsafe_extensions_block!    -- re-block unsafe calls
+unsafe_extensions_status!   # push current status: "allow" or "block"
+unsafe_extensions_allow!    # permit unsafe calls
+unsafe_extensions_block!    # re-block unsafe calls
 ```
 
 ```edict
 unsafe_extensions_allow!
--- now unsafe functions can be called
+# now unsafe functions can be called
 unsafe_extensions_block!
--- re-blocked
+# re-blocked
 ```
 
 Attempting to call an unsafe function while blocked produces `VM_ERROR: "Cartographer blocked unsafe import: <category>"`.
@@ -1258,21 +1300,132 @@ Attempting to call an unsafe function while blocked produces `VM_ERROR: "Cartogr
 
 ```edict
 [hello, world] print
--- prints "hello, world" to stdout
--- pops the value from the stack
+# prints "hello, world" to stdout
+# pops the value from the stack
 
 '42 print
--- prints "42"
+# prints "42"
 
 [] print
--- prints "" (empty list formats as empty)
+# prints "" (empty list formats as empty)
 ```
 
 `print` consumes the top of the stack and writes `formatValueForDisplay()` to stdout.
 
 ---
 
-## 23. VM Resource Model (Advanced)
+## 23. Serialization & Immutability
+
+Three global words convert between Listree values and JSON, and freeze subtrees:
+
+```edict
+{ "a": "1" } to_json! print     # prints {"a":"1"}
+[{"k":"v"}] from_json! @obj
+obj.k print                      # prints v
+[["a","b"]] from_json!           # bracketed JSON text also builds lists
+```
+
+- `to_json!` — pop a value, push its JSON string form.
+- `from_json!` — pop a JSON string, push the decoded Listree value (dict, list, or scalar). Errors set `VM_ERROR` for invalid JSON.
+- `freeze!` — pop a value, mark it and all descendants **permanently read-only**, push it back. Frozen nodes are safe to share across VMs/threads; writes are refused with a warning:
+
+```edict
+{ "a": "1" } freeze! @f
+[2] @f.a      # WARNING: write refused on read-only ListreeValue
+f.a print     # still prints 1
+```
+
+---
+
+## 24. Built-in Capsules: Tree-sitter, Knowledge Graph, Overlay, TinyCC
+
+Beyond `cursor`, the bootstrap dictionary registers four capability capsules.
+
+### `treesitter` — AST parsing and structural diff
+
+```edict
+'c treesitter.load! /                 # load a grammar ("c", "python", ...); pushes "true"/"false"
+treesitter.list! to_json! print       # ["c"]
+'c [int x;] treesitter.parse! @ast    # (lang source -- ast) full node tree
+ast to_json! print                    # nodes have type/text/start_byte/children/...
+'c [int x;] [int x; int y;] treesitter.diff! @d
+# d is a list of {kind: modified|added|removed, type, old_text/new_text, ...}
+```
+
+### `kgraph` — knowledge graph
+
+```edict
+kgraph.create! @g                       # ( -- graph )
+g [alice] kgraph.add_node! @g           # (graph name [props?] -- graph)
+g [bob]   kgraph.add_node! @g
+g [alice] [knows] [bob] kgraph.add_edge! @g
+g [alice] [knows] [bob] kgraph.query! to_json! print
+# [{"from":"alice","relation":"knows","to":"bob"}]  ("" wildcards supported)
+g kgraph.nodes! to_json! print          # ["alice","bob"]
+g kgraph.edges! to_json! print
+g [alice] kgraph.get_node! @node        # node properties dict
+```
+
+### `overlay` — shadow dictionaries over frozen bases
+
+Overlays give workers a private writable view over a shared frozen dict:
+
+```edict
+{"m": "1"} freeze! @base
+base overlay.new! @v                    # (base -- overlay)
+v [m] [2] overlay.set! @v               # (overlay key value -- overlay)
+v [m] overlay.get! print                # 2 (shadow wins)
+base.m print                            # 1 (base untouched)
+v overlay.shadow_keys! to_json! print   # ["m"]
+v overlay.commit! to_json! print        # {"m":"2"} — merged snapshot
+```
+
+Also: `overlay.has!`, `overlay.keys!`.
+
+### `tcc` — sandboxed generated C (TinyCC)
+
+Compile and run agent-authored C at runtime (available when built with libtcc; check `tcc.available!`):
+
+```edict
+[int agentc_tcc_entry(agentc_tcc_call* call){
+    long long v = agentc_tcc_parse_i64(agentc_tcc_arg_text(call, 0));
+    agentc_tcc_result_i64(call, v * 2);
+    return 0;
+}] tcc.compile! @mod          # envelope: status "compiled", handle_kind "tcc_module"
+mod [["21"]] from_json! tcc.run! @res
+res.result_i64 print          # 42  (result_kind: text | i64 | f64)
+```
+
+Every module enters through the fixed ABI `int agentc_tcc_entry(agentc_tcc_call*)`; the
+`agentc_tcc_*` helpers (`arg_count`, `arg_text`, `parse_i64`, `parse_f64`, `result_text`,
+`result_i64`, `result_f64`, `log`) are always linkable. Any **other** external symbol must be
+allowlisted first, or compilation fails at relocation:
+
+```edict
+[/path/lib.so] [symbol_name] [const char* symbol_name(void);] tcc.allow_library_symbol!
+# or: [symbol_name] [decl] tcc.allow_process_symbol!    # symbol from the host process
+tcc.clear_symbols!                                       # reset the allowlist
+```
+
+Isolated execution runs the module in a separate worker process with timeout, cooperative
+cancel, and crash containment (signals/exit codes are reported in the envelope, the VM
+survives):
+
+```edict
+mod [[]] from_json! [2000] tcc.start_isolated! @job   # (module args timeout_ms -- job)
+job.status print                                       # running
+job tcc.collect! @res                                  # blocks until done/timeout
+res.status print res.result_i64 print                  # ok / 7
+# also: job tcc.status!  /  job tcc.cancel!
+```
+
+Module lifecycle: `mod tcc.symbols!` lists compiled symbols; `mod tcc.drop!` releases the module.
+
+The TinyCC path is fully independent of Cartographer/libffi (§19–20).
+
+---
+
+## 25. VM Resource Model (Advanced)
 
 ### Cross-resource transfer operations
 
@@ -1301,8 +1454,8 @@ In advanced usage (typically from C++ or built-in thunks), values can be moved b
 ### `yield` and `reset`
 
 ```edict
-yield   -- set VM_YIELD flag; pause the execution loop (host resumes it)
-reset   -- clear VM_ERROR flag and error message; resume from error state
+yield   # set VM_YIELD flag; pause the execution loop (host resumes it)
+reset   # clear VM_ERROR flag and error message; resume from error state
 ```
 
 ### Frame operations (internal)
@@ -1314,7 +1467,7 @@ reset   -- clear VM_ERROR flag and error message; resume from error state
 
 ---
 
-## 24. Opcode Quick Reference
+## 26. Opcode Quick Reference
 
 | Opcode | Edict Syntax | Stack Effect / Behavior |
 |--------|-------------|------------------------|
@@ -1323,7 +1476,7 @@ reset   -- clear VM_ERROR flag and error message; resume from error state
 | `VMOP_SWAP` | `swap` | `(a b -- b a)` |
 | `VMOP_POP` | bare `/` | `(a --)` |
 | `VMOP_REF` | `identifier` (implicit) | `(key -- value)` — dict lookup |
-| `VMOP_ASSIGN` | `@name` or `value key @` | `(value key -- )` — dict store |
+| `VMOP_ASSIGN` | `@name` or `key value @` | `(value -- )` / `(key value -- )` — dict store |
 | `VMOP_REMOVE` | `/name` | Remove key from dict |
 | `VMOP_EVAL` | `!` | `(fn -- ...)` — execute top |
 | `VMOP_PRINT` | `print` | `(val --)` — stdout |
@@ -1365,6 +1518,17 @@ reset   -- clear VM_ERROR flag and error message; resume from error state
 | `VMOP_UNSAFE_EXTENSIONS_STATUS` | `unsafe_extensions_status` | Push current unsafe policy |
 | `VMOP_RESET` | `reset` | Clear VM_ERROR flag |
 | `VMOP_YIELD` | `yield` | Pause VM (cooperative yield) |
+| `VMOP_AWAIT` | `await!` | Park VM on a waitable; resume on broker event |
+| `VMOP_LOOKUP_LAX` | `lax!` | Unresolved lookup pushes the name (default) |
+| `VMOP_LOOKUP_STRICT_NULL` | `strict!` / `strict_null!` | Unresolved lookup pushes null |
+| `VMOP_LOOKUP_STRICT_FAIL` | `strict_fail!` | Unresolved lookup pushes null + failure state |
+| `VMOP_FREEZE` | `freeze!` | Recursively mark value read-only |
+| `VMOP_TO_JSON` | `to_json!` | Value → JSON string |
+| `VMOP_FROM_JSON` | `from_json!` | JSON string → value |
+| `VMOP_TS_*` | `treesitter.load!/parse!/list!/diff!` | Tree-sitter AST capsule (§24) |
+| `VMOP_KG_*` | `kgraph.create!/add_node!/add_edge!/get_node!/query!/nodes!/edges!` | Knowledge graph capsule (§24) |
+| `VMOP_OVERLAY_*` | `overlay.new!/set!/get!/has!/keys!/shadow_keys!/commit!` | Overlay dictionary capsule (§24) |
+| `VMOP_TCC_*` | `tcc.available!/compile!/run!/symbols!/drop!/start_isolated!/status!/collect!/cancel!/allow_process_symbol!/allow_library_symbol!/clear_symbols!` | TinyCC generated-C capsule (§24) |
 
 ---
 
@@ -1373,10 +1537,10 @@ reset   -- clear VM_ERROR flag and error message; resume from error state
 ### A.1 Fibonacci (illustrative — arithmetic via FFI)
 
 ```edict
--- Compute fib(10) using iteration
--- Note: arithmetic operations like +, -, and numeric comparisons are
--- performed by native (FFI) functions, not native edict opcodes.
--- The example below is pseudocode illustrating the control-flow idiom.
+# Compute fib(10) using iteration
+# Note: arithmetic operations like +, -, and numeric comparisons are
+# performed by native (FFI) functions, not native edict opcodes.
+# The example below is pseudocode illustrating the control-flow idiom.
 
 '0 @a
 '1 @b
@@ -1384,16 +1548,16 @@ reset   -- clear VM_ERROR flag and error message; resume from error state
 
 [
   n test & [
-    a b math.add! @next    -- native add: a + b
+    a b math.add! @next    # native add: a + b
     b @a
     next @b
-    n '1 math.sub! @n     -- native sub: n - 1
-    fib!                   -- tail-recursive call
+    n '1 math.sub! @n     # native sub: n - 1
+    fib!                   # tail-recursive call
   ] | []
 ] @fib
 
 fib!
--- result: a contains fib(10) as a string
+# result: a contains fib(10) as a string
 ```
 
 ### A.2 Stack-based string processing
@@ -1402,25 +1566,25 @@ fib!
 'hello @greeting
 'world @subject
 
--- Build a greeting string via rewrite rule
+# Build a greeting string via rewrite rule
 { "pattern": ["$1", "$2", "greet"], "replacement": ["$1 $2"] }
 rewrite_define! /
 
 greeting subject 'greet
--- rewrite fires automatically: stack now has "hello world"
+# rewrite fires automatically: stack now has "hello world"
 ```
 
 ### A.3 Logic-driven data selection
 
 ```edict
--- assuming imported evaluator alias: logicffi.agentc_logic_eval_ltv @logic
+# assuming imported evaluator alias: logicffi.agentc_logic_eval_ltv @logic
 {
   "fresh": ["item"],
   "where": [["membero", "item", ["apple", "banana", "cherry"]]],
   "results": ["item"],
   "limit": "2"
 } logic! @fruits
--- fruits is a list: ["apple", "banana"]
+# fruits is a list: ["apple", "banana"]
 ```
 
 ### A.4 Speculative probe with fallback
@@ -1428,16 +1592,16 @@ greeting subject 'greet
 ```edict
 'default
 
--- Try to run a computation that might fail:
+# Try to run a computation that might fail:
 speculate [
   'primary_result
-  -- ... complex work that might error ...
+  # ... complex work that might error ...
 ]
 
--- Use result if non-null, else keep default:
+# Use result if non-null, else keep default:
 dup test
-& [ swap / ]   -- result was good: discard default, use speculative result
-| [ / ]        -- result was null (failed): discard null, keep default
+& [ swap / ]   # result was good: discard default, use speculative result
+| [ / ]        # result was null (failed): discard null, keep default
 ```
 
 ### A.5 Capturing stack contents into a list
@@ -1451,24 +1615,24 @@ capture(
   'second
   'third
 )
--- results.isListMode() == true; contains ["first", "second", "third"]
+# results.isListMode() == true; contains ["first", "second", "third"]
 results
 ```
 
 ### A.6 Rewrite-based string normalization
 
 ```edict
--- Define normalization rules (strings only — no native arithmetic)
--- Note: the pattern token "" (empty string) is a JSON string in the pattern array
+# Define normalization rules (strings only — no native arithmetic)
+# Note: the pattern token "" (empty string) is a JSON string in the pattern array
 { "pattern": ["", "concat"], "replacement": [] } rewrite_define! /
 { "pattern": ["concat", ""], "replacement": [] } rewrite_define! /
 
--- In auto mode, these fire after each instruction:
+# In auto mode, these fire after each instruction:
 [] 'hello concat
--- After []: stack = [""]
--- After 'hello: stack = ["hello", ""]
--- After concat: stack = [<result>]
--- Rewrite fires: "" is identity; result simplified to "hello"
+# After []: stack = [""]
+# After 'hello: stack = ["hello", ""]
+# After concat: stack = [<result>]
+# Rewrite fires: "" is identity; result simplified to "hello"
 ```
 
 ---
@@ -1487,4 +1651,4 @@ This gives edict's string handling excellent cache locality for short strings (t
 
 ---
 
-*Document generated 2026-03-16. Based on full review of edict VM, compiler, REPL, and all regression tests.*
+*Document generated 2026-03-16; revised 2026-07-07 against the live VM (edict_tests 210/210). Based on full review of edict VM, compiler, REPL, and all regression tests.*

@@ -1,6 +1,6 @@
 # Goal: G117 — AgentC / DeltaGUI Market Data Hub Integration
 
-**Status**: DEFERRED
+**Status**: IN PROGRESS — Phases 0–3 implemented and verified 2026-07-07; Phase 4 (migration path) not started
 **Created**: 2026-06-21
 **Redesigned**: 2026-07-07
 **Parent/Track**: AgentC Market Data Hub / TinyCC Native Interoperability / Downstream Applications
@@ -189,25 +189,25 @@ Define canonical additive schemas for at least:
 
 ### Design acceptance
 
-- [ ] Inventory current DeltaGUI/backend capabilities and classify them as source, hub responsibility, or subscriber responsibility.
-- [ ] Define canonical JSON/Listree schemas for `underlying_quote`, `option_quote`, `option_chain_snapshot`, `history_sample`, and `highlight_event`.
-- [ ] Define subscriber query/envelope semantics for raw quotes, chain snapshots, history windows, and requested highlights.
-- [ ] Define history retention/resolution policy, freshness rules, and data-quality behavior for missing/stale fields.
-- [ ] Document credential, provider-state, socket, native-handle, and C++ ownership boundaries.
+- [x] Inventory current DeltaGUI/backend capabilities and classify them as source, hub responsibility, or subscriber responsibility. *(WP_G117_MarketDataHubPhase0Inventory §1)*
+- [x] Define canonical JSON/Listree schemas for `underlying_quote`, `option_quote`, `option_chain_snapshot`, `history_sample`, and `highlight_event`. *(WP §2; implemented as `markethub::MarketEvent` with `type="highlight"` for highlight_event)*
+- [x] Define subscriber query/envelope semantics for raw quotes, chain snapshots, history windows, and requested highlights. *(WP §3; `DeltaFeedSubscriber::deltasSinceJson`, `EnvelopeCollectorSubscriber::collectJson`, `MarketHub::historyWindowJson`, declarative `SubscriptionFilter`)*
+- [x] Define history retention/resolution policy, freshness rules, and data-quality behavior for missing/stale fields. *(WP §4; `HistoryPolicy`, `freshnessUnix()` fallback, absent-field rule)*
+- [x] Document credential, provider-state, socket, native-handle, and C++ ownership boundaries. *(WP §5)*
 
 ### Bridge acceptance
 
-- [ ] Define a minimal C ABI façade over one safe/read-only DeltaGUI/backend capability.
-- [ ] Build or load the façade as a separate AgentC-side adapter library; do not pass raw backend/provider handles into Edict or worker contexts.
-- [ ] Register selected façade symbols through the G116 symbol cache.
-- [ ] Demonstrate an isolated AgentC/TCC adapter calling one façade function and returning a structured Listree/JSON result.
+- [x] Define a minimal C ABI façade over one safe/read-only DeltaGUI/backend capability. *(GEX analytics; `markethub/facade/greekscope_facade.h` — 5 functions, JSON/string/scalar only, malloc ownership via `agentc_greekscope_free`)*
+- [x] Build or load the façade as a separate AgentC-side adapter library; do not pass raw backend/provider handles into Edict or worker contexts. *(`libagentc_greekscope_facade.so` compiled in AgentC's build from read-only `~/DeltaGUI/backend_cpp` sources; zero DeltaGUI modifications; auto-disabled when tree absent)*
+- [x] Register selected façade symbols through the G116 symbol cache. *(`allowLibrarySymbol` per function; unauthorized-symbol relocate_error guard retested)*
+- [x] Demonstrate an isolated AgentC/TCC adapter calling one façade function and returning a structured Listree/JSON result. *(`GreekscopeFacadeBridgeTest.IsolatedTccWorkerReturnsGexSnapshotJson`: generated-C adapter seeds fixture chain, returns GEX snapshot JSON with net_gex/gamma_flip_price through isolated worker exec)*
 
 ### Hub acceptance
 
-- [ ] Demonstrate at least one fixture or provider ingest path publishing canonical quote/snapshot events into an AgentC-owned bus.
-- [ ] Maintain a current quote cache and a bounded history store with configurable length/resolution for the ingested events.
-- [ ] Publish at least one machine-testable `highlight_event` derived from current/history data.
-- [ ] Deliver raw or derived events to at least two subscriber shapes: DeltaGUI-style consumer and AgentC/Edict-style consumer.
+- [x] Demonstrate at least one fixture or provider ingest path publishing canonical quote/snapshot events into an AgentC-owned bus. *(`MarketHub::ingestFixtureTick` — deterministic underlying+option events; `FixtureIngestFeedsCacheHistoryAndBothSubscriberShapes`)*
+- [x] Maintain a current quote cache and a bounded history store with configurable length/resolution for the ingested events. *(`QuoteCache` latest-per-entity; `HistoryStore` bucket downsampling + per-series cap; `HistoryDownsamplesToBucketsAndBoundsSamples`)*
+- [x] Publish at least one machine-testable `highlight_event` derived from current/history data. *(PriceMoveRule + StaleQuoteRule with injected clock; `PriceMoveRulePublishesHighlightOntoBus`, `StaleQuoteRuleFlagsOncePerStaleTransition`; highlights re-published on the same bus)*
+- [x] Deliver raw or derived events to at least two subscriber shapes: DeltaGUI-style consumer and AgentC/Edict-style consumer. *(`DeltaFeedSubscriber` since-sequence replay mirroring `/api/stream/deltas`; `EnvelopeCollectorSubscriber` worker-envelope drain)*
 
 ## Safety and Design Constraints
 
@@ -217,9 +217,11 @@ Define canonical additive schemas for at least:
 - Worker failures must return structured timeout/cancel/crash/error envelopes without killing the coordinator.
 - The AgentC hub owns subscriber policy and event/history semantics; providers own transport/auth details only.
 - Prefer AgentC-side adapters before modifying `~/DeltaGUI`; any DeltaGUI change must be small, non-breaking, and only needed to expose a testable seam.
+- The hub must be implemented in one or more modules kept separate from core AgentC machinery. It is a consumer/application of AgentC facilities (Edict, TCC workers, pub/sub, native adapters) — it must not be embedded within or entangled with the AgentC runtime core itself.
 
 ## Related References
 
+- 📄[WP — G117 Market Data Hub Phase 0 Inventory](../../WorkProducts/WP_G117_MarketDataHubPhase0Inventory.md)
 - 📄[WP — TinyCC Native Interoperability Plan](../../WorkProducts/WP_G112_TinyccNativeInteropPlan.md)
 - 🔗[G116 — TCC Native Symbol Cache and C ABI Bridge](../G116-TccNativeSymbolCacheCAbiBridge/index.md)
 - 🔗[AgentC Runtime C ABI](../../Contracts/AgentcRuntimeCAbi.md)
@@ -240,6 +242,16 @@ Define canonical additive schemas for at least:
 - Preserved the C ABI/TCC façade as the first transitional bridge slice, but reframed AgentC as the pub/sub data hub responsible for provider subscription configuration, normalized stock/option events, bounded history, highlight computation, and subscriber publication.
 - No implementation has started in this redesign pass.
 
+### 2026-07-07 (implementation session)
+- **Phase 0 complete**: capability inventory, source/hub/subscriber classification, canonical schemas, subscriber envelopes, history/freshness policy, and ownership boundaries captured in 📄[WP — G117 Market Data Hub Phase 0 Inventory](../../WorkProducts/WP_G117_MarketDataHubPhase0Inventory.md).
+- **Phases 1–3 implemented** in new `markethub/` module (module-separation constraint honored: standalone hub library, one-way dependency markethub→AgentC, never linked into core targets; only `markethub_tests` links `libedict` to consume the G116 TCC surface):
+  - `markethub/include/markethub/market_event.h` + `market_hub.h`, `src/` — canonical `MarketEvent`, pub/sub `MarketHub`, `QuoteCache`, bucketed/bounded `HistoryStore`, `DeltaFeedSubscriber`, `EnvelopeCollectorSubscriber`, `PriceMoveRule`/`StaleQuoteRule` highlight engine with injected clock, deterministic fixture ingest.
+  - `markethub/facade/greekscope_facade.{h,cpp}` — `extern "C"` GEX analytics façade compiled read-only from `~/DeltaGUI/backend_cpp` (zero DeltaGUI modifications; auto-disabled when tree absent via `AGENTC_MARKETHUB_DELTAGUI_ROOT`).
+  - `markethub/tests/` — 12 tests: hub MVP, highlights, dlopen façade contract, TCC allowlist bridge, isolated-worker GEX snapshot demo, relocate_error safety guard.
+- **Verification (real runs)**: `markethub_tests` 12/12 PASSED (primary build, re-run after skip-guard fix); `TccRuntimeTest` 12/12 PASSED; full `edict_tests` 210/210 PASSED; façade-disabled build (`-DAGENTC_MARKETHUB_DELTAGUI_ROOT=/nonexistent`) 9 passed / 3 skipped / 0 failed.
+- Fixed a test-infra pitfall: `GTEST_SKIP()` in a helper function does not skip the calling test — converted `requireBridge` helper to a `REQUIRE_BRIDGE` macro expanding at test scope.
+- **Remaining**: Phase 4 (migration path — retire/shrink DeltaGUI backend responsibilities, live-provider ingest adapters, Edict-facing hub configuration surface) not started.
+
 ## Deferral Note
 
-The core TinyCC substrate now exists, and G117 is technically unblocked. Keep implementation deferred until the user wants to start the AgentC market-data hub work. The first concrete slice should be Phase 0 inventory/schema design followed by the smallest safe Phase 1 C ABI façade probe. This remains an application/integration goal rather than part of the core TCC runtime mechanism.
+*(Superseded 2026-07-07: implementation began and Phases 0–3 are complete and verified. Retained for history.)* The core TinyCC substrate now exists, and G117 is technically unblocked. Keep implementation deferred until the user wants to start the AgentC market-data hub work. The first concrete slice should be Phase 0 inventory/schema design followed by the smallest safe Phase 1 C ABI façade probe. This remains an application/integration goal rather than part of the core TCC runtime mechanism.

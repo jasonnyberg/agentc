@@ -3,8 +3,8 @@
 AgentC is an experimental runtime for agents that need more than prompt text, JSON tool
 calls, and short-lived scratchpads. It gives an agent a persistent memory graph, a compact
 native language ("Edict", for Executable Dictionary), rollback-safe execution, dynamic
-access to C/C++ capabilities, embedded logic programming, cognitive skill scaffolds, and
-local worker agents in one substrate.
+access to C/C++ capabilities, sandboxed compilation of agent-generated C (TinyCC), embedded
+logic programming, cognitive skill scaffolds, and local worker agents in one substrate.
 
 Edict, AgentC's VM language, is the
 agent control plane. Provider sessions, tool use, context management, speculative branches,
@@ -70,6 +70,15 @@ Cartographer imports C/C++ headers at runtime using libclang/libffi and reflects
 AgentC memory. Imported functions become Edict-callable words. A structural diff engine, AST
 parser, solver, database binding, or specialized system library can become part of the agent's
 working environment.
+
+### Sandboxed generated C (TinyCC)
+
+Edict programs can compile agent-authored C source at runtime through the `tcc` capsule.
+Modules resolve external symbols only through an explicit allowlist
+(`tcc.allow_process_symbol!` / `tcc.allow_library_symbol!`), enter through a fixed C ABI
+(`agentc_tcc_entry`), and can run in-process or in isolated worker processes with timeouts,
+cooperative cancellation, and crash containment. The TinyCC path is deliberately independent
+of Cartographer/libffi.
 
 ### Logic programming inside the agent
 
@@ -143,6 +152,8 @@ Prerequisites:
 - `libclang-dev`
 - `libcurl` development package
 - POSIX-like environment with pthreads
+- `libtcc` (optional; enables the generated-C `tcc` capsule — auto-detected, controlled by
+  `AGENTC_ENABLE_TCC` / `AGENTC_TCC_ROOT`)
 
 Build:
 
@@ -327,7 +338,35 @@ gpt-4
 0.7
 ```
 
-### 8. Composite FFI + logic + state
+### 8. Sandboxed generated C (TinyCC)
+
+When built with libtcc, the agent can compile and run its own C helpers at runtime:
+
+```bash
+./build/edict/edict - <<'EDICT'
+[int agentc_tcc_entry(agentc_tcc_call* call){
+    long long v = agentc_tcc_parse_i64(agentc_tcc_arg_text(call, 0));
+    agentc_tcc_result_i64(call, v * 2);
+    return 0;
+}] tcc.compile! @mod
+mod [["21"]] from_json! tcc.run! @res
+res.result_i64 print
+EDICT
+```
+
+Expected output:
+
+```text
+42
+```
+
+The built-in `agentc_tcc_*` ABI helpers are always available to modules. Any other external
+symbol must be allowlisted first with `tcc.allow_process_symbol!` or
+`tcc.allow_library_symbol!`; unauthorized references fail at relocation. For untrusted or
+long-running modules, `tcc.start_isolated!` runs the entry point in a separate worker process
+with a timeout, and `tcc.status!`/`tcc.collect!`/`tcc.cancel!` manage the job.
+
+### 9. Composite FFI + logic + state
 
 ```bash
 ./build/demo/demo_composite_speculation_logic_ffi
@@ -352,6 +391,7 @@ AgentC is usable today as an experimental local runtime with these working surfa
 - Persistent knowledge graph: `kgraph.create!`/`add_node!`/`add_edge!`/`get_node!`/`query!`/`nodes!`/`edges!`.
 - Cognitive skill scaffolds: investigation, code-review, and refactor-plan state machines with JSON serialization.
 - Overlay dictionaries: `overlay.new!`/`set!`/`get!`/`has!`/`keys!`/`shadow_keys!`/`commit!` for reference-scoped ReadOnly sharing.
+- TinyCC generated-C interop: `tcc.compile!`/`run!`/`symbols!`/`drop!` plus isolated jobs (`start_isolated!`/`status!`/`collect!`/`cancel!`) gated by per-symbol allowlists (`allow_process_symbol!`/`allow_library_symbol!`/`clear_symbols!`).
 - Curated `edict.sh` launcher and Edict modules under `cpp-agent/edict/modules/`.
 - Provider objects via `llm.init(...)` for local OpenAI-compatible models, Google/Gemini/Gemma, and OpenAI Codex.
 - File/shell helper surface attached to provider objects.
@@ -366,7 +406,7 @@ Maturity notes:
 - This is an alpha research system, not a stable packaged product.
 - Examples are intended to run from a built checkout.
 - Provider availability depends on credentials and local model/runtime configuration.
-- Full validation baseline: `edict_tests` 198/198, `reflect_tests` 55/55, `listree_tests` 83/83, `cartographer_tests` 52/52, `cpp_agent_tests` 56/56, `treesitter_tests` 28/28.
+- Full validation baseline (verified 2026-07-07): `edict_tests` 210/210, `reflect_tests` 55/55, `listree_tests` 83/83, `cartographer_tests` 52/52, `kanren_tests` 14/14, `treesitter_tests` 28/28, `markethub_tests` 12/12. `cpp_agent_tests` (56 tests) additionally requires a live local provider endpoint for its provider-loop suites.
 
 ---
 
@@ -389,7 +429,7 @@ The landed substrate includes module-backed deterministic `intern_run!` plus asy
 Load `worker.edict` / `intern.edict` over the worker primitive import before using these words:
 
 ```edict
--- task envelope shape: task_id, program, input, context, optional imports
+# task envelope shape: task_id, program, input, context, optional imports
 worker_task intern_run! @worker_result
 
 worker_task intern_start! @job
@@ -438,6 +478,9 @@ The target architecture:
 - Listree ReadOnly mutation surface hardening (G109).
 - Root1 eventfd/epoll resource broker and micro-VM IPC design (G110).
 - Root1/worker primitive FFI and Edict intern surface migration (G111).
+- TinyCC native interop track (G112–G116): build probe, fixed-ABI runtime service, Edict `tcc` surface, isolated micro-VM execution, symbol-cache/C-ABI bridge with allowlists.
+- Market-data hub consumer module `markethub/` with DeltaGUI façade bridge (G117, Phases 0–3).
+- TCC IPC and symbol-resolution deduplication (G118).
 
 ### Remaining
 
@@ -463,13 +506,15 @@ The target architecture:
 Most users will start with `edict.sh`, `cpp-agent/edict/modules/`, and the examples above.
 
 ```text
-edict/          Edict compiler, VM, REPL, and tests
+edict/          Edict compiler, VM, REPL, TinyCC runtime, and tests
 cpp-agent/      Provider runtime, persistence helpers, and Edict agent modules
 cartographer/   Runtime C/C++ header import and FFI machinery
 kanren/         Embedded miniKanren runtime
 extensions/     File/shell/helper libraries importable from Edict
+core/           Slab allocator, cursor, and shared substrate primitives
 listree/        Persistent tree/list/value substrate
 treesitter/     Tree-sitter grammar and bridge for AST parsing/diffing
+markethub/      Market-data hub consumer module (one-way dependency on AgentC)
 demo/           Demonstrations and shell smoke tests
 LocalContext/   Project memory, design notes, goals, and current status
 ```

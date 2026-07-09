@@ -75,3 +75,8 @@ add_subdirectory(cpp-agent)
 
 # Add Tree-Sitter integration (G094)
 add_subdirectory(treesitter)
+
+# Add Market Data Hub downstream application module (G117).
+# Deliberately separate from core AgentC machinery: consumes AgentC facilities
+# (libedict TCC surface in its tests) but is never linked into core targets.
+add_subdirectory(markethub)

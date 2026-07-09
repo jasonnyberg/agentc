@@ -24,6 +24,11 @@ The compiler is very direct.
   - It does not execute until `!`.
 - Quote literal `'word`
   - Compiles to `PUSHEXT` of `word`.
+- Double-quoted literal `"multi word"`
+  - Compiles to `PUSHEXT` of the content without the quote delimiters.
+  - Backslash sequences are preserved literally (no top-level escape processing).
+- Comment `# ...`
+  - Runs to end of line. This is the only comment syntax. `--` is NOT a comment — it tokenizes as ordinary words and pushes them.
 - Identifier `name`
   - Compiles to `PUSHEXT("name")` then `REF`.
   - That means plain identifiers always attempt dictionary lookup.
@@ -119,9 +124,9 @@ Practical implications:
 Examples:
 
 ```edict
-[x]@a [y]@a [z]@a -a print   -- prints x
-[x]@a [y]@a [z]@a /-a -a     -- tail remove leaves y at the tail
-[x]@a [y]@a [z]@a [t]/@-a -a -- tail replace leaves t at the tail
+[x]@a [y]@a [z]@a -a print   # prints x
+[x]@a [y]@a [z]@a /-a -a     # tail remove leaves y at the tail
+[x]@a [y]@a [z]@a [t]/@-a -a # tail replace leaves t at the tail
 ```
 
 ## 5. Truthiness: Use the VM, Not the Old Prose
@@ -204,7 +209,7 @@ Test-backed safety examples from `CallIsolationTest`:
 [parent] @x
 [[child] @x x] @mutate
 mutate() @result
-x print          -- prints parent; result is child
+x print          # prints parent; result is child
 ```
 
 `mutate()` can return `child`, but the parent binding `x` remains `parent`.
@@ -212,7 +217,7 @@ x print          -- prints parent; result is child
 ```edict
 [[child] @new_binding new_binding] @create_binding
 create_binding() @result
-new_binding print -- unresolved symbol fallback; no parent binding leaked
+new_binding print # unresolved symbol fallback; no parent binding leaked
 ```
 
 This boundary is useful for LLM-generated helper code: prefer isolated calls for helper transforms that may use temporary names.
@@ -251,7 +256,7 @@ Example deliberate object mutation:
 ```edict
 {} @ctx
 ctx < [child] @x > /
-ctx.x print -- prints child
+ctx.x print # prints child
 ```
 
 The trailing `/` discards the context object returned by `CTX_POP`. Unlike `f(...)`, this form is intentionally mutating `ctx`; use it only when the target object should receive new bindings.
@@ -510,10 +515,47 @@ or:
 [reason] fail & [unreachable] | [error path]
 ```
 
+### Pattern: Sandboxed generated C (TinyCC)
+
+When the build has libtcc (`tcc.available!`), the agent can compile its own C helpers instead of shelling out:
+
+```edict
+[int agentc_tcc_entry(agentc_tcc_call* call){
+    long long v = agentc_tcc_parse_i64(agentc_tcc_arg_text(call, 0));
+    agentc_tcc_result_i64(call, v * 2);
+    return 0;
+}] tcc.compile! @mod
+mod [["21"]] from_json! tcc.run! @res
+res.status print        # ok
+res.result_i64 print    # 42
+```
+
+Rules an agent must follow:
+
+- Entry point is always `int agentc_tcc_entry(agentc_tcc_call* call)`. Only the `agentc_tcc_*` ABI helpers (`arg_count`, `arg_text`, `parse_i64`, `parse_f64`, `result_text`, `result_i64`, `result_f64`, `log`) are linkable by default.
+- Any other external symbol must be allowlisted **before** `tcc.compile!` via `[lib.so] [name] [decl] tcc.allow_library_symbol!` or `[name] [decl] tcc.allow_process_symbol!` — otherwise compile fails at relocation.
+- Every call returns an envelope dict; branch on `res.status` (`ok`/`error`), never on the envelope itself (dict truthiness).
+- For untrusted or possibly-looping modules use `mod args [timeout_ms] tcc.start_isolated! @job` then `job tcc.collect!` — crashes and timeouts come back as envelope fields (`signal_number`, `exit_code`), the coordinator VM survives.
+- This path is independent of Cartographer/libffi imports; do not mix the two surfaces in one workflow step.
+
+### Pattern: Capsule inventory (what's registered at boot)
+
+Besides the global words, the bootstrap dict registers capsules — all return/consume plain stack values:
+
+- `cursor.down!/up!/next!/prev!/get!/set!` — Listree navigation.
+- `treesitter.load!/parse!/list!/diff!` — `(lang)` / `(lang source)` / `()` / `(lang old new)`; parse returns an AST dict, diff a change list.
+- `kgraph.create!/add_node!/add_edge!/get_node!/query!/nodes!/edges!` — graph-first arg order: `g [name] kgraph.add_node! @g`, `g [from] [rel] [to] kgraph.add_edge! @g`; `""` acts as wildcard in `query!`.
+- `overlay.new!/set!/get!/has!/keys!/shadow_keys!/commit!` — writable shadow view over a frozen base dict (`freeze!` the base first).
+- `tcc.*` — see the TinyCC pattern above.
+- `to_json!` / `from_json!` / `freeze!` — serialization and recursive read-only marking.
+- `lax!` / `strict!` / `strict_null!` / `strict_fail!` — lookup-mode switches (§4).
+
 ## 14. Known Sharp Edges
 - Missing symbol lookup returns the symbol string.
 - String booleans are truthy if non-empty.
 - Dict/object truthiness is currently not reliable for branching.
+- `--` is not a comment; only `#` is. Stray `--` annotations push words onto the stack.
+- The `*name` history-iterator surface is experimental: evaluating it pushes each history value for EVAL but does not reliably execute stored thunks. Don't rely on it for fan-out.
 - `CTX_POP` returns the context object back onto the stack; callers often need bare `/` to discard it.
 - Isolated calls are great for local computation, but they are the wrong default tool for mutating owner objects.
 - Rebinding with `@name` adds a new history head; it does not erase prior values.
