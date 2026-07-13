@@ -1,6 +1,6 @@
 # Goal: G117 — AgentC / DeltaGUI Market Data Hub Integration
 
-**Status**: IN PROGRESS — Phases 0–3 implemented and verified 2026-07-07; Phase 4 (migration path) not started
+**Status**: IN PROGRESS — Phases 0–3 implemented and verified 2026-07-07; provider auth/API request boundary added 2026-07-09; Phase 4 live-ingest/migration path remains
 **Created**: 2026-06-21
 **Redesigned**: 2026-07-07
 **Parent/Track**: AgentC Market Data Hub / TinyCC Native Interoperability / Downstream Applications
@@ -209,6 +209,11 @@ Define canonical additive schemas for at least:
 - [x] Publish at least one machine-testable `highlight_event` derived from current/history data. *(PriceMoveRule + StaleQuoteRule with injected clock; `PriceMoveRulePublishesHighlightOntoBus`, `StaleQuoteRuleFlagsOncePerStaleTransition`; highlights re-published on the same bus)*
 - [x] Deliver raw or derived events to at least two subscriber shapes: DeltaGUI-style consumer and AgentC/Edict-style consumer. *(`DeltaFeedSubscriber` since-sequence replay mirroring `/api/stream/deltas`; `EnvelopeCollectorSubscriber` worker-envelope drain)*
 
+### Provider-boundary acceptance
+
+- [x] Define provider-owned authentication and market-data API request interfaces for TradeStation and Schwab without moving credentials, OAuth state, tokens, sockets, or live HTTP execution into Edict/worker state. *(`markethub/include/markethub/brokerage_provider.h`, `markethub/src/brokerage_provider.cpp`)*
+- [x] Prefer TradeStation while keeping Schwab available behind the same native request-builder interface. *(factory marks TradeStation preferred; tests cover TradeStation OAuth audience/scope, symbol-search + quote-batch paths, and Schwab OAuth + option-chain paths)*
+
 ## Safety and Design Constraints
 
 - TinyCC remains independent from Cartographer/libffi; do not make the TCC path depend on Cartographer headers, types, or invocation machinery.
@@ -251,6 +256,14 @@ Define canonical additive schemas for at least:
 - **Verification (real runs)**: `markethub_tests` 12/12 PASSED (primary build, re-run after skip-guard fix); `TccRuntimeTest` 12/12 PASSED; full `edict_tests` 210/210 PASSED; façade-disabled build (`-DAGENTC_MARKETHUB_DELTAGUI_ROOT=/nonexistent`) 9 passed / 3 skipped / 0 failed.
 - Fixed a test-infra pitfall: `GTEST_SKIP()` in a helper function does not skip the calling test — converted `requireBridge` helper to a `REQUIRE_BRIDGE` macro expanding at test scope.
 - **Remaining**: Phase 4 (migration path — retire/shrink DeltaGUI backend responsibilities, live-provider ingest adapters, Edict-facing hub configuration surface) not started.
+
+### 2026-07-09
+- Added the first native brokerage-provider request boundary in `markethub/`: `BrokerageProvider`, `BrokerageConfig`, `BrokerageToken`, `HttpRequestSpec`, `brokerageTokenStatus`, and `createBrokerageProvider` for TradeStation and Schwab.
+- TradeStation is the preferred provider path and mirrors DeltaGUI's working C++ provider shape: OAuth authorize URL with `audience=https://api.tradestation.com` and `scope=openid offline_access MarketData`, token exchange/refresh POST specs with Basic auth, option symbol search at `/v2/data/symbols/search/C=SO&R=...&Stk=...&Exd=36&OT=Both`, and `/v3/marketdata/quotes/{symbols}` batch quote specs (100-symbol limit).
+- Schwab remains supported with the matching OAuth/token request specs and option-chain API spec (`/marketdata/v1/chains`, `contractType=ALL`, `strategy=SINGLE`, `includeQuotes=TRUE`, `toDate=2028-12-31`, optional `strikeCount`).
+- Boundary remains native-only and non-executing: request specs redact Authorization headers and do not persist or expose live tokens/credentials to Edict/Listree/worker envelopes.
+- **Verification**: TDD red compile failure observed for missing `markethub/brokerage_provider.h`; implementation then passed `PATH=/usr/bin:/usr/sbin:$PATH /usr/bin/cmake --build build --target markethub_tests -j2 && ./build/markethub/markethub_tests` (17/17) and full `./build/edict/edict_tests` (210/210).
+- **Remaining**: execute these request specs in a provider-owned native adapter, normalize live responses into hub events, expose Edict-facing provider/hub configuration, and migrate DeltaGUI toward hub subscription.
 
 ## Deferral Note
 

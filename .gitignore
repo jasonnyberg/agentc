@@ -8,3 +8,10 @@ QChat
 HRM
 j2
 build-no-tcc
+
+# Local market-data OAuth config/tokens. These files may contain client
+# secrets, access tokens, and refresh tokens; keep them out of git.
+**/tradestation.local.json
+**/schwab.local.json
+**/tradestation_tokens.local.json
+**/schwab_tokens.local.json
