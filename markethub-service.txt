@@ -1,0 +1,23 @@
+─ bash
+# Copy to system location
+sudo cp markethub/markethub-backend.service /etc/systemd/system/
+# Reload systemd, enable and start
+sudo systemctl daemon-reload
+sudo systemctl enable markethub-backend
+sudo systemctl start markethub-backend
+# Check status
+sudo systemctl status markethub-backend
+# Stop / restart
+sudo systemctl stop markethub-backend
+sudo systemctl restart markethub-backend
+# Switch to TradeStation without editing the file:
+sudo systemctl edit markethub-backend
+
+In the override that systemctl edit opens,paste:
+
+─ ini
+[Service]
+ExecStart=
+ExecStart=/home/jwnyberg/agentlang/agentc/build/markethub/markethub_compat_backend --provider tradestation --port 8765
+
+The service runs as your user, restarts onfailure with a 3-second backoff, anddefaults to Schwab on port 8765 (the Godotfrontend's default).

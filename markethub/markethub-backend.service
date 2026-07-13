@@ -1,0 +1,20 @@
+[Unit]
+Description=AgentC MarketHub Backend (DeltaGUI-compatible)
+Documentation=file:///home/jwnyberg/agentlang/agentc/markethub/README.md
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/home/jwnyberg/agentlang/agentc/build/markethub/markethub_compat_backend --provider schwab --port 8765
+Restart=on-failure
+RestartSec=3
+User=jwnyberg
+Group=jwnyberg
+# Provider and port can be overridden without editing this file:
+# systemctl edit markethub-backend
+# [Service]
+# ExecStart=
+# ExecStart=/home/jwnyberg/agentlang/agentc/build/markethub/markethub_compat_backend --provider tradestation --port 8765
+
+[Install]
+WantedBy=multi-user.target
